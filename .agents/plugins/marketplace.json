@@ -1,0 +1,20 @@
+{
+  "name": "matsu-codex-plugins",
+  "interface": {
+    "displayName": "matsu-codex-plugins の Plugin 集"
+  },
+  "plugins": [
+    {
+      "name": "artifact-workflow",
+      "source": {
+        "source": "local",
+        "path": "./plugins/artifact-workflow"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
