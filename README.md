@@ -18,6 +18,8 @@ codex plugin marketplace add .
 
 Codex アプリを再起動し、Plugin 一覧でこのリポジトリのマーケットプレイスを選び、`artifact-workflow` をインストールしてください。インストール後は新しいタスクで利用します。
 
+`artifact-workflow` は成果物の生成とセルフレビューを Custom Agent `artifact-worker` に委任します。このリポジトリでは [.codex/config.toml](.codex/config.toml) に役割の参照を登録しています。別の作業場所で利用する場合は、[Custom Agent の設定と登録](plugins/artifact-workflow/README.md#custom-agent-の設定と登録)も行ってください。
+
 カタログは [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json)、Plugin 本体は `plugins/` に配置しています。カタログ内の `source.path` はリポジトリのルートを基準とする相対パスです。
 
 構成は、2026年9月8日に確認した OpenAI 公式の [Plugin パッケージ仕様](https://developers.openai.com/plugins/build/plugins)と[Agent Skills の説明](https://learn.chatgpt.com/docs/build-skills)に基づいています。

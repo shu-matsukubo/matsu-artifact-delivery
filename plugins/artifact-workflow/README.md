@@ -1,6 +1,6 @@
 # artifact-workflow
 
-成果物の作成を、タスク計画へのユーザー承認から完了条件の検証まで進める、skills のみの Codex Plugin です。
+成果物の作成を、タスク計画へのユーザー承認から完了条件の検証まで進める、Skill と Custom Agent の定義を含む Codex Plugin です。
 
 コード、ドキュメント、PowerPoint、調査レポートなど、作るものと完了条件を合意してから作業したい場面で利用できます。特定の開発工程・言語・フレームワーク・成果物形式には依存せず、他の Plugin や Skill、外部サービスなしで単独利用できます。
 
@@ -9,22 +9,43 @@
 1. 必要な作業をタスクへ分解する。
 2. 目的・成果物・完了条件を含むタスク計画をユーザーへ提示する。
 3. 原則としてユーザーの承認を得てから生成へ進む。
-4. 承認された計画に従って成果物を生成する。
-5. 成果物そのものの誤りや品質上の問題をセルフレビューする。
-6. タスクIDごとに、実際の成果物と承認された完了条件を比較して検証する。
-7. すべての完了条件を満たした成果物をユーザーへ提示する。
+4. 親が承認された計画を `artifact-worker` へ渡し、成果物の生成を委任する。
+5. `artifact-worker` が成果物そのものをセルフレビューし、必要な修正後に成果物とレビュー結果を親へ返す。
+6. 親がタスクIDごとに成果物の実物を確認し、承認された完了条件と比較して検証する。
+7. 親がすべての完了条件を満たした成果物をユーザーへ提示する。
 
-`T1`、`T2` などのタスクIDは、計画から生成・セルフレビュー・検証まで同じタスクを追跡するために使います。検証で条件を満たさない場合は、修正と必要なセルフレビューを行ってから再検証します。
+`T1`、`T2` などのタスクIDは、計画から生成・セルフレビュー・検証まで同じタスクを追跡するために使います。検証で条件を満たさない場合は、親が同じタスクIDで `artifact-worker` に修正と必要なセルフレビューを依頼し、返された実物を再検証します。
 
 ## 使い方
 
 インストール後の新しいタスクで、作りたい成果物とともに `artifact-workflow` の利用を指定してください。提示されたタスク計画を確認し、承認またはタスクIDを指定した修正依頼を返します。
+
+利用先で、次の Custom Agent の登録も必要です。役割を利用できない場合、ワークフローは生成を開始せず登録に必要な対応を案内します。
+
+## Custom Agent の設定と登録
+
+親には現在のチャットで選択したモデルをそのまま使用します。`artifact-worker` のモデル名と推論強度は [agents/artifact-worker.toml](agents/artifact-worker.toml) の `model` と `model_reasoning_effort` だけで管理し、差し替え時も Skill の変更は不要です。
+
+Plugin Creator の現行 manifest 仕様には Custom Agent の登録項目がないため、同梱した TOML を Codex の公式設定 `agents.<name>.config_file` で参照します。このリポジトリでは [../../.codex/config.toml](../../.codex/config.toml) に参照を登録しています。
+
+別のプロジェクトで利用する場合は、そのプロジェクトの `.codex/config.toml`（個人共通なら `~/.codex/config.toml`）に以下を追加し、パスを同梱 TOML の実際の絶対パスへ置き換えてください。相対パスの場合は、この設定を記載する `config.toml` の場所が基準です。
+
+```toml
+[agents.artifact-worker]
+config_file = "C:/path/to/matsu-codex-plugins/plugins/artifact-workflow/agents/artifact-worker.toml"
+```
+
+Plugin のインストールだけでは、この参照設定は追加されません。登録後は新しいタスクで利用してください。計画提示・承認・計画変更・最終的な完了判定・ユーザーへの提出は親が担当し、`artifact-worker` は承認済みの範囲内で生成・修正・セルフレビューを行います。
+
+配置と設定は、OpenAI 公式の [Custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents) と [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference) に基づきます。
 
 ## 構成
 
 | 場所 | 責務 |
 | --- | --- |
 | `.codex-plugin/plugin.json` | Plugin の識別情報、日本語の利用者向け説明、skills の参照先。 |
+| [agents/artifact-worker.toml](agents/artifact-worker.toml) | Custom Agent の役割・生成とセルフレビューの指示・モデル固有設定。 |
+| [../../.codex/config.toml](../../.codex/config.toml) | このリポジトリで Custom Agent を登録する参照設定。 |
 | [skills/artifact-workflow/SKILL.md](skills/artifact-workflow/SKILL.md) | ワークフローと承認ルールの正本。 |
 | `skills/artifact-workflow/references/` | タスク分解・生成・セルフレビュー・検証の工程別の方針。 |
 | [skills/artifact-workflow/assets/task-plan-template.md](skills/artifact-workflow/assets/task-plan-template.md) | ユーザーへ提示する日本語のタスク計画テンプレート。 |
