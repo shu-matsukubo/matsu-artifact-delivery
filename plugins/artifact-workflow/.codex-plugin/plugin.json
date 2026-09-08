@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "description": "タスク計画の提示と承認から、成果物の生成・セルフレビュー・完了条件の検証・提示まで進める汎用ワークフロー。",
   "author": {
-    "name": "matsu-codex-plugins のメンテナー"
+    "name": "松久保 愁"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "成果物作成ワークフロー",
     "shortDescription": "計画と承認に基づいて成果物を作成・検証する",
     "longDescription": "コード、文章、PowerPoint、調査レポートなど、成果物の形式を問わず利用できます。タスク分解から承認、生成、セルフレビュー、完了条件の検証、成果物の提示までを一つの流れとして提供します。",
-    "developerName": "matsu-codex-plugins のメンテナー",
+    "developerName": "松久保 愁",
     "category": "Productivity",
     "capabilities": [],
     "defaultPrompt": [
