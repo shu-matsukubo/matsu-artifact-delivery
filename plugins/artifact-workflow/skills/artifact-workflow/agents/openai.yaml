@@ -1,0 +1,6 @@
+interface:
+  display_name: "成果物作成ワークフロー"
+  short_description: "計画と承認に基づいて成果物を作成・検証する"
+
+policy:
+  allow_implicit_invocation: false
