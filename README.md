@@ -18,7 +18,7 @@ codex plugin marketplace add .
 
 Codex アプリを再起動し、Plugin 一覧でこのリポジトリのマーケットプレイスを選び、`artifact-workflow` をインストールしてください。インストール後は新しいタスクで利用します。
 
-`artifact-workflow` は成果物の生成とセルフレビューを Custom Agent `artifact-worker` に委任します。このリポジトリでは [.codex/config.toml](.codex/config.toml) に役割の参照を登録しています。別の作業場所で利用する場合は、[Custom Agent の設定と登録](plugins/artifact-workflow/README.md#custom-agent-の設定と登録)も行ってください。
+`artifact-workflow` は成果物の生成・修正とセルフレビューを最低1人、同時に最大3人の Custom Agent `artifact-worker` に委任します。独立したタスクの並列実行は親が判断し、計画・承認・検証・提示も親が管理します。このリポジトリでは [.codex/config.toml](.codex/config.toml) に役割の参照を登録しています。別の作業場所で利用する場合は、[Custom Agent の設定と登録](plugins/artifact-workflow/README.md#custom-agent-の設定と登録)も行ってください。
 
 カタログは [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json)、Plugin 本体は `plugins/` に配置しています。カタログ内の `source.path` はリポジトリのルートを基準とする相対パスです。
 

@@ -9,10 +9,12 @@
 1. 必要な作業をタスクへ分解する。
 2. 目的・成果物・完了条件を含むタスク計画をユーザーへ提示する。
 3. 原則としてユーザーの承認を得てから生成へ進む。
-4. 親が承認された計画を `artifact-worker` へ渡し、成果物の生成を委任する。
-5. `artifact-worker` が成果物そのものをセルフレビューし、必要な修正後に成果物とレビュー結果を親へ返す。
+4. 親が承認済みの計画と依存関係から1〜3人の `artifact-worker` の担当を決め、成果物の生成を委任する。
+5. 各担当の `artifact-worker` が生成した成果物そのものをセルフレビューし、必要な修正後に成果物とレビュー結果を親へ返す。
 6. 親がタスクIDごとに成果物の実物を確認し、承認された完了条件と比較して検証する。
 7. 親がすべての完了条件を満たした成果物をユーザーへ提示する。
+
+v0.2.0では、生成・修正とそれに伴うセルフレビューに最低1人、同時に最大3人の `artifact-worker` を使います。独立したタスクは並列実行でき、依存関係がある場合や効果が小さい場合は1人で進めます。親が承認済みの計画から人数と担当範囲を判断し、編集が競合する作業や必要な統合作業は順次委任します。詳しくは[生成の方針](skills/artifact-workflow/references/generation.md)を参照してください。
 
 `T1`、`T2` などのタスクIDは、計画から生成・セルフレビュー・検証まで同じタスクを追跡するために使います。検証で条件を満たさない場合は、親が同じタスクIDで `artifact-worker` に修正と必要なセルフレビューを依頼し、返された実物を再検証します。
 
@@ -35,7 +37,7 @@ Plugin Creator の現行 manifest 仕様には Custom Agent の登録項目が�
 config_file = "C:/path/to/matsu-codex-plugins/plugins/artifact-workflow/agents/artifact-worker.toml"
 ```
 
-Plugin のインストールだけでは、この参照設定は追加されません。登録後は新しいタスクで利用してください。計画提示・承認・計画変更・最終的な完了判定・ユーザーへの提出は親が担当し、`artifact-worker` は承認済みの範囲内で生成・修正・セルフレビューを行います。
+Plugin のインストールだけでは、この参照設定は追加されません。登録後は新しいタスクで利用してください。複数人で実行する場合も同じ `artifact-worker` の役割定義を使います。タスク分解・計画提示・承認・計画変更・最終的な完了判定・ユーザーへの提出は親が担当し、これらの工程にはサブエージェントを追加しません。`artifact-worker` は承認済みの担当範囲内で生成・修正・セルフレビューを行います。
 
 配置と設定は、OpenAI 公式の [Custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents) と [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference) に基づきます。
 
@@ -43,7 +45,7 @@ Plugin のインストールだけでは、この参照設定は追加されま�
 
 | 場所 | 責務 |
 | --- | --- |
-| `.codex-plugin/plugin.json` | Plugin の識別情報、日本語の利用者向け説明、skills の参照先。 |
+| [plugin.json](plugin.json) | Plugin の識別情報、バージョン、日本語の利用者向け説明。Skill は `skills/` から検出される。 |
 | [agents/artifact-worker.toml](agents/artifact-worker.toml) | Custom Agent の役割・生成とセルフレビューの指示・モデル固有設定。 |
 | [../../.codex/config.toml](../../.codex/config.toml) | このリポジトリで Custom Agent を登録する参照設定。 |
 | [skills/artifact-workflow/SKILL.md](skills/artifact-workflow/SKILL.md) | ワークフローと承認ルールの正本。 |
