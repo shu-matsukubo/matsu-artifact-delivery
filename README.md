@@ -1,6 +1,6 @@
-# matsu-codex-plugins
+# matsu-artifact-delivery
 
-独立して利用可能な Codex Plugin をまとめるリポジトリです。各 Plugin は、それぞれ単独で利用できるワークフローを提供します。
+Codex での成果物生成・品質保証を支援するプラグイン集です。
 
 ## Plugin 一覧
 

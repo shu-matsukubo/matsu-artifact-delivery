@@ -34,7 +34,7 @@ Plugin Creator の現行 manifest 仕様には Custom Agent の登録項目が�
 
 ```toml
 [agents.artifact-worker]
-config_file = "C:/path/to/matsu-codex-plugins/plugins/artifact-workflow/agents/artifact-worker.toml"
+config_file = "C:/path/to/matsu-artifact-delivery/plugins/artifact-workflow/agents/artifact-worker.toml"
 ```
 
 Plugin のインストールだけでは、この参照設定は追加されません。登録後は新しいタスクで利用してください。複数人で実行する場合も同じ `artifact-worker` の役割定義を使います。タスク分解・計画提示・承認・計画変更・最終的な完了判定・ユーザーへの提出は親が担当し、これらの工程にはサブエージェントを追加しません。`artifact-worker` は承認済みの担当範囲内で生成・修正・セルフレビューを行います。
