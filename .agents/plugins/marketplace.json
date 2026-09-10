@@ -1,7 +1,7 @@
 {
-  "name": "matsu-codex-plugins",
+  "name": "matsu-artifact-delivery",
   "interface": {
-    "displayName": "matsu-codex-plugins の Plugin 集"
+    "displayName": "matsu-artifact-delivery（Codex の成果物生成・品質保証）"
   },
   "plugins": [
     {
