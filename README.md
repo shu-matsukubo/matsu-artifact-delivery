@@ -6,7 +6,7 @@
 
 | Plugin | 目的 |
 | --- | --- |
-| [artifact-workflow](plugins/artifact-workflow/README.md) | 成果物の形式を問わず、タスク分解・計画の提示・承認・生成・セルフレビュー・検証・成果物の提示を進める。 |
+| [artifact-workflow](plugins/artifact-workflow/README.md) | 成果物を作る作業タスクを計画・承認し、生成・セルフレビュー・タスクと全体の検証・Delivery を進める。品質確認と引き渡しは作業タスクと分けて管理する。 |
 
 ## 共通規格への方針
 

@@ -1,6 +1,6 @@
 # artifact-workflow
 
-成果物の作成を、タスク計画へのユーザー承認から完了条件の検証まで進める Plugin です。[Agent Plugins](https://agent-plugins.org/) の共通構造で Skill を配布し、Codex 向けに Custom Agent の定義を同梱しています。
+成果物の作成を、作業タスク計画へのユーザー承認からタスクと全体の検証、完成した成果物の引き渡し（Delivery）まで進める Plugin です。[Agent Plugins](https://agent-plugins.org/) の共通構造で Skill を配布し、Codex 向けに Custom Agent の定義を同梱しています。
 
 コード、ドキュメント、PowerPoint、調査レポートなど、作るものと完了条件を合意してから作業したい場面で利用できます。特定の開発工程・言語・フレームワーク・成果物形式には依存せず、他の Plugin や Skill、外部サービスなしで単独利用できます。実行に必要な Codex 側の登録は後述します。
 
@@ -12,7 +12,7 @@
 | --- | --- |
 | [plugin.json](plugin.json) | 共通の識別情報・メタデータの正本。`$schema` で対象規格、`version` で Plugin のリリースバージョンを管理する。 |
 | [skills/artifact-workflow/SKILL.md](skills/artifact-workflow/SKILL.md) | Agent Skills 形式の定義。`skills/` の直下から検出される。ワークフローと承認ルールの正本で、`compatibility` に実行環境の要件を記載する。 |
-| `skills/artifact-workflow/references/` | Skill 固有のタスク分解・生成・セルフレビュー・検証の方針。 |
+| `skills/artifact-workflow/references/` | Skill 固有のタスク分解・生成・セルフレビュー・検証・Delivery の方針。 |
 | [skills/artifact-workflow/assets/task-plan-template.md](skills/artifact-workflow/assets/task-plan-template.md) | Skill 固有の日本語のタスク計画テンプレート。 |
 | [com.openai/agents/artifact-worker.toml](com.openai/agents/artifact-worker.toml) | Codex 固有の Custom Agent 定義。役割・生成とセルフレビューの指示・モデル・推論強度を管理する。 |
 | [skills/artifact-workflow/agents/openai.yaml](skills/artifact-workflow/agents/openai.yaml) | Codex 互換用の表示情報と明示呼び出しの設定。共通規格の必須ファイルではない。 |
@@ -30,17 +30,27 @@ MCP は同梱していません。追加する場合は Plugin root の `mcp.jso
 
 ## 基本フロー
 
-1. 必要な作業をタスクへ分解する。
-2. 目的・成果物・完了条件を含むタスク計画をユーザーへ提示する。
+1. 成果物そのものを作成・変更する作業をタスクへ分解する。
+2. 各タスクの目的・成果物・完了条件と、タスク外の品質確認・全体の完了条件・Delivery を含む計画をユーザーへ提示する。
 3. 原則としてユーザーの承認を得てから生成へ進む。
 4. 親が承認済みの計画と依存関係から `artifact-worker` の担当を決め、成果物の生成を委任する。
 5. 各担当の `artifact-worker` が生成した成果物そのものをセルフレビューし、必要な修正後に成果物とレビュー結果を親へ返す。
-6. 親がタスクIDごとに成果物の実物を確認し、承認された完了条件と比較して検証する。
-7. 親がすべての完了条件を満たした成果物をユーザーへ提示する。
+6. 親がタスクIDごとに成果物の実物を確認し、承認された完了条件を満たしたタスクを完了とする。
+7. 全作業タスク完了後、親が最終的な成果物を全体の完了条件と照合して、成果物完成を確認する。
+8. 親が Delivery として完成した成果物を利用者へ提示し、依頼された公開・提出・PR 作成などがあれば担当 Skill・後続処理へ引き渡し、結果を伝える。
 
 委任人数や並列実行、担当範囲の判断は[生成の方針](skills/artifact-workflow/references/generation.md)を参照してください。
 
 `T1`、`T2` などのタスクIDは、計画から生成・セルフレビュー・検証まで同じタスクを追跡するために使います。検証で条件を満たさない場合は、親が同じタスクIDで `artifact-worker` に修正と必要なセルフレビューを依頼し、返された実物を再検証します。
+
+### タスク分解で守る二つの境界
+
+- **Task は成果物を作る作業単位**です。セルフレビュー、動作検証、完了条件の確認、全体検証はタスクを処理するフローとして実施し、独立した作業タスクにしません。
+- **Delivery は作業タスクとは別のフェーズ**です。完成した成果物の提示と、依頼された公開・提出・PR 作成などへの引き渡しを管理します。後続操作の具体的な手順は担当 Skill に従い、その内部処理を作業タスクへ分解しません。
+
+例えば「この Plugin でウェブサイトを作成し、その後 GitHub 操作 Skill で PR を作成」という依頼では、サイトの作成・修正をタスク化します。「レビュー」「公開」「PR 作成」を別タスクにせず、品質確認後に Delivery で完成した成果物を GitHub 操作 Skill へ渡します。Sites での公開も同様に扱います。
+
+作業タスク完了・成果物完成・Delivery 完了は別々に判断します。外部 Skill への引き渡しが残る場合は成果物の検証結果と分けて伝え、依頼全体を完了扱いにしません。詳細は[タスク分解の方針](skills/artifact-workflow/references/task-planning.md)と[引き渡しの方針](skills/artifact-workflow/references/delivery.md)を参照してください。
 
 ## Codex での使い方
 
@@ -63,6 +73,6 @@ config_file = "C:/path/to/matsu-artifact-delivery/plugins/artifact-workflow/com.
 
 旧配置 `agents/artifact-worker.toml` を参照している場合は、上記の配置へ `config_file` を更新してください。
 
-Plugin のインストールだけでは、この参照設定は追加されません。登録後は新しいタスクで利用してください。複数人で実行する場合も同じ `artifact-worker` の役割定義を使います。タスク分解・計画提示・承認・計画変更・最終的な完了判定・ユーザーへの提出は親が担当し、これらの工程にはサブエージェントを追加しません。`artifact-worker` は承認済みの担当範囲内で生成・修正・セルフレビューを行います。
+Plugin のインストールだけでは、この参照設定は追加されません。登録後は新しいタスクで利用してください。複数人で実行する場合も同じ `artifact-worker` の役割定義を使います。タスク分解・計画提示・承認・計画変更・タスクと全体の完了判定・Delivery は親が担当し、これらの工程にはサブエージェントを追加しません。`artifact-worker` は承認済みの担当範囲内で生成・修正・セルフレビューを行います。
 
 設定方法は、OpenAI 公式の [Custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents) と [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference) を参照してください。

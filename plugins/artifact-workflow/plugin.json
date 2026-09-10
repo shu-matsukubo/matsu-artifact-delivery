@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "artifact-workflow",
-  "version": "0.2.1",
-  "description": "タスク計画の提示と承認、1〜3人の artifact-worker による成果物の生成・セルフレビュー、親による完了条件の検証・提示を進める汎用ワークフロー。",
+  "version": "0.3.0",
+  "description": "成果物を作る作業タスクを計画・承認し、1〜3人の artifact-worker による生成・セルフレビュー、親によるタスクと全体の検証、Delivery を進める汎用ワークフロー。",
   "author": {
     "name": "松久保 愁"
   }
