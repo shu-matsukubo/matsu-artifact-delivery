@@ -1,2 +1,2 @@
 [agents.artifact-worker]
-config_file = "../plugins/artifact-workflow/agents/artifact-worker.toml"
+config_file = "../plugins/artifact-workflow/com.openai/agents/artifact-worker.toml"

@@ -1,6 +1,7 @@
 ---
 name: artifact-workflow
 description: ユーザーが artifact-workflow またはこの Plugin の利用を明示的に指定した場合にのみ使う。成果物作成の依頼をタスクへ分解し、計画の提示・ユーザー承認・生成・セルフレビュー・完了条件の検証・成果物の提示まで進める。コード、文章、PowerPoint、調査レポートなど、形式を問わず計画と完了条件に基づいて作成する。
+compatibility: Codex のマルチエージェント機能と、登録済みの Custom Agent artifact-worker が必要。
 ---
 
 # 成果物作成ワークフロー
