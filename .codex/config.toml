@@ -1,2 +1,8 @@
 [agents.artifact-worker]
 config_file = "../plugins/artifact-workflow/com.openai/agents/artifact-worker.toml"
+
+[agents.escalation-advisor]
+config_file = "../plugins/expert-escalation/com.openai/agents/escalation-advisor.toml"
+
+[agents.escalation-deep-advisor]
+config_file = "../plugins/expert-escalation/com.openai/agents/escalation-deep-advisor.toml"

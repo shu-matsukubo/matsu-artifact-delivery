@@ -77,6 +77,8 @@ config_file = "C:/path/to/matsu-artifact-delivery/plugins/artifact-workflow/com.
 
 旧配置 `agents/artifact-worker.toml` を参照している場合は、上記の配置へ `config_file` を更新してください。
 
-Plugin のインストールだけでは、この参照設定は追加されません。登録後は新しいタスクで利用してください。複数人で実行する場合も同じ `artifact-worker` の役割定義を使います。本フローのタスク分解・計画提示・承認・計画変更・タスクと全体の完了判定・完成品の提示と引き渡しは親が担当し、これらの工程にはサブエージェントを追加しません。`artifact-worker` は承認済みの担当範囲内で生成・修正・セルフレビューを行います。
+Plugin のインストールだけでは、この参照設定は追加されません。登録後は新しいタスクで利用してください。複数人で実行する場合も同じ `artifact-worker` の役割定義を使います。本フローのタスク分解・計画提示・承認・計画変更・タスクと全体の完了判定・完成品の提示と引き渡しは親が担当し、これらの工程そのものは委任しません。`artifact-worker` は承認済みの担当範囲内で生成・修正・セルフレビューを行います。
+
+独立した読み取り専用の相談 Skill が利用できる場合は、具体的な阻害要因に限って任意で助言を受けられます。ワーカーは相談内容を親へ返し、親がその Skill の条件と共有上限に従って相談役を起動します。助言を元の担当へ戻し、通常のセルフレビューや親の検証・完了判定は維持します。特定の相談 Plugin やモデルへの依存は追加しません。
 
 設定方法は、OpenAI 公式の [Custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents) と [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference) を参照してください。

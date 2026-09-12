@@ -1,0 +1,20 @@
+{
+  "name": "expert-escalation",
+  "version": "0.1.0",
+  "description": "設計・セキュリティ・広範囲の変更で判断を阻む具体的な論点を、上位の相談役へ読み取り専用で相談する。作業開始からユーザーへの返答で中断するまで最大3回とし、ユーザーの返答で再開時に回数をリセットする。未解決なら試行結果を報告して判断を仰ぐ。",
+  "author": {
+    "name": "松久保 愁"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "上位モデルへの相談",
+    "shortDescription": "設計・リスクの難所を読み取り専用で相談する",
+    "longDescription": "設計・セキュリティ・広範囲の変更で判断を阻む具体的な論点を、上位の相談役へ読み取り専用で相談する。作業開始からユーザーへの返答で中断するまで最大3回とし、ユーザーの返答で再開時に回数をリセットする。未解決なら試行結果を報告して判断を仰ぐ。",
+    "developerName": "松久保 愁",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": [
+      "$expert-escalation で、この作業の阻害要因について相談してください。"
+    ]
+  }
+}

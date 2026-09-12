@@ -7,6 +7,7 @@
 | Plugin | 目的 |
 | --- | --- |
 | [artifact-workflow](plugins/artifact-workflow/README.md) | 成果物を作る作業タスクを計画・承認し、生成・セルフレビュー・タスクと全体の検証を行う。完成品と検証結果を提示・引き渡してフローを終了し、後続処理の実行・検証は管理しない。 |
+| [expert-escalation](plugins/expert-escalation/README.md) | 設計・セキュリティ・変更影響の具体的な阻害要因を上位の相談役へ読み取り専用で相談する。作業中断まで自動相談は最大3回、ユーザーの返答で再開時にリセット。未解決なら試行結果を報告してユーザー判断を仰ぐ。 |
 
 ## 共通規格への方針
 
@@ -20,7 +21,7 @@
 | `plugins/<plugin>/com.openai/` | Codex 向けの固有ファイル。共通コンポーネントとは分けて配置する。 |
 | `.agents/plugins/marketplace.json`・`.codex/config.toml` | Codex 向けの配布カタログ・利用先の設定。Plugin パッケージの共通規格には含まれない。 |
 
-client 固有の manifest データが必要になった場合は、逆ドメイン形式の `extensions` 名前空間を使います。OpenAI 向けは `extensions.com.openai` とし、固有ファイルは対応する `com.openai/` 配下へまとめます。client が特定の読み込み位置を要求する互換設定は、理由と共通規格との差分を各 Plugin の README に記載します。現在の例外は [artifact-workflow の Codex 互換設定](plugins/artifact-workflow/README.md#codex-互換設定)を参照してください。
+client 固有の manifest データが必要になった場合は、逆ドメイン形式の `extensions` 名前空間を使います。OpenAI 向けは `extensions.com.openai` とし、固有ファイルは対応する `com.openai/` 配下へまとめます。client が特定の読み込み位置を要求する互換設定は、理由と共通規格との差分を各 Plugin の README に記載します。現在の例外は [artifact-workflow の Codex 互換設定](plugins/artifact-workflow/README.md#codex-互換設定)と [expert-escalation の互換設定](plugins/expert-escalation/README.md#共通規格と-codex-互換設定)を参照してください。
 
 Custom Agent、モデル、推論強度などの Codex 固有機能は維持しつつ、共通仕様の必須要素とは区別します。各 Plugin の README には、インストールで利用可能になる部分と追加設定が必要な部分を明記します。全 client での同一動作を必須にはせず、将来の移植に不要な独自構造を増やさない方針です。
 
@@ -34,9 +35,11 @@ Plugin のリリースバージョンと対象規格は、各 Plugin の `plugin
 codex plugin marketplace add .
 ```
 
-Codex アプリを再起動し、Plugin 一覧でこのリポジトリのマーケットプレイスを選び、`artifact-workflow` をインストールしてください。インストール後は新しいタスクで利用します。
+Codex アプリを再起動し、Plugin 一覧でこのリポジトリのマーケットプレイスを選び、利用する Plugin をインストールしてください。インストール後は新しいタスクで利用します。
 
 `artifact-workflow` の実行要件とワークフローは [Plugin README](plugins/artifact-workflow/README.md)を参照してください。このリポジトリでは [.codex/config.toml](.codex/config.toml) に役割の参照を登録しています。別の作業場所で利用する場合は、[Custom Agent の設定と登録](plugins/artifact-workflow/README.md#custom-agent-の設定と登録)も行ってください。
+
+`expert-escalation` の相談条件・上限・役割登録は [Plugin README](plugins/expert-escalation/README.md)を参照してください。単独でも、読み取り専用の相談を任意で利用できる Workflow と組み合わせても使えます。
 
 カタログは [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json)、Plugin 本体は `plugins/` に配置しています。カタログ内の `source.path` はリポジトリのルートを基準とする相対パスです。
 

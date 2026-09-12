@@ -1,0 +1,6 @@
+interface:
+  display_name: "上位モデルへの相談"
+  short_description: "設計・セキュリティ・広範囲変更の難所を読み取り専用で相談し、最大3回で判断を戻す"
+
+policy:
+  allow_implicit_invocation: true
