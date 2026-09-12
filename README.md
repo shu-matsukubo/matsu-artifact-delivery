@@ -1,12 +1,12 @@
 # matsu-artifact-delivery
 
-成果物生成・品質保証を支援するプラグイン集です。[Agent Plugins](https://agent-plugins.org/) の共通規格を基準とし、当面は Codex を主な実行環境とします。
+成果物を利用者へ届けるデリバリーを支援するプラグイン集です。現在の `artifact-workflow` は、その一部である成果物生成フローを担当します。生成・品質確認を終えた後の更新・公開・提出などは、親エージェントが依頼に応じた手段で続行します。成果物と引き渡し情報を接点とし、生成フローとデリバリー手段を疎結合に保ちます。[Agent Plugins](https://agent-plugins.org/) の共通規格を基準とし、当面は Codex を主な実行環境とします。
 
 ## Plugin 一覧
 
 | Plugin | 目的 |
 | --- | --- |
-| [artifact-workflow](plugins/artifact-workflow/README.md) | 成果物の形式を問わず、タスク分解・計画の提示・承認・生成・セルフレビュー・検証・成果物の提示を進める。 |
+| [artifact-workflow](plugins/artifact-workflow/README.md) | 成果物を作る作業タスクを計画・承認し、生成・セルフレビュー・タスクと全体の検証を行う。完成品と検証結果を提示・引き渡してフローを終了し、後続処理の実行・検証は管理しない。 |
 
 ## 共通規格への方針
 

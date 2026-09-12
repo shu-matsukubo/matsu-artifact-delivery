@@ -1,6 +1,6 @@
 interface:
-  display_name: "成果物作成ワークフロー"
-  short_description: "計画と承認に基づいて成果物を作成・検証する"
+  display_name: "成果物生成ワークフロー"
+  short_description: "計画・承認に基づき成果物を生成・検証し、完成品を親の後続処理へ引き渡す"
 
 policy:
   allow_implicit_invocation: false
