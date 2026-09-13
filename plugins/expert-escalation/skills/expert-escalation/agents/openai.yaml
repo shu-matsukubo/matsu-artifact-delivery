@@ -3,4 +3,6 @@ interface:
   short_description: "親からの明示依頼で設計・リスクの論点を読み取り専用の相談役へ渡す"
 
 policy:
+  # 通常のモデル向け一覧には非公開。選択UIでの明示指定は可能。
+  # 親からの利用には、呼び出し元で一覧取得と SKILL.md の読み込みを行う。
   allow_implicit_invocation: false

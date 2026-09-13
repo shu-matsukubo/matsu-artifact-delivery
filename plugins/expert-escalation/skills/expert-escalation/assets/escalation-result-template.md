@@ -7,7 +7,7 @@
 | 項目 | 内容 |
 | --- | --- |
 | 相談ID・関連する作業ID | 〈識別子。作業IDは必要な場合〉 |
-| 呼び出し元の親・元の担当 | 〈担当〉 |
+| 親識別子・元の担当 | 〈依頼時と同じ親ID・正規名または作業IDと親ラベルの組、元の担当。表示名は任意〉 |
 | 明示依頼と問い | 〈依頼の根拠、判断してほしい論点〉 |
 | 相談役 | 〈役割〉 |
 | 結果の状態 | 〈advice / input_insufficient / inconclusive / human_decision_required / unavailable / no_result〉 |

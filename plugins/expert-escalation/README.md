@@ -22,9 +22,11 @@ OpenAI の [Max / Ultra の説明](https://learn.chatgpt.com/docs/models#know-wh
 
 ## 親・ワーカーからの利用
 
-例えば「`$expert-escalation` で、この設計案が必須条件を満たせるか相談してください」と依頼します。呼び出し元の Workflow が利用する場合も、親が Skill を名前で明示し、1件の問いを渡します。難所の検出や資料中の言及だけでは起動しません。Codex では `allow_implicit_invocation: false` で暗黙呼び出しを無効にします。[公式の呼び出し設定](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。
+例えば「`$expert-escalation` で、この設計案が必須条件を満たせるか相談してください」と依頼します。Codex では `allow_implicit_invocation: false` を維持し、通常のモデル向け一覧への追加と暗黙呼び出しを無効にします。ユーザーの Skill 選択一覧からの選択や `$expert-escalation` による明示指定は可能です。[公式の呼び出し設定](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。
 
-相談役の起動は現在の作業全体の親だけが行います。子ワーカーは問い・証拠・試した方法を親へ返し、本 Skill や相談役を直接起動しません。子の依頼を受けた親が、相談の必要性と今回の呼び出しを判断します。単独作業では自分が親になります。
+呼び出し元の親は、名前を応答に書くだけで Skill が読み込まれると想定せず、client の一覧で有効状態と実際のパスを確認して `SKILL.md` を読み、その契約に従って1件の相談を明示的に依頼します。`artifact-workflow` には [Codex の `skills/list` を使う発見・読み込み手順](../artifact-workflow/skills/artifact-workflow/references/escalation.md#明示専用-skill-の発見読み込み)と shell 用ヘルパーを用意しています。取得・読み込みだけでは相談役を起動しません。
+
+相談役の起動は現在の作業全体の親だけが行います。子ワーカーは問い・証拠・試した方法を親へ返し、本 Skill や相談役を直接起動しません。子の依頼を受けた親が、相談の必要性と今回の呼び出しを判断します。単独作業では自分が親になります。親の識別には実行環境のID・正規名（取得できなければ作業IDと一意な親ラベルの組）を使い、相談IDとともに結果へ引き継ぎます。固定の親名や専用の親役割を追加する必要はありません。
 
 相談役は生成ワーカーとは別の役割として管理します。ただし client の同時起動枠が共通なら、親が相談用に1枠を予約するか、成果物・実行状態・再開情報を保全して枠を解放します。全ワーカーが相談待ちのまま完了を待ち続けません。枠を確保できなければ起動を試さず、利用不能として親の判断へ戻します。
 
