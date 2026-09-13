@@ -22,9 +22,9 @@ OpenAI の [Max / Ultra の説明](https://learn.chatgpt.com/docs/models#know-wh
 
 ## 親・ワーカーからの利用
 
-例えば「`$expert-escalation` で、この設計案が必須条件を満たせるか相談してください」と依頼します。Codex では `allow_implicit_invocation: false` を維持し、通常のモデル向け一覧への追加と暗黙呼び出しを無効にします。ユーザーの Skill 選択一覧からの選択や `$expert-escalation` による明示指定は可能です。[公式の呼び出し設定](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。
+例えば「`$expert-escalation` で、この設計案が必須条件を満たせるか相談してください」と依頼します。Codex では `allow_implicit_invocation: true` とし、通常のモデル向け一覧へ名前・説明・パスを公開します。設定上は暗黙選択を許可し、相談の開始条件は Skill の description と本文で「ユーザーまたは呼び出し元の親の明示依頼」に制限します。一覧への掲載や本文の読み込みだけでは相談を開始しません。[公式の呼び出し設定](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。
 
-呼び出し元の親は、名前を応答に書くだけで Skill が読み込まれると想定せず、client の一覧で有効状態と実際のパスを確認して `SKILL.md` を読み、その契約に従って1件の相談を明示的に依頼します。`artifact-workflow` には [Codex の `skills/list` を使う発見・読み込み手順](../artifact-workflow/skills/artifact-workflow/references/escalation.md#明示専用-skill-の発見読み込み)と shell 用ヘルパーを用意しています。取得・読み込みだけでは相談役を起動しません。
+呼び出し元の親は、現在のタスクで利用可能として提示された実際のパスから `SKILL.md` を読み、その契約に従って1件の相談を明示的に依頼します。client の正式な一覧機能を使う場合も、現在のタスクの設定が反映された一覧に限ります。`artifact-workflow` には[発見・読み込み手順](../artifact-workflow/skills/artifact-workflow/references/escalation.md#相談-skill-の発見読み込み)を定義しています。候補が見つからない・無効・本文を読めない場合は相談を見送り、発見のための Python や Codex CLI の追加起動は行いません。
 
 相談役の起動は現在の作業全体の親だけが行います。子ワーカーは問い・証拠・試した方法を親へ返し、本 Skill や相談役を直接起動しません。子の依頼を受けた親が、相談の必要性と今回の呼び出しを判断します。単独作業では自分が親になります。親の識別には実行環境のID・正規名（取得できなければ作業IDと一意な親ラベルの組）を使い、相談IDとともに結果へ引き継ぎます。固定の親名や専用の親役割を追加する必要はありません。
 
@@ -42,7 +42,7 @@ OpenAI の [Max / Ultra の説明](https://learn.chatgpt.com/docs/models#know-wh
 | `skills/expert-escalation/` | 共通の Skill 検出位置。手順・参照資料・テンプレートを同じ Skill 配下にまとめる。 |
 | `com.openai/agents/` | Codex 固有のモデル・権限・役割定義。[client extensions](https://agent-plugins.org/plugin-authors/client-extensions)の逆ドメイン配置に合わせる。自動登録用のディレクトリではない。 |
 | [.codex-plugin/plugin.json](.codex-plugin/plugin.json) | plugin-creator が生成する Codex 互換用 manifest。共通 manifest の識別情報に Codex の Skill 位置・表示情報を加える。 |
-| [skills/expert-escalation/agents/openai.yaml](skills/expert-escalation/agents/openai.yaml) | Codex 向けの表示情報と `allow_implicit_invocation: false`。 |
+| [skills/expert-escalation/agents/openai.yaml](skills/expert-escalation/agents/openai.yaml) | Codex 向けの表示情報と `allow_implicit_invocation: true`。相談の開始条件は Skill の description と本文で管理する。 |
 
 `.codex-plugin/plugin.json` と Skill の `agents/openai.yaml` は、Codex の既存の読み込み位置を維持する互換性上の例外です。共通規格のコンポーネントを増やす独自の検出方式ではなく、Codex 固有の設定として扱います。[Plugin パッケージ](https://developers.openai.com/plugins/build/plugins)と[Skill の optional metadata](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。manifest の共通フィールドは root を正本とし、変更時は互換 manifest の同名フィールドにも同期します。
 

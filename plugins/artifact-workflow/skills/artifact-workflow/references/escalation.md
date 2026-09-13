@@ -18,22 +18,16 @@
 
 子ワーカーは、担当タスクID・問い・証拠・試した方法・残る阻害要因を親へ返す。親だけが相談 Skill と相談役を起動し、子は直接起動しない。親は下記で本文と契約を読んだ後、利用する Skill の名前・相談ID・1件の問いを今回の明示依頼として記録する。一般的な「任意で相談できる」という記述や子の依頼だけを起動命令にしない。
 
-## 明示専用 Skill の発見・読み込み
+## 相談 Skill の発見・読み込み
 
-`expert-escalation` は `allow_implicit_invocation: false` のため通常のモデル向け一覧には載らない。ユーザーは Skill 選択一覧や `$expert-escalation` で指定できるが、親が応答にその文字列を書くだけでは本文は読み込まれない。`artifact-workflow` だけが指定された新規タスクでも、親は次の手順を使う。
+`expert-escalation` は `allow_implicit_invocation: true` により通常のモデル向け一覧から発見できる。相談の開始条件は Skill の description と本文に定めるユーザーまたは親の明示依頼に限る。`artifact-workflow` だけが指定された新規タスクでも、親は次の手順を使う。
 
-1. 現在の作業ディレクトリを対象に、client が提供する明示専用 Skill を含む一覧を取得する。Codex では [App Server の `skills/list`](https://learn.chatgpt.com/docs/app-server#skills) を `cwds: [現在の作業ディレクトリの絶対パス]`、`forceReload: true` で呼ぶ。API がツールとして公開されていない場合は、下記の同梱ヘルパーを使う。
-2. `name` が `expert-escalation` または Plugin 修飾名 `expert-escalation:expert-escalation` の候補を確認する。`enabled: true` の候補だけを対象にし、`pluginId` と `path` で配布元を特定する。複数ある場合はユーザーが指定した配布元・パスに一致するものを選ぶ。一意に決められなければ選択不能として相談を見送り、先頭や最新らしいパスを推測で選ばない。
-3. 一覧から得た実際の `path` にある `SKILL.md` を読み、その本文から必要な参照資料を読む。発見はメタデータの取得、読み込みは手順の確認であり、相談役の起動ではない。親が今回の利用を明示的に決め、回数・入力・役割・枠を確認してから起動する。
-4. 一覧を取得できない・対象 Skill の読み込みエラー・本文が読めない・候補が曖昧なら、事前確認で利用不能として理由を記録し、下記のフォールバックへ進む。候補なし・無効は未導入・無効として扱う。いずれも起動試行なし、消費0回。キャッシュの総当たりや別バージョンへの差し替え、Skill の有効化は行わない。
+1. 現在のタスクに提示された利用可能な Skill 一覧を確認する。client の正式な一覧機能を使う場合も、現在のタスクの設定が反映された一覧に限る。
+2. 名前が `expert-escalation` または Plugin 修飾名 `expert-escalation:expert-escalation` で、利用可能として提示された候補を確認する。有効状態が示される一覧では `enabled: true` だけを対象にする。複数ある場合は一覧の配布元・実際のパスとユーザーの指定を照合し、一意に決められなければ相談を見送る。先頭や最新らしいパスを推測で選ばない。
+3. 一覧で示された実際のパスにある `SKILL.md` を読み、その本文から必要な参照資料を読む。発見・読み込みだけでは相談役を起動しない。親が今回の利用を明示的に決め、回数・入力・役割・枠を確認してから起動する。応答に `$expert-escalation` と書くだけでは本文の読み込みにならない。
+4. 候補なし・無効・一覧取得不能・本文の読み込みエラー・候補が曖昧な場合は、理由を記録して下記のフォールバックへ進む。いずれも起動試行なし、消費0回。キャッシュの総当たりや別バージョンへの差し替え、Skill の有効化は行わない。
 
-Codex の shell 環境では、読み込んだ本 Workflow の Plugin root を基準に [発見ヘルパー](../../../com.openai/scripts/discover_expert_escalation.py)を実行する。Python 3 と `codex` CLI が必要。例えば次のパスを実際の絶対パスへ置き換える。
-
-```sh
-python /absolute/plugin-root/com.openai/scripts/discover_expert_escalation.py --cwd /absolute/current-workspace
-```
-
-ヘルパーは `initialize`・`initialized`・`skills/list` だけを使って候補の名前・パス・有効状態・Plugin ID と読み込みエラーを JSON で返す。相談本文の読み込みと利用判断は親が行う。モデル・相談役・新しいタスクを起動せず、Skill や Plugin の設定は変更しない。取得は15秒で打ち切り、自分が開始した補助プロセスを終了する。現在のタスクと同じ設定・作業ディレクトリで利用し、client 側に別の設定がある場合はその client の一覧を優先する。他の client では、その client の正式な一覧・読み込み機能を使う。
+発見・読み込みに Python や Codex CLI の追加起動は不要。現在のタスクと設定が異なり得る別の App Server を起動して一覧を取得しない。他の client でも、その client が現在のタスクに提供する正式な一覧・読み込み機能を使う。
 
 ## 親と返却先の識別
 
