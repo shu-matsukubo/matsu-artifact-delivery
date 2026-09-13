@@ -1,0 +1,20 @@
+{
+  "name": "expert-escalation",
+  "version": "0.1.0",
+  "description": "ユーザーまたは呼び出し元の親が明示的に指定した論点を、読み取り専用の相談役へ渡して結果を返す。子ワーカーは親へ依頼を返し、直接起動しない。回数制限・実行枠・継続や停止の判断は呼び出し元の親が管理する。",
+  "author": {
+    "name": "松久保 愁"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "上位モデルへの相談",
+    "shortDescription": "親からの明示依頼で設計・リスクを読み取り専用で相談する",
+    "longDescription": "ユーザーまたは呼び出し元の親が明示的に指定した論点を、読み取り専用の相談役へ渡して結果を返す。子ワーカーは親へ依頼を返し、直接起動しない。回数制限・実行枠・継続や停止の判断は呼び出し元の親が管理する。",
+    "developerName": "松久保 愁",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": [
+      "$expert-escalation で、この作業の阻害要因について相談してください。"
+    ]
+  }
+}

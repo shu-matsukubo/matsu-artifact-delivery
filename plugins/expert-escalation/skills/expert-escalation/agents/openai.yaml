@@ -1,0 +1,8 @@
+interface:
+  display_name: "上位モデルへの相談"
+  short_description: "親からの明示依頼で設計・リスクの論点を読み取り専用の相談役へ渡す"
+
+policy:
+  # モデル向け一覧に公開し、親が通常の発見経路で本文を読めるようにする。
+  # 相談の開始は SKILL.md に定めるユーザーまたは親の明示依頼に限る。
+  allow_implicit_invocation: true

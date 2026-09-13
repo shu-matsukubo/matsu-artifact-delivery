@@ -1,12 +1,13 @@
 # matsu-artifact-delivery
 
-成果物を利用者へ届けるデリバリーを支援するプラグイン集です。現在の `artifact-workflow` は、その一部である成果物生成フローを担当します。生成・品質確認を終えた後の更新・公開・提出などは、親エージェントが依頼に応じた手段で続行します。成果物と引き渡し情報を接点とし、生成フローとデリバリー手段を疎結合に保ちます。[Agent Plugins](https://agent-plugins.org/) の共通規格を基準とし、当面は Codex を主な実行環境とします。
+成果物を利用者へ届けるデリバリーを支援するプラグイン集です。`artifact-workflow` が成果物生成フローを担当し、生成・品質確認後の更新・公開・提出は、親エージェントが依頼に応じたデリバリー手段で続行します。`expert-escalation` は両方の場面で使える共通の相談機能を担当します。成果物・引き渡し情報と相談の入出力契約を接点にして、それぞれの役割を独立させます。[Agent Plugins](https://agent-plugins.org/) の共通規格を基準とし、当面は Codex を主な実行環境とします。
 
 ## Plugin 一覧
 
 | Plugin | 目的 |
 | --- | --- |
 | [artifact-workflow](plugins/artifact-workflow/README.md) | 成果物を作る作業タスクを計画・承認し、生成・セルフレビュー・タスクと全体の検証を行う。完成品と検証結果を提示・引き渡してフローを終了し、後続処理の実行・検証は管理しない。 |
+| [expert-escalation](plugins/expert-escalation/README.md) | 親からの明示依頼で設計・セキュリティ・変更影響の論点を読み取り専用の相談役へ渡し、結果を返す。回数制限・実行枠・継続や停止の判断は呼び出し元の親が管理する。 |
 
 ## 共通規格への方針
 
@@ -20,7 +21,7 @@
 | `plugins/<plugin>/com.openai/` | Codex 向けの固有ファイル。共通コンポーネントとは分けて配置する。 |
 | `.agents/plugins/marketplace.json`・`.codex/config.toml` | Codex 向けの配布カタログ・利用先の設定。Plugin パッケージの共通規格には含まれない。 |
 
-client 固有の manifest データが必要になった場合は、逆ドメイン形式の `extensions` 名前空間を使います。OpenAI 向けは `extensions.com.openai` とし、固有ファイルは対応する `com.openai/` 配下へまとめます。client が特定の読み込み位置を要求する互換設定は、理由と共通規格との差分を各 Plugin の README に記載します。現在の例外は [artifact-workflow の Codex 互換設定](plugins/artifact-workflow/README.md#codex-互換設定)を参照してください。
+client 固有の manifest データが必要になった場合は、逆ドメイン形式の `extensions` 名前空間を使います。OpenAI 向けは `extensions.com.openai` とし、固有ファイルは対応する `com.openai/` 配下へまとめます。client が特定の読み込み位置を要求する互換設定は、理由と共通規格との差分を各 Plugin の README に記載します。現在の例外は [artifact-workflow の Codex 互換設定](plugins/artifact-workflow/README.md#codex-互換設定)と [expert-escalation の互換設定](plugins/expert-escalation/README.md#共通規格と-codex-互換設定)を参照してください。
 
 Custom Agent、モデル、推論強度などの Codex 固有機能は維持しつつ、共通仕様の必須要素とは区別します。各 Plugin の README には、インストールで利用可能になる部分と追加設定が必要な部分を明記します。全 client での同一動作を必須にはせず、将来の移植に不要な独自構造を増やさない方針です。
 
@@ -34,9 +35,11 @@ Plugin のリリースバージョンと対象規格は、各 Plugin の `plugin
 codex plugin marketplace add .
 ```
 
-Codex アプリを再起動し、Plugin 一覧でこのリポジトリのマーケットプレイスを選び、`artifact-workflow` をインストールしてください。インストール後は新しいタスクで利用します。
+Codex アプリを再起動し、Plugin 一覧でこのリポジトリのマーケットプレイスを選び、利用する Plugin をインストールしてください。インストール後は新しいタスクで利用します。
 
 `artifact-workflow` の実行要件とワークフローは [Plugin README](plugins/artifact-workflow/README.md)を参照してください。このリポジトリでは [.codex/config.toml](.codex/config.toml) に役割の参照を登録しています。別の作業場所で利用する場合は、[Custom Agent の設定と登録](plugins/artifact-workflow/README.md#custom-agent-の設定と登録)も行ってください。
+
+`expert-escalation` の明示呼び出し・返却契約・役割登録は [Plugin README](plugins/expert-escalation/README.md)を参照してください。単独では明示依頼ごとに利用でき、Plugin 自体に累計の回数制限はありません。Workflow と組み合わせる場合は、親が呼び過ぎを制御します。`artifact-workflow` の上限とフォールバックは[呼び出し元の方針](plugins/artifact-workflow/skills/artifact-workflow/references/escalation.md)で管理します。
 
 カタログは [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json)、Plugin 本体は `plugins/` に配置しています。カタログ内の `source.path` はリポジトリのルートを基準とする相対パスです。
 
