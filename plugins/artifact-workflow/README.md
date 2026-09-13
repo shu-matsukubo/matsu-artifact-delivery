@@ -79,6 +79,8 @@ config_file = "C:/path/to/matsu-artifact-delivery/plugins/artifact-workflow/com.
 
 Plugin のインストールだけでは、この参照設定は追加されません。登録後は新しいタスクで利用してください。複数人で実行する場合も同じ `artifact-worker` の役割定義を使います。本フローのタスク分解・計画提示・承認・計画変更・タスクと全体の完了判定・完成品の提示と引き渡しは親が担当し、これらの工程そのものは委任しません。`artifact-worker` は承認済みの担当範囲内で生成・修正・セルフレビューを行います。
 
-独立した読み取り専用の相談 Skill が利用できる場合は、具体的な阻害要因に限って任意で助言を受けられます。ワーカーは相談内容を親へ返し、親がその Skill の条件と共有上限に従って相談役を起動します。助言を元の担当へ戻し、通常のセルフレビューや親の検証・完了判定は維持します。特定の相談 Plugin やモデルへの依存は追加しません。
+独立した読み取り専用の相談 Skill が利用できる場合は、親がその Skill を明示的に指定して任意で相談します。子ワーカーは相談依頼と再開情報を親へ返し、直接起動しません。自律相談の最大3回、相談用の実行枠、利用不能・上限到達時の継続判断は、本 Workflow の親が[任意の相談の方針](skills/artifact-workflow/references/escalation.md)に従って管理します。相談 Plugin 自体にはこの上限を持たせません。
+
+相談役を生成ワーカーとは別に管理し、client の実行枠が共通なら相談用に1枠を予約します。既存の担当が全枠を使っている場合は、成果物と再開情報を回収し、枠の解放を確認してから交代します。相談不能や上限到達だけで全体を止めず、親が自力での継続・該当作業だけの停止・全体停止を判断します。特定の相談 Plugin やモデルを必須依存にせず、通常のセルフレビューと親の検証・完了判定を維持します。
 
 設定方法は、OpenAI 公式の [Custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents) と [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference) を参照してください。

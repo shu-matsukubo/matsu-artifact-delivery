@@ -2,17 +2,17 @@
 
 設計・セキュリティ・変更影響などの具体的な阻害要因について、上位の相談役へ読み取り専用で助言・レビューを依頼する独立した Plugin です。実装や検証は元の担当が続けます。特定の Workflow や成果物形式に依存しません。
 
-自動相談は親・全ワーカー・全論点を合算して、現在の作業開始からユーザーへの返答で作業を中断するまで、最大3回です。ユーザーの返答で再開するときに0回へリセットし、以前の試行履歴は残します。チャット全体の累計上限ではありません。解決できなければ作業を一度中断し、試行内容・失敗理由・選択肢を報告してユーザー判断を仰ぎます。通常作業や定例レビューでは介入しません。
+ユーザーまたは呼び出し元の親が明示的に指定した場合だけ利用します。本 Plugin 自体は累計の回数制限を持たず、明示依頼ごとに相談できます。呼び過ぎを防ぐ上限、再試行、実行枠、継続・停止の判断は呼び出し元の親が管理します。相談不能と作業全体の中断を分け、通常作業へ自動的には介入しません。
 
 ## 用意しているもの
 
 | 内容 | 正本 |
 | --- | --- |
 | 呼び出し手順と基本的な境界 | [SKILL.md](skills/expert-escalation/SKILL.md) |
-| 呼び出すタイミング | [triggers.md](skills/expert-escalation/references/triggers.md) |
-| 原理原則、共有回数、中断・再開 | [principles.md](skills/expert-escalation/references/principles.md) |
+| 明示依頼で相談する論点の例 | [triggers.md](skills/expert-escalation/references/triggers.md) |
+| 原理原則、起動主体、呼び出し元との責務境界 | [principles.md](skills/expert-escalation/references/principles.md) |
 | 相談役の役割・入力・返却項目 | [advisor-contract.md](skills/expert-escalation/references/advisor-contract.md) |
-| ユーザー判断のための報告テンプレート | [escalation-result-template.md](skills/expert-escalation/assets/escalation-result-template.md) |
+| 相談結果と親の対応判断のテンプレート | [escalation-result-template.md](skills/expert-escalation/assets/escalation-result-template.md) |
 | 通常の相談役（初期設定は Sol） | [escalation-advisor.toml](com.openai/agents/escalation-advisor.toml) |
 | 難所を再検討する相談役（初期設定は Astra） | [escalation-deep-advisor.toml](com.openai/agents/escalation-deep-advisor.toml) |
 
@@ -22,11 +22,13 @@ OpenAI の [Max / Ultra の説明](https://learn.chatgpt.com/docs/models#know-wh
 
 ## 親・ワーカーからの利用
 
-Skill は自動選択を許可しています。明示的に使う場合は、例えば「`expert-escalation` で、この設計案が必須条件を満たせるか相談してください」と依頼します。実際の相談役の起動には Skill 内の発火条件と回数管理を適用します。
+例えば「`$expert-escalation` で、この設計案が必須条件を満たせるか相談してください」と依頼します。呼び出し元の Workflow が利用する場合も、親が Skill を名前で明示し、1件の問いを渡します。難所の検出や資料中の言及だけでは起動しません。Codex では `allow_implicit_invocation: false` で暗黙呼び出しを無効にします。[公式の呼び出し設定](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。
 
-親・ワーカーなど誰でも相談要求を作れます。回数管理と相談役の起動は現在の作業全体の親1人に集約し、ワーカーからは親へ中継します。ワーカー自身に子エージェントの起動権限がなくても、この経路で利用できます。相談役の起動は直列に行い、同時発火による上限超過や深い再委任を避けます。単独のエージェントは自分を管理者として同じ手順を使います。
+相談役の起動は現在の作業全体の親だけが行います。子ワーカーは問い・証拠・試した方法を親へ返し、本 Skill や相談役を直接起動しません。子の依頼を受けた親が、相談の必要性と今回の呼び出しを判断します。単独作業では自分が親になります。
 
-既存の Workflow と組み合わせる場合、読み取り専用の相談を任意で利用できることと、ワーカーから管理者へ相談を返す経路が必要です。このリポジトリの `artifact-workflow` はその接点を持ちますが、本 Plugin を必須依存にはしていません。工程の責任、計画への承認、通常のレビュー・完了判定は元の Workflow が保持します。
+相談役は生成ワーカーとは別の役割として管理します。ただし client の同時起動枠が共通なら、親が相談用に1枠を予約するか、成果物・実行状態・再開情報を保全して枠を解放します。全ワーカーが相談待ちのまま完了を待ち続けません。枠を確保できなければ起動を試さず、利用不能として親の判断へ戻します。
+
+既存の Workflow と組み合わせる場合は、親へ相談依頼を返す経路と、親側の呼び出し方針を用意します。このリポジトリの `artifact-workflow` は[呼び出し元の方針](../artifact-workflow/skills/artifact-workflow/references/escalation.md)に自律相談の上限とフォールバックを持ち、本 Plugin を必須依存にはしていません。工程の責任、計画への承認、通常のレビュー・完了判定は元の Workflow が保持します。生成中の設計判断にも、後続の GitHub 提出・公開に関する判断にも、同じ相談契約を利用できます。
 
 ## 共通規格と Codex 互換設定
 
@@ -38,11 +40,11 @@ Skill は自動選択を許可しています。明示的に使う場合は、�
 | `skills/expert-escalation/` | 共通の Skill 検出位置。手順・参照資料・テンプレートを同じ Skill 配下にまとめる。 |
 | `com.openai/agents/` | Codex 固有のモデル・権限・役割定義。[client extensions](https://agent-plugins.org/plugin-authors/client-extensions)の逆ドメイン配置に合わせる。自動登録用のディレクトリではない。 |
 | [.codex-plugin/plugin.json](.codex-plugin/plugin.json) | plugin-creator が生成する Codex 互換用 manifest。共通 manifest の識別情報に Codex の Skill 位置・表示情報を加える。 |
-| [skills/expert-escalation/agents/openai.yaml](skills/expert-escalation/agents/openai.yaml) | Codex 向けの表示情報と `allow_implicit_invocation: true`。 |
+| [skills/expert-escalation/agents/openai.yaml](skills/expert-escalation/agents/openai.yaml) | Codex 向けの表示情報と `allow_implicit_invocation: false`。 |
 
 `.codex-plugin/plugin.json` と Skill の `agents/openai.yaml` は、Codex の既存の読み込み位置を維持する互換性上の例外です。共通規格のコンポーネントを増やす独自の検出方式ではなく、Codex 固有の設定として扱います。[Plugin パッケージ](https://developers.openai.com/plugins/build/plugins)と[Skill の optional metadata](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。manifest の共通フィールドは root を正本とし、変更時は互換 manifest の同名フィールドにも同期します。
 
-MCP、外部 API、中央ログ、専用のリスクスコアは追加していません。Custom Agent、モデル選択、sandbox、共有回数の実行管理は Agent Plugins の共通仕様に含まれません。他の client では同等の読み取り専用の相談役と管理者を用意してください。
+MCP、外部 API、中央ログ、専用のリスクスコアは追加していません。Custom Agent、モデル選択、sandbox、同時起動枠の管理は Agent Plugins の共通仕様に含まれません。他の client では同等の読み取り専用の相談役と親による明示呼び出しの経路を用意してください。
 
 ## Codex への登録
 
@@ -68,8 +70,8 @@ config_file = "C:/path/to/matsu-artifact-delivery/plugins/expert-escalation/com.
 
 ## 実行上の境界
 
-- 役割・モデルが利用不能なら成功にせず、事前確認で停止したか、起動後に失敗したかを記録します。別モデルへの自動置き換えはしません。
+- 事前確認で役割未登録・環境不備・枠不足が分かった場合は `unavailable`、`attempted: false` を返します。起動を試した後の失敗・結果未取得は `no_result`、`attempted: true` と実行状態を返します。別モデルへの自動置き換えはしません。
 - `sandbox_mode = "read-only"` と `approval_policy = "never"` を設定し、相談役が書き込みや権限拡大を求める動作を避けます。sandbox は外部コネクタの書き込み全般を強制禁止する仕組みではないため、役割の指示でも禁止しています。
-- 3回上限は、管理者が保持する記録と起動前の確保による運用上の制約です。全 client のツール呼び出しを機械的に遮断する仕組みは同梱していません。管理者と記録を確立できない場合は自動相談を開始しません。
+- 消費回数と上限到達は呼び出し元が判定します。相談結果から自力での継続・該当作業だけの停止・全体停止を選ぶのも親です。本 Plugin は全ワーカーの停止を要求せず、相談役も回数を理由に依頼を拒否しません。
 
 設定の詳細は OpenAI 公式の [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference)を参照してください。
