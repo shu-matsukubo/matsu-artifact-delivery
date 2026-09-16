@@ -77,3 +77,11 @@ config_file = "C:/path/to/matsu-artifact-delivery/plugins/expert-escalation/com.
 - 消費回数と上限到達は呼び出し元が判定します。相談結果から自力での継続・該当作業だけの停止・全体停止を選ぶのも親です。本 Plugin は全ワーカーの停止を要求せず、相談役も回数を理由に依頼を拒否しません。
 
 設定の詳細は OpenAI 公式の [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference)を参照してください。
+
+## ライセンス
+
+本 Plugin のソースコード・設定・ドキュメントは [MIT License](LICENSE) で公開しています。
+
+Copyright (c) 2026 松久保 愁
+
+再配布時は、著作権表示とライセンス本文を記載した同梱の `LICENSE` を含めてください。

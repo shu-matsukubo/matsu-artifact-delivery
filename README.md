@@ -44,3 +44,13 @@ Codex アプリを再起動し、Plugin 一覧でこのリポジトリのマー�
 カタログは [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json)、Plugin 本体は `plugins/` に配置しています。カタログ内の `source.path` はリポジトリのルートを基準とする相対パスです。
 
 Codex 向けの配布と設定は、OpenAI 公式の [Plugin パッケージの説明](https://developers.openai.com/plugins/build/plugins)と[Skill の説明](https://learn.chatgpt.com/docs/build-skills)を参照してください。
+
+## ライセンス
+
+本リポジトリのソースコード・設定・ドキュメントは [MIT License](LICENSE) で公開しています。
+
+Copyright (c) 2026 松久保 愁
+
+商用利用・改変・再配布が可能です。コピーまたは重要な部分を配布する際は、著作権表示とライセンス本文を含めてください。本ソフトウェアは無保証で提供されます。詳細な条件は `LICENSE` を参照してください。
+
+Plugin 単体の配布にもライセンスが含まれるよう、各 Plugin のルートにも同一内容の `LICENSE` を同梱しています。再配布時はこのファイルを含めてください。
