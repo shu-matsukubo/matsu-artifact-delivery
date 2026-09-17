@@ -5,6 +5,7 @@
   "author": {
     "name": "松久保 愁"
   },
+  "license": "MIT",
   "skills": "./skills/",
   "interface": {
     "displayName": "上位モデルへの相談",

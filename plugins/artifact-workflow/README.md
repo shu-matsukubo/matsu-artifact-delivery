@@ -90,3 +90,11 @@ Plugin のインストールだけでは、この参照設定は追加されま�
 相談役を生成ワーカーとは別に管理し、client の実行枠が共通なら相談用に1枠を予約します。既存の担当が全枠を使っている場合は、成果物と再開情報を回収し、枠の解放を確認してから交代します。相談不能や上限到達だけで全体を止めず、親が自力での継続・該当作業だけの停止・全体停止を判断します。特定の相談 Plugin やモデルを必須依存にせず、通常のセルフレビューと親の検証・完了判定を維持します。
 
 設定方法は、OpenAI 公式の [Custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents) と [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference) を参照してください。
+
+## ライセンス
+
+本 Plugin のソースコード・設定・ドキュメントは [MIT License](LICENSE) で公開しています。
+
+Copyright (c) 2026 松久保 愁
+
+再配布時は、著作権表示とライセンス本文を記載した同梱の `LICENSE` を含めてください。
