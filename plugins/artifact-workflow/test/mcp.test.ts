@@ -37,7 +37,7 @@ test('shipped bundle works without node_modules, survives a process restart, and
   let client = await connect(directory, standalone);
   cleanup.push(() => client.close());
   const tools = await client.listTools();
-  assert.deepEqual(tools.tools.map(tool => tool.name).sort(), ['get_plan', 'reset_session', 'save_plan']);
+  assert.deepEqual(tools.tools.map(tool => tool.name).sort(), ['complete_session', 'get_plan', 'reset_session', 'save_plan']);
   const empty = snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'parent' } }));
   const saved = snapshot(await client.callTool({ name: 'save_plan', arguments: { sessionId: 'parent', expectedRevision: empty.revision, plan } }));
   await client.close();
@@ -50,6 +50,34 @@ test('shipped bundle works without node_modules, survives a process restart, and
   assert.deepEqual(snapshot(await client.callTool({ name: 'get_plan', arguments: { sessionId: 'parent' } })), saved);
   assert.equal(snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'parent' } })).plan, null);
   assert.deepEqual((await readdir(directory)).sort(), ['data', 'standalone.cjs']);
+});
+
+test('completion survives MCP restart and a new flow deletes the plan before later correction work', { timeout: 30_000 }, async t => {
+  const cleanup: Array<() => Promise<void>> = [];
+  const directory = await temporaryDirectory(t, cleanup);
+  let client = await connect(directory);
+  cleanup.push(() => client.close());
+  const active = snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'active' } }));
+  const empty = snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'done' } }));
+  const saved = snapshot(await client.callTool({ name: 'save_plan', arguments: { sessionId: 'done', expectedRevision: empty.revision, plan } }));
+  const completed = snapshot(await client.callTool({ name: 'complete_session', arguments: { sessionId: 'done', expectedRevision: saved.revision } }));
+  assert.ok(completed.completedAt);
+  await client.close();
+  client = await connect(directory);
+  assert.deepEqual(snapshot(await client.callTool({ name: 'get_plan', arguments: { sessionId: 'done' } })), completed);
+  const rejected = await client.callTool({ name: 'save_plan', arguments: { sessionId: 'done', expectedRevision: completed.revision, plan } });
+  assert.equal(rejected.isError, true);
+  const fresh = await client.callTool({ name: 'reset_session', arguments: { sessionId: 'new-flow' } });
+  assert.equal(snapshot(fresh).completedAt, null);
+  assert.deepEqual((fresh.structuredContent as { cleanup: unknown }).cleanup, { deleted: 1, skipped: [] });
+  const missing = await client.callTool({ name: 'get_plan', arguments: { sessionId: 'done' } });
+  assert.notEqual(missing.isError, true);
+  assert.equal((missing.structuredContent as { session: unknown }).session, null);
+  assert.deepEqual(snapshot(await client.callTool({ name: 'get_plan', arguments: { sessionId: 'active' } })), active);
+  const correction = snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'done' } }));
+  const updated = snapshot(await client.callTool({ name: 'save_plan', arguments: { sessionId: 'done', expectedRevision: correction.revision, plan: { ...plan, request: '後日の修正を新しいタスクとして計画する' } } }));
+  assert.equal(updated.plan?.request, '後日の修正を新しいタスクとして計画する');
+  assert.equal(updated.completedAt, null);
 });
 
 test('independent MCP processes detect competing writes and accept an explicit reconciled update', { timeout: 30_000 }, async t => {

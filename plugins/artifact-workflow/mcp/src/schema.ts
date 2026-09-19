@@ -60,7 +60,11 @@ export const sessionSchema = z.strictObject({
   revision: z.uuid(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  // Snapshots written before completion tracking remain active until explicitly completed.
+  completedAt: z.iso.datetime().nullable().default(null),
   plan: planSchema.nullable(),
+}).refine(session => session.completedAt === null || session.plan !== null, {
+  message: 'A completed session must contain an agreed plan.',
 });
 
 export type Plan = z.infer<typeof planSchema>;
