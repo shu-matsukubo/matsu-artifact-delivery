@@ -2,14 +2,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, open, readFile, readdir, rename, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
-import { planSchema, sessionIdSchema, sessionSchema, type Session } from './schema.js';
+import { planSchema, sessionIdSchema, sessionSchema, type CleanupResult, type Session } from './schema.js';
 
 const MAX_BYTES = 1024 * 1024;
 
-export type CleanupResult = {
-  deleted: number;
-  skipped: Array<{ file: string; code: string }>;
-};
+export type { CleanupResult } from './schema.js';
 
 export type ResetResult = { session: Session; cleanup: CleanupResult };
 

@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
-import { copyFile, readdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { copyFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/client/validators/ajv';
 import { sessionSchema } from '../mcp/src/schema.js';
 import { plan, temporaryDirectory } from './fixtures.js';
 
@@ -18,7 +20,8 @@ async function connect(directory: string, entry = bundledServer) {
   let stderr = '';
   transport.stderr?.on('data', chunk => { stderr += String(chunk); });
   const client = new Client({ name: 'task-memory-test', version: '1.0.0' });
-  try { await client.connect(transport); }
+  // Listing tools enables the SDK client's validation of every subsequent result.
+  try { await client.connect(transport); await client.listTools(); }
   catch (error) { await transport.close(); throw new Error(`${String(error)}\n${stderr}`); }
   return client;
 }
@@ -95,4 +98,82 @@ test('independent MCP processes detect competing writes and accept an explicit r
   const updated = snapshot(await second.callTool({ name: 'save_plan', arguments: { sessionId: 'shared', expectedRevision: current.revision, plan } }));
   assert.deepEqual(updated.plan, plan);
   assert.deepEqual(snapshot(await first.callTool({ name: 'get_plan', arguments: { sessionId: 'shared' } })), updated);
+});
+
+test('advertised output schemas validate the session lifecycle and reject malformed results', { timeout: 30_000 }, async t => {
+  const cleanup: Array<() => Promise<void>> = [];
+  const client = await connect(await temporaryDirectory(t, cleanup));
+  cleanup.push(() => client.close());
+  const { tools } = await client.listTools();
+  const provider = new AjvJsonSchemaValidator();
+  const validators = new Map(tools.map(tool => {
+    assert.ok(tool.outputSchema, tool.name);
+    const { $schema, ...schema } = tool.outputSchema;
+    return [tool.name, provider.getValidator($schema === undefined ? schema : { ...schema, $schema })] as const;
+  }));
+  const missing = await client.callTool({ name: 'get_plan', arguments: { sessionId: 'contract' } });
+  assert.notEqual(missing.isError, true);
+  assert.deepEqual(missing.structuredContent, { session: null });
+
+  const reset = await client.callTool({ name: 'reset_session', arguments: { sessionId: 'contract' } });
+  const empty = snapshot(reset);
+  const save = await client.callTool({ name: 'save_plan', arguments: { sessionId: 'contract', expectedRevision: empty.revision, plan } });
+  const complete = await client.callTool({ name: 'complete_session', arguments: { sessionId: 'contract', expectedRevision: snapshot(save).revision } });
+  const completed = snapshot(complete);
+  assert.ok(completed.completedAt);
+  const get = await client.callTool({ name: 'get_plan', arguments: { sessionId: 'contract' } });
+  assert.deepEqual(snapshot(get), completed);
+
+  for (const [name, result] of Object.entries({ reset_session: reset, save_plan: save, complete_session: complete, get_plan: get })) {
+    const validate = validators.get(name)!;
+    const output = result.structuredContent as Record<string, unknown>;
+    assert.equal(validate(output).valid, true, name);
+    const text = result.content[0];
+    assert.equal(text?.type, 'text');
+    if (text?.type === 'text') assert.deepEqual(JSON.parse(text.text), output);
+    assert.equal(validate({}).valid, false, name);
+    assert.equal(validate({ ...output, session: null }).valid, name === 'get_plan', name);
+    assert.equal(validate({ ...output, session: { ...completed, revision: 'invalid' } }).valid, false, name);
+    assert.equal(validate({ ...output, session: { ...completed, completedAt: undefined } }).valid, false, name);
+    assert.equal(validate({ ...output, session: { ...completed, plan: { ...plan, approval: { mode: 'pending', evidence: 'unapproved' } } } }).valid, false, name);
+  }
+  const validateReset = validators.get('reset_session')!;
+  for (const invalidCleanup of [
+    undefined,
+    { deleted: -1, skipped: [] },
+    { deleted: 0.5, skipped: [] },
+    { deleted: '0', skipped: [] },
+    { deleted: 0, skipped: [{ file: 'example.json' }] },
+    { deleted: 0, skipped: [{ file: 'example.json', code: 123 }] },
+  ]) {
+    assert.equal(validateReset({ session: empty, cleanup: invalidCleanup }).valid, false);
+  }
+});
+
+test('output validation preserves cleanup details and tool execution errors', { timeout: 30_000 }, async t => {
+  const cleanup: Array<() => Promise<void>> = [];
+  const directory = await temporaryDirectory(t, cleanup);
+  const client = await connect(directory);
+  cleanup.push(() => client.close());
+  const empty = snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'done' } }));
+  const saved = snapshot(await client.callTool({ name: 'save_plan', arguments: { sessionId: 'done', expectedRevision: empty.revision, plan } }));
+  await client.callTool({ name: 'complete_session', arguments: { sessionId: 'done', expectedRevision: saved.revision } });
+  const brokenFile = createHash('sha256').update('broken').digest('hex') + '.json';
+  await writeFile(join(directory, 'data', brokenFile), '{ invalid JSON');
+  const fresh = await client.callTool({ name: 'reset_session', arguments: { sessionId: 'fresh' } });
+  const active = snapshot(fresh);
+  assert.deepEqual((fresh.structuredContent as { cleanup: unknown }).cleanup, {
+    deleted: 1, skipped: [{ file: brokenFile, code: 'INVALID_DATA' }],
+  });
+  const missing = await client.callTool({ name: 'get_plan', arguments: { sessionId: 'done' } });
+  assert.notEqual(missing.isError, true);
+  assert.deepEqual(missing.structuredContent, { session: null });
+
+  const failed = await client.callTool({ name: 'complete_session', arguments: { sessionId: 'fresh', expectedRevision: active.revision } });
+  assert.equal(failed.isError, true);
+  assert.equal(failed.structuredContent, undefined);
+  const error = failed.content[0];
+  assert.equal(error?.type, 'text');
+  if (error?.type === 'text') assert.equal(JSON.parse(error.text).error, 'PLAN_NOT_SAVED');
+  assert.deepEqual(snapshot(await client.callTool({ name: 'get_plan', arguments: { sessionId: 'fresh' } })), active);
 });

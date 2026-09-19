@@ -67,5 +67,11 @@ export const sessionSchema = z.strictObject({
   message: 'A completed session must contain an agreed plan.',
 });
 
+export const cleanupResultSchema = z.strictObject({
+  deleted: z.number().int().nonnegative(),
+  skipped: z.array(z.strictObject({ file: z.string().min(1), code: z.string().min(1) })),
+});
+
+export type CleanupResult = z.infer<typeof cleanupResultSchema>;
 export type Plan = z.infer<typeof planSchema>;
 export type Session = z.infer<typeof sessionSchema>;
