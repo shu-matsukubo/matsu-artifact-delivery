@@ -1,0 +1,25 @@
+{
+  "name": "artifact-workflow",
+  "version": "0.3.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc --noEmit",
+    "test": "npm run build && tsc && node --test .test-build/test/*.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@types/node": "22.20.4",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}

@@ -20,11 +20,33 @@
 | [skills/artifact-workflow/agents/openai.yaml](skills/artifact-workflow/agents/openai.yaml) | Codex 互換用の表示情報と明示呼び出しの設定。共通規格の必須ファイルではない。 |
 | [../../.codex/config.toml](../../.codex/config.toml) | このリポジトリで Custom Agent を登録する Codex 固有の参照設定。Plugin パッケージの外側にある。 |
 
-MCP は同梱していません。追加する場合は Plugin root の `mcp.json` に、Agent Plugins の MCP schema と各サーバーの設定を記載します。
+合意済みの要求・制約・タスク計画をJSONで一時保持する `artifact-task-memory` MCP を同梱しています。[mcp.json](mcp.json) が共通設定、[mcp/src/](mcp/src/) がTypeScript実装、[mcp/task-memory.cjs](mcp/task-memory.cjs) が依存を同梱した実行ファイルです。公式 [MCP TypeScript SDK](https://ts.sdk.modelcontextprotocol.io/v2/) を使い、stdioで接続します。
 
 共通形式での検出・読み込みと、ワークフローを実行できることは区別します。現行の実行には Codex のマルチエージェント機能と登録済みの `artifact-worker` が必要です。他の compatible client へ移植する際は、その client での役割定義・委任方法を別途確認します。全 client での同一動作は保証対象に含めません。
 
+### 合意済み計画のMCP
+
+実行にはPATH上の **Node.js 22.19以降**が必要です。配布物にSDKなどの依存を含めているため、利用時の `npm install` やビルドは不要です。クライアントが `mcp.json` を読み込み、`PLUGIN_ROOT` と書き込み可能な `PLUGIN_DATA` を提供してMCPを起動します。
+
+- 新しい生成フローの開始時に `reset_session` で同じセッションの以前の内容をすべて初期化する。並列の別セッションには影響しない。
+- 合意後に `save_plan` で要求・要件・制約・タスク・完了条件・入力参照・引き渡し情報・承認根拠をJSONへ保存する。
+- 以後は `get_plan` で保存済み計画を参照する。合意した計画の更新は、最新の版を指定して計画全体を書き戻す。
+- MCP再接続や会話の短縮では初期化しない。同じセッションIDと保存場所があれば、会話全体を再解釈せずに計画を読み戻せる。
+
+保存先はリポジトリ外の `PLUGIN_DATA/task-memory/` です。セッションIDごとに1ファイルとし、履歴・DB・進捗の自動管理・別チャットからの復元機能は設けません。完了時は保存を残し、同じセッションの次のフロー開始時に初期化します。詳細なJSON形式、初期化の境界、競合時の扱いは[タスク計画の一時保持](skills/artifact-workflow/references/task-memory.md)を参照してください。
+
+開発時はPlugin rootで以下を実行します。
+
+```sh
+npm ci
+npm test
+```
+
+`npm test` はビルド後に型検査とテストを実行します。`npm run build` だけで配布物を更新することもできます。ビルドはMCP実行ファイル、[依存ライセンス](mcp/THIRD_PARTY_LICENSES.txt)、Codex互換設定を再生成します。これらも配布対象としてリポジトリへ含め、生成ファイルを直接編集しないでください。テストではOSの一時ディレクトリを使い、セッションの分離、更新競合、不正データの拒否、実MCP通信、Node.jsだけでの起動と再接続後の読み戻しを確認します。
+
 ### Codex 互換設定
+
+共通形式の `plugin.json` と `mcp.json` を正本とし、`plugin-creator` の検証と旧形式の読み込みに対応するため `.codex-plugin/plugin.json` と `.mcp.json` をビルド時に生成します。現行のポータブル形式ではルートの共通設定が優先されます。これは[OpenAI公式のパッケージ仕様](https://developers.openai.com/plugins/build/plugins)に基づく互換設定で、マーケットプレイスの別エントリや別サーバーは追加しません。
 
 [Agent Plugins の client extensions](https://agent-plugins.org/plugin-authors/client-extensions) に合わせ、Custom Agent の TOML は Plugin root の `com.openai/` 配下へ置きます。固有の manifest データが必要になった場合は `extensions.com.openai` を使います。
 
@@ -32,10 +54,10 @@ MCP は同梱していません。追加する場合は Plugin root の `mcp.jso
 
 ## 基本フロー
 
-1. 依頼全体から今回の生成範囲を定め、成果物そのものを作成・変更する作業をタスクへ分解する。
+1. 新しい生成フローの開始時に親のセッションの保持内容を初期化する。依頼全体から今回の生成範囲を定め、成果物そのものを作成・変更する作業をタスクへ分解する。
 2. 各タスクの目的・成果物・完了条件と、タスク外の品質確認・今回の全体の完了条件・完成品の提示と引き渡し情報を含む計画をユーザーへ提示する。
-3. 原則としてユーザーの承認を得てから生成へ進む。
-4. 親が承認済みの計画と依存関係から `artifact-worker` の担当を決め、成果物の生成を委任する。
+3. 原則としてユーザーの承認を得て、合意済み計画をMCPへ保存してから生成へ進む。
+4. 親がMCPから取得した承認済みの計画と依存関係から `artifact-worker` の担当を決め、成果物の生成を委任する。
 5. 各担当の `artifact-worker` が生成した成果物そのものをセルフレビューし、必要な修正後に成果物とレビュー結果を親へ返す。
 6. 親がタスクIDごとに成果物の実物を確認し、承認された完了条件を満たしたタスクを完了とする。
 7. 今回の生成計画の全作業タスク完了後、親が成果物を今回の全体の完了条件と照合して、成果物完成を確認する。
