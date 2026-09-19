@@ -1,0 +1,22 @@
+{
+  "name": "artifact-workflow",
+  "version": "0.4.0",
+  "description": "成果物生成を担当する汎用ワークフロー。作業タスクを計画・承認し、1〜3人の artifact-worker による生成・セルフレビューと、親によるタスクと全体の検証を行う。完成品と検証結果を引き渡して終了し、特定のデリバリー手段には依存しない。",
+  "author": {
+    "name": "松久保 愁"
+  },
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "成果物生成ワークフロー",
+    "shortDescription": "合意済み計画を保持して成果物を生成・検証し、完成品を引き渡す",
+    "longDescription": "成果物生成を担当する汎用ワークフロー。作業タスクを計画・承認し、1〜3人の artifact-worker による生成・セルフレビューと、親によるタスクと全体の検証を行う。完成品と検証結果を引き渡して終了し、特定のデリバリー手段には依存しない。",
+    "developerName": "松久保 愁",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": [
+      "$artifact-workflow で、作成する成果物の計画から進めてください。"
+    ]
+  }
+}

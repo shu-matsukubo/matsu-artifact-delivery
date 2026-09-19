@@ -1,7 +1,14 @@
 .gitattributes text eol=lf
+.gitignore text eol=lf
 LICENSE text eol=lf
 *.md text eol=lf
 *.json text eol=lf
 *.toml text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+*.ts text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.txt text eol=lf
+plugins/artifact-workflow/mcp/task-memory.cjs linguist-generated=true
+plugins/artifact-workflow/mcp/task-memory.cjs.LEGAL.txt linguist-generated=true

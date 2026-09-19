@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "artifact-task-memory": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/mcp/task-memory.cjs"
+      ],
+      "env": {
+        "ARTIFACT_WORKFLOW_DATA_DIR": "${PLUGIN_DATA}/task-memory"
+      }
+    }
+  }
+}
