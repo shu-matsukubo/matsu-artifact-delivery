@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import { validateTaskDependencies } from './task-dependencies.js';
 
 const text = z.string().trim().min(1).max(100_000);
 const lines = z.array(text).max(500);
@@ -37,33 +38,19 @@ export const planSchema = z
     }),
   })
   .superRefine((plan, ctx) => {
-    const ids = new Set<string>();
-    for (const [index, task] of plan.tasks.entries()) {
-      if (ids.has(task.id)) {
-        ctx.addIssue({ code: 'custom', path: ['tasks', index, 'id'], message: 'Duplicate task ID.' });
+    for (const issue of validateTaskDependencies(plan.tasks)) {
+      if (issue.kind === 'duplicate_id') {
+        ctx.addIssue({ code: 'custom', path: ['tasks', issue.taskIndex, 'id'], message: 'Duplicate task ID.' });
+      } else {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['tasks', issue.taskIndex, 'dependsOn', issue.dependencyIndex],
+          message:
+            issue.kind === 'missing_dependency'
+              ? 'Dependency must name an existing task.'
+              : 'Dependencies must have no cycles.',
+        });
       }
-      ids.add(task.id);
-    }
-    const tasks = new Map(plan.tasks.map((task) => [task.id, task]));
-    const visited = new Set<string>();
-    const visiting = new Set<string>();
-    const visit = (id: string): boolean => {
-      if (visiting.has(id)) return false;
-      if (visited.has(id)) return true;
-      visiting.add(id);
-      for (const dependency of tasks.get(id)?.dependsOn ?? []) {
-        if (!tasks.has(dependency) || !visit(dependency)) return false;
-      }
-      visiting.delete(id);
-      visited.add(id);
-      return true;
-    };
-    if (plan.tasks.some((task) => !visit(task.id))) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['tasks'],
-        message: 'Dependencies must name existing tasks and have no cycles.',
-      });
     }
   });
 
@@ -74,7 +61,7 @@ export const sessionSchema = z
     revision: z.uuid(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
-    // Snapshots written before completion tracking remain active until explicitly completed.
+    // 完了記録の導入前に保存されたデータは、明示的に完了されるまで未完了として保持する。
     completedAt: z.iso.datetime().nullable().default(null),
     plan: planSchema.nullable(),
   })

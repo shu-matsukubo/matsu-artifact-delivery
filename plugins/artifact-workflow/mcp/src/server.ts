@@ -1,7 +1,24 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import { cleanupResultSchema, planSchema, sessionIdSchema, sessionSchema } from './schema.js';
-import { PlanStore, StoreError } from './store.js';
+import { StoreError, type StoreErrorCode } from './errors.js';
+import type { PlanRepository } from './repository.js';
+
+// 保存層は失敗理由だけを返し、利用者への操作案内はMCPの境界で補う。
+const errorGuidance: Record<StoreErrorCode, string> = {
+  INVALID_DIRECTORY: 'Set ARTIFACT_WORKFLOW_DATA_DIR or PLUGIN_DATA to an absolute path.',
+  INVALID_DATA: 'Do not infer or overwrite the plan; inspect the stored data before explicitly resetting.',
+  NOT_INITIALIZED:
+    'Call reset_session only at the start of a new generation flow. Plan later corrections as a new task.',
+  REVISION_CONFLICT:
+    'Read get_plan and reconcile with the approved plan; verify it before retrying. Never reset to bypass a conflict.',
+  SESSION_COMPLETED: 'Plan later corrections as a new task and start a new generation flow with reset_session.',
+  PLAN_NOT_SAVED: 'Save an agreed plan with save_plan before completing a flow.',
+  SESSION_BUSY:
+    'Retry after the writer finishes. If a process crashed, confirm no writer remains before removing only the reported lock file.',
+  PLAN_TOO_LARGE:
+    'Store references instead of artifact contents to keep the session, including completion metadata, under 1 MiB.',
+};
 
 async function respond<T extends Record<string, unknown>>(action: () => Promise<T>) {
   try {
@@ -12,12 +29,18 @@ async function respond<T extends Record<string, unknown>>(action: () => Promise<
     };
   } catch (error) {
     const code = error instanceof StoreError ? error.code : 'STORE_ERROR';
-    const message = error instanceof Error ? error.message : 'Unable to access the plan store.';
+    const message =
+      error instanceof StoreError
+        ? `${error.message} ${errorGuidance[error.code]}`
+        : error instanceof Error
+          ? error.message
+          : 'Unable to access the plan store.';
     return { isError: true, content: [{ type: 'text' as const, text: JSON.stringify({ error: code, message }) }] };
   }
 }
 
-export function createServer(store = new PlanStore()): McpServer {
+/** 保存実装を受け取り、MCPの入力・出力とエラー応答の契約を提供する。 */
+export function createServer(store: PlanRepository): McpServer {
   const server = new McpServer({ name: 'artifact-task-memory', version: '1.0.0' });
   server.registerTool(
     'reset_session',

@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import type { TestContext } from 'node:test';
+import { StoreError, type StoreErrorCode } from '../mcp/src/errors.js';
 import type { Plan, Session } from '../mcp/src/schema.js';
 
 export const plan: Plan = {
@@ -25,7 +27,7 @@ export const plan: Plan = {
   approval: { mode: 'approved', evidence: 'ユーザーが上記計画に「承認します」と回答。' },
 };
 
-/** Fill a valid plan to an exact serialized UTF-8 snapshot size. */
+/** UTF-8の保存サイズが指定バイト数になる、有効な計画を生成する。 */
 export function planAtSnapshotSize(session: Session, bytes: number): Plan {
   const sized = { ...plan, requirements: [...Array<string>(10).fill('あ'.repeat(33_000)), 'x'] };
   const size = Buffer.byteLength(`${JSON.stringify({ ...session, plan: sized }, null, 2)}\n`);
@@ -47,3 +49,19 @@ export async function temporaryDirectory(t: TestContext, cleanup: Array<() => Pr
   });
   return directory;
 }
+
+export const session: Session = {
+  schemaVersion: 1,
+  sessionId: 'fixture',
+  revision: '11111111-1111-4111-8111-111111111111',
+  createdAt: '2026-09-20T01:00:00.000Z',
+  updatedAt: '2026-09-20T01:00:00.000Z',
+  completedAt: null,
+  plan,
+};
+
+export const code = (expected: StoreErrorCode) => (error: unknown) =>
+  error instanceof StoreError && error.code === expected;
+
+export const snapshotPath = (directory: string, id: string) =>
+  join(directory, `${createHash('sha256').update(id).digest('hex')}.json`);
