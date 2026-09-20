@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
+import fs, { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { dataDirectory, PlanStore, StoreError } from '../mcp/src/store.js';
 import type { Session } from '../mcp/src/schema.js';
-import { plan, temporaryDirectory } from './fixtures.js';
+import { plan, planAtSnapshotSize, temporaryDirectory } from './fixtures.js';
 
 const code = (expected: string) => (error: unknown) => error instanceof StoreError && error.code === expected;
-const snapshotPath = (directory: string, id: string) => join(directory, `${createHash('sha256').update(id).digest('hex')}.json`);
+const snapshotPath = (directory: string, id: string) =>
+  join(directory, `${createHash('sha256').update(id).digest('hex')}.json`);
 
-test('requires initialization, then round-trips the complete agreed plan through disk', async t => {
+await test('requires initialization, then round-trips the complete agreed plan through disk', async (t) => {
   const directory = await temporaryDirectory(t);
   const store = new PlanStore(directory);
   assert.equal(await store.get('session-a'), null);
@@ -26,7 +27,7 @@ test('requires initialization, then round-trips the complete agreed plan through
   assert.deepEqual(JSON.parse(await readFile(join(directory, filename), 'utf8')), saved);
 });
 
-test('reset discards the whole selected plan and preserves other active sessions', async t => {
+await test('reset discards the whole selected plan and preserves other active sessions', async (t) => {
   const store = new PlanStore(await temporaryDirectory(t));
   const { session: a } = await store.reset('session-a');
   const { session: b } = await store.reset('session-b');
@@ -38,13 +39,18 @@ test('reset discards the whole selected plan and preserves other active sessions
   await assert.rejects(store.save('session-a', a.revision, plan), code('REVISION_CONFLICT'));
 });
 
-test('full writeback replaces removed tasks and fields; stale revisions cannot overwrite it', async t => {
+await test('full writeback replaces removed tasks and fields; stale revisions cannot overwrite it', async (t) => {
   const store = new PlanStore(await temporaryDirectory(t));
   const { session: empty } = await store.reset('writeback');
   const first = await store.save('writeback', empty.revision, {
-    ...plan, tasks: [...plan.tasks, { ...plan.tasks[0]!, id: 'T2', dependsOn: ['T1'] }],
+    ...plan,
+    tasks: [...plan.tasks, { ...plan.tasks[0]!, id: 'T2', dependsOn: ['T1'] }],
   });
-  const nextPlan = { ...plan, constraints: [], approval: { mode: 'waived', evidence: '今回の承認手続きを省略するという明示指示。' } };
+  const nextPlan = {
+    ...plan,
+    constraints: [],
+    approval: { mode: 'waived', evidence: '今回の承認手続きを省略するという明示指示。' },
+  };
   const next = await store.save('writeback', first.revision, nextPlan);
   assert.equal(next.plan?.tasks.length, 1);
   assert.deepEqual(next.plan?.constraints, []);
@@ -52,7 +58,7 @@ test('full writeback replaces removed tasks and fields; stale revisions cannot o
   assert.deepEqual(await store.get('writeback'), next);
 });
 
-test('invalid plans leave the previously approved snapshot intact', async t => {
+await test('invalid plans leave the previously approved snapshot intact', async (t) => {
   const store = new PlanStore(await temporaryDirectory(t));
   const { session: empty } = await store.reset('validation');
   const saved = await store.save('validation', empty.revision, plan);
@@ -70,7 +76,7 @@ test('invalid plans leave the previously approved snapshot intact', async t => {
   }
 });
 
-test('concurrent store instances cannot silently overwrite the same revision', async t => {
+await test('concurrent store instances cannot silently overwrite the same revision', async (t) => {
   const directory = await temporaryDirectory(t);
   const store = new PlanStore(directory);
   const { session: empty } = await store.reset('race');
@@ -78,14 +84,14 @@ test('concurrent store instances cannot silently overwrite the same revision', a
     store.save('race', empty.revision, { ...plan, request: 'A' }),
     new PlanStore(directory).save('race', empty.revision, { ...plan, request: 'B' }),
   ]);
-  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
-  const rejected = results.find(result => result.status === 'rejected');
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+  const rejected = results.find((result) => result.status === 'rejected');
   assert.ok(rejected?.status === 'rejected');
   assert.ok(code('SESSION_BUSY')(rejected.reason) || code('REVISION_CONFLICT')(rejected.reason));
   assert.equal((await readdir(directory)).length, 1);
 });
 
-test('IDs cannot escape storage and remain distinct on Windows', async t => {
+await test('IDs cannot escape storage and remain distinct on Windows', async (t) => {
   const directory = await temporaryDirectory(t);
   const store = new PlanStore(directory);
   for (const id of ['../outside', 'a/b', 'a\\b', '', 'a'.repeat(129)]) await assert.rejects(store.reset(id));
@@ -95,7 +101,7 @@ test('IDs cannot escape storage and remain distinct on Windows', async t => {
   assert.equal((await store.get('session-a'))?.sessionId, 'session-a');
 });
 
-test('corrupt snapshots are reported, and only an explicit reset recovers them', async t => {
+await test('corrupt snapshots are reported, and only an explicit reset recovers them', async (t) => {
   const directory = await temporaryDirectory(t);
   const store = new PlanStore(directory);
   await store.reset('corrupt');
@@ -106,18 +112,88 @@ test('corrupt snapshots are reported, and only an explicit reset recovers them',
   assert.equal((await store.reset('corrupt')).session.plan, null);
 });
 
-test('failed oversized writes preserve the old snapshot and release the lock', async t => {
+await test('failed oversized writes preserve the old snapshot and release the lock', async (t) => {
   const directory = await temporaryDirectory(t);
   const store = new PlanStore(directory);
   const { session: empty } = await store.reset('large');
   const saved = await store.save('large', empty.revision, plan);
-  await assert.rejects(store.save('large', saved.revision, { ...plan, requirements: Array(11).fill('x'.repeat(100_000)) }), code('PLAN_TOO_LARGE'));
+  await assert.rejects(
+    store.save('large', saved.revision, { ...plan, requirements: Array(11).fill('x'.repeat(100_000)) }),
+    code('PLAN_TOO_LARGE'),
+  );
   assert.deepEqual(await store.get('large'), saved);
   assert.equal((await readdir(directory)).length, 1);
   await store.save('large', saved.revision, plan);
 });
 
-test('completion requires the current agreed plan and seals it until a new flow starts', async t => {
+await test('the largest accepted UTF-8 snapshot can complete and be collected after restart', async (t) => {
+  const directory = await temporaryDirectory(t);
+  const store = new PlanStore(directory);
+  const { session: empty } = await store.reset('boundary');
+  const filename = snapshotPath(directory, empty.sessionId);
+  const maximum = 1024 * 1024;
+  const completionGrowth = Buffer.byteLength(JSON.stringify(empty.updatedAt)) - Buffer.byteLength('null');
+  const sized = planAtSnapshotSize(empty, maximum - completionGrowth);
+  const saved = await store.save(empty.sessionId, empty.revision, sized);
+  const before = await readFile(filename);
+  assert.equal(before.length, maximum - completionGrowth);
+  await assert.rejects(
+    store.save(empty.sessionId, saved.revision, planAtSnapshotSize(saved, maximum - completionGrowth + 1)),
+    code('PLAN_TOO_LARGE'),
+  );
+  assert.deepEqual(await readFile(filename), before);
+  assert.equal((await readdir(directory)).length, 1);
+  const completed = await new PlanStore(directory).complete(saved.sessionId, saved.revision);
+  assert.equal((await readFile(filename)).length, maximum);
+  assert.deepEqual(await new PlanStore(directory).get(saved.sessionId), completed);
+  assert.deepEqual((await store.reset('next-flow')).cleanup, { deleted: 1, skipped: [] });
+});
+
+for (const operation of ['writeFile', 'sync', 'rename'] as const) {
+  await test(`${operation} I/O failure preserves the snapshot and releases temporary files and the lock`, async (t) => {
+    const directory = await temporaryDirectory(t);
+    const store = new PlanStore(directory);
+    const { session: empty } = await store.reset('io-failure');
+    const saved = await store.save(empty.sessionId, empty.revision, plan);
+    const filename = snapshotPath(directory, saved.sessionId);
+    const before = await readFile(filename);
+    const failure = Object.assign(new Error(`Injected ${operation} failure`), { code: 'EIO' });
+    let injected = false;
+    if (operation === 'rename') {
+      t.mock.method(fs, 'rename', async () => {
+        injected = true;
+        throw failure;
+      });
+    } else {
+      const realOpen = fs.open;
+      t.mock.method(fs, 'open', async (...args: Parameters<typeof fs.open>) => {
+        const handle = await realOpen(...args);
+        if (String(args[0]).endsWith('.tmp')) {
+          t.mock.method(handle, operation, async () => {
+            // Exercise cleanup after the temporary file contains partial/full data.
+            if (operation === 'writeFile') await handle.write('partial JSON');
+            injected = true;
+            throw failure;
+          });
+        }
+        return handle;
+      });
+    }
+    await assert.rejects(
+      store.save(saved.sessionId, saved.revision, { ...plan, request: 'updated' }),
+      (error) => error === failure,
+    );
+    assert.equal(injected, true);
+    t.mock.restoreAll();
+    assert.deepEqual(await readFile(filename), before);
+    assert.deepEqual(await new PlanStore(directory).get(saved.sessionId), saved);
+    assert.equal((await readdir(directory)).length, 1);
+    const retried = await store.save(saved.sessionId, saved.revision, { ...plan, request: 'retried' });
+    assert.equal(retried.plan?.request, 'retried');
+  });
+}
+
+await test('completion requires the current agreed plan and seals it until a new flow starts', async (t) => {
   const directory = await temporaryDirectory(t);
   const store = new PlanStore(directory);
   await assert.rejects(store.complete('finish', randomUUID()), code('NOT_INITIALIZED'));
@@ -145,7 +221,7 @@ test('completion requires the current agreed plan and seals it until a new flow 
   assert.equal(corrected.plan?.request, '既存の成果物を修正する');
 });
 
-test('a new flow collects every completed session and preserves active, empty, and legacy snapshots', async t => {
+await test('a new flow collects every completed session and preserves active, empty, and legacy snapshots', async (t) => {
   const directory = await temporaryDirectory(t);
   const store = new PlanStore(directory);
   const saved = new Map<string, Session>();
@@ -170,11 +246,14 @@ test('a new flow collects every completed session and preserves active, empty, a
   assert.deepEqual(JSON.parse(await readFile(snapshotPath(directory, 'legacy'), 'utf8')), legacy);
   await assert.rejects(restarted.save('done-a', saved.get('done-a')!.revision, plan), code('NOT_INITIALIZED'));
   const { session: correction } = await restarted.reset('done-a');
-  const corrected = await restarted.save('done-a', correction.revision, { ...plan, request: '削除済み計画の成果物を修正する' });
+  const corrected = await restarted.save('done-a', correction.revision, {
+    ...plan,
+    request: '削除済み計画の成果物を修正する',
+  });
   assert.equal(corrected.plan?.request, '削除済み計画の成果物を修正する');
 });
 
-test('cleanup reports busy or invalid snapshots, ignores unrelated files, and retries on a later start', async t => {
+await test('cleanup reports busy or invalid snapshots, ignores unrelated files, and retries on a later start', async (t) => {
   const directory = await temporaryDirectory(t);
   const store = new PlanStore(directory);
   const { session: empty } = await store.reset('busy');
@@ -200,8 +279,13 @@ test('cleanup reports busy or invalid snapshots, ignores unrelated files, and re
   const result = await store.reset('new-flow');
   assert.equal(result.session.plan, null);
   assert.equal(result.cleanup.deleted, 0);
-  assert.deepEqual(result.cleanup.skipped.map(item => item.code).sort(), [
-    'INVALID_DATA', 'INVALID_DATA', 'INVALID_DATA', 'INVALID_DATA', 'INVALID_DATA', 'SESSION_BUSY',
+  assert.deepEqual(result.cleanup.skipped.map((item) => item.code).sort(), [
+    'INVALID_DATA',
+    'INVALID_DATA',
+    'INVALID_DATA',
+    'INVALID_DATA',
+    'INVALID_DATA',
+    'SESSION_BUSY',
   ]);
   assert.deepEqual(await store.get('busy'), completed);
   assert.equal(await readFile(busyLock, 'utf8'), 'existing writer');
@@ -213,7 +297,7 @@ test('cleanup reports busy or invalid snapshots, ignores unrelated files, and re
   assert.equal(await store.get('busy'), null);
 });
 
-test('cleanup preserves a session while another instance is completing it', { timeout: 10_000 }, async t => {
+await test('cleanup preserves a session while another instance is completing it', { timeout: 10_000 }, async (t) => {
   const directory = await temporaryDirectory(t);
   const store = new PlanStore(directory);
   const writer = new PlanStore(directory);
@@ -221,8 +305,12 @@ test('cleanup preserves a session while another instance is completing it', { ti
   const saved = await store.save('finishing', empty.revision, plan);
   let entered!: () => void;
   let release!: () => void;
-  const locked = new Promise<void>(resolve => { entered = resolve; });
-  const resume = new Promise<void>(resolve => { release = resolve; });
+  const locked = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const resume = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   t.mock.method(writer, 'get', async (id: string) => {
     entered();
     await resume;
@@ -235,14 +323,17 @@ test('cleanup preserves a session while another instance is completing it', { ti
     assert.equal(result.cleanup.deleted, 0);
     assert.equal(result.cleanup.skipped[0]?.code, 'SESSION_BUSY');
     assert.deepEqual(await store.get('finishing'), saved);
-  } finally { release(); await pending; }
+  } finally {
+    release();
+    await pending;
+  }
   const completed = await pending;
   assert.ok(completed.completedAt);
   assert.equal((await store.reset('later')).cleanup.deleted, 1);
   assert.equal(await store.get('finishing'), null);
 });
 
-test('simultaneous starts preserve both new sessions and collect a completed snapshot once', async t => {
+await test('simultaneous starts preserve both new sessions and collect a completed snapshot once', async (t) => {
   const directory = await temporaryDirectory(t);
   const first = new PlanStore(directory);
   const second = new PlanStore(directory);
@@ -250,14 +341,20 @@ test('simultaneous starts preserve both new sessions and collect a completed sna
   const saved = await first.save('done', empty.revision, plan);
   await first.complete('done', saved.revision);
   const results = await Promise.all([first.reset('new-a'), second.reset('new-b')]);
-  assert.equal(results.reduce((sum, result) => sum + result.cleanup.deleted, 0), 1);
+  assert.equal(
+    results.reduce((sum, result) => sum + result.cleanup.deleted, 0),
+    1,
+  );
   assert.equal(await first.get('done'), null);
   for (const result of results) assert.deepEqual(await first.get(result.session.sessionId), result.session);
   assert.equal((await readdir(directory)).length, 2);
 });
 
-test('storage defaults outside the project and accepts only absolute overrides', () => {
+await test('storage defaults outside the project and accepts only absolute overrides', () => {
   assert.ok(dataDirectory({}).includes('matsu-artifact-workflow'));
-  assert.equal(dataDirectory({ PLUGIN_DATA: join(process.cwd(), 'fixture') }), join(process.cwd(), 'fixture', 'task-memory'));
+  assert.equal(
+    dataDirectory({ PLUGIN_DATA: join(process.cwd(), 'fixture') }),
+    join(process.cwd(), 'fixture', 'task-memory'),
+  );
   assert.throws(() => dataDirectory({ ARTIFACT_WORKFLOW_DATA_DIR: './tasks' }), code('INVALID_DIRECTORY'));
 });
