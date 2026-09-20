@@ -51,10 +51,11 @@ await test('completion requires initialization, the current revision, and an agr
 
 await test('completion changes metadata once and only accepts retries with the completed revision', () => {
   const before = structuredClone(session);
-  const completed = completeSession(session, session.revision, change);
+  const { session: completed, changed } = completeSession(session, session.revision, change);
+  assert.equal(changed, true);
   assert.deepEqual(completed, { ...session, ...change, completedAt: change.updatedAt });
   assert.deepEqual(session, before);
   const later = { revision: session.revision, updatedAt: '2026-09-21T00:00:00.000Z' };
-  assert.equal(completeSession(completed, completed.revision, later), completed);
+  assert.deepEqual(completeSession(completed, completed.revision, later), { session: completed, changed: false });
   assert.throws(() => completeSession(completed, session.revision, later), code('REVISION_CONFLICT'));
 });

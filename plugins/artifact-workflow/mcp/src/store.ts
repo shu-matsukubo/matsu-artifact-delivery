@@ -55,8 +55,8 @@ export class PlanStore implements PlanRepository {
     const filename = this.files.filename(sessionId);
     return this.files.withLock(filename, async () => {
       const current = await this.get(sessionId);
-      const session = completeSession(current, expectedRevision, newChange());
-      if (session !== current) await this.files.writeSnapshot(filename, session);
+      const { session, changed } = completeSession(current, expectedRevision, newChange());
+      if (changed) await this.files.writeSnapshot(filename, session);
       return session;
     });
   }

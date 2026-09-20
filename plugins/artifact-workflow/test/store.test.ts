@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import fs, { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { PlanStore } from '../mcp/src/store.js';
@@ -149,7 +149,13 @@ await test('completion requires the current agreed plan and seals it until a new
   assert.notEqual(completed.revision, saved.revision);
   assert.deepEqual(completed.plan, saved.plan);
   assert.deepEqual(await new PlanStore(directory).get('finish'), completed);
+  // 保存できない状況でも同じrevisionでの再実行は成功し、完了済みファイルを書き直さない。
+  const rename = t.mock.method(fs, 'rename', async () => {
+    throw new Error('Completed snapshot must not be rewritten');
+  });
   assert.deepEqual(await store.complete('finish', completed.revision), completed);
+  assert.equal(rename.mock.callCount(), 0);
+  rename.mock.restore();
   await assert.rejects(store.save('finish', saved.revision, plan), code('REVISION_CONFLICT'));
   await assert.rejects(store.save('finish', completed.revision, plan), code('SESSION_COMPLETED'));
 

@@ -4,6 +4,8 @@ import type { Plan, Session } from './schema.js';
 /** 時刻とrevisionを呼び出し側から渡し、状態遷移をI/Oや乱数生成から独立させる。 */
 export type SessionChange = Pick<Session, 'revision' | 'updatedAt'>;
 
+export type CompleteSessionResult = { session: Session; changed: boolean };
+
 export function createSession(sessionId: string, change: SessionChange): Session {
   return {
     schemaVersion: 1,
@@ -35,12 +37,16 @@ export function replacePlan(
 }
 
 /**
- * 完了記録は同じrevisionでの再実行に限り状態を変えない。
+ * 完了記録は同じrevisionでの再実行に限り状態を変えず、changedで保存の要否を返す。
  * 古い計画を見た呼び出しを成功扱いしないため、完了済み判定より先にrevisionを確認する。
  */
-export function completeSession(current: Session | null, expectedRevision: string, change: SessionChange): Session {
+export function completeSession(
+  current: Session | null,
+  expectedRevision: string,
+  change: SessionChange,
+): CompleteSessionResult {
   const session = requireRevision(current, expectedRevision);
   if (!session.plan) throw new StoreError('PLAN_NOT_SAVED', 'The session has no agreed plan.');
-  if (session.completedAt !== null) return session;
-  return { ...session, ...change, completedAt: change.updatedAt };
+  if (session.completedAt !== null) return { session, changed: false };
+  return { session: { ...session, ...change, completedAt: change.updatedAt }, changed: true };
 }

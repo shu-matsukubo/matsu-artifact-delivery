@@ -1,8 +1,6 @@
-import fs from 'node:fs/promises';
-import { join } from 'node:path';
 import { StoreError, systemErrorCode } from './errors.js';
 import type { CleanupResult } from './schema.js';
-import type { SnapshotFiles } from './snapshot-files.js';
+import type { SnapshotFile, SnapshotFiles } from './snapshot-files.js';
 
 /**
  * 明示的に完了した別セッションだけを回収する。呼び出し元は自分のロックを先に解放する。
@@ -14,28 +12,26 @@ export async function collectCompleted(files: SnapshotFiles, currentFilename: st
     const code = error instanceof StoreError ? error.code : (systemErrorCode(error) ?? 'CLEANUP_FAILED');
     result.skipped.push({ file, code });
   };
-  let entries: string[];
+  let entries: SnapshotFile[];
   try {
-    entries = await fs.readdir(files.directory);
+    entries = await files.listSnapshots();
   } catch (error) {
     skip('.', error);
     return result;
   }
-  for (const file of entries) {
-    if (!/^[a-f0-9]{64}\.json$/.test(file)) continue;
-    const filename = join(files.directory, file);
+  for (const { name, filename } of entries) {
     if (filename === currentFilename) continue;
     try {
       await files.withLock(filename, async () => {
         // 保存・初期化・完了と同じロック内で読み直し、列挙後の古い状態から削除しない。
         const session = await files.readSnapshot(filename);
         if (session?.completedAt != null) {
-          await fs.unlink(filename);
+          await files.deleteSnapshot(filename);
           result.deleted++;
         }
       });
     } catch (error) {
-      skip(file, error);
+      skip(name, error);
     }
   }
   return result;

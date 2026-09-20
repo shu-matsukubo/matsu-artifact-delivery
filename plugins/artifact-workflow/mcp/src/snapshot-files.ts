@@ -5,6 +5,8 @@ import { StoreError, systemErrorCode } from './errors.js';
 import { sessionIdSchema, type Session } from './schema.js';
 import { MAX_SNAPSHOT_BYTES, parseSnapshot, serializeSnapshot } from './snapshot.js';
 
+export type SnapshotFile = { name: string; filename: string };
+
 /** 同じディレクトリの一時ファイルを同期してから置換し、途中までのJSONを読ませない。 */
 export async function writeFileAtomically(filename: string, contents: string): Promise<void> {
   const temporary = `${filename}.${randomUUID()}.tmp`;
@@ -40,6 +42,14 @@ export class SnapshotFiles {
     return join(this.directory, `${createHash('sha256').update(sessionId).digest('hex')}.json`);
   }
 
+  /** 命名規則に合う候補を返す。内容の検証と回収可否の判断はロック取得後に行う。 */
+  async listSnapshots(): Promise<SnapshotFile[]> {
+    const entries = await fs.readdir(this.directory);
+    return entries
+      .filter((name) => /^[a-f0-9]{64}\.json$/.test(name))
+      .map((name) => ({ name, filename: join(this.directory, name) }));
+  }
+
   /** 不在だけをnullとする。破損・別IDの内容・通常ファイル以外・I/O障害は例外にする。 */
   async readSnapshot(filename: string): Promise<Session | null> {
     let raw: string;
@@ -61,6 +71,11 @@ export class SnapshotFiles {
   /** 呼び出し側が同じファイルのロックを保持する。保存の失敗は呼び出し側へ伝播する。 */
   async writeSnapshot(filename: string, session: Session): Promise<void> {
     await writeFileAtomically(filename, serializeSnapshot(session));
+  }
+
+  /** 呼び出し側が同じファイルのロックを保持する。削除の失敗は回収結果へ記録できるよう伝播する。 */
+  async deleteSnapshot(filename: string): Promise<void> {
+    await fs.unlink(filename);
   }
 
   /**
