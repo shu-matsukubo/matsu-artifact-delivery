@@ -20,11 +20,77 @@
 | [skills/artifact-workflow/agents/openai.yaml](skills/artifact-workflow/agents/openai.yaml) | Codex 互換用の表示情報と明示呼び出しの設定。共通規格の必須ファイルではない。 |
 | [../../.codex/config.toml](../../.codex/config.toml) | このリポジトリで Custom Agent を登録する Codex 固有の参照設定。Plugin パッケージの外側にある。 |
 
-MCP は同梱していません。追加する場合は Plugin root の `mcp.json` に、Agent Plugins の MCP schema と各サーバーの設定を記載します。
+合意済みの要求・制約・タスク計画をJSONで一時保持する `artifact-task-memory` MCP を同梱しています。[mcp.json](mcp.json) が共通設定、[mcp/src/](mcp/src/) がTypeScript実装、[mcp/task-memory.cjs](mcp/task-memory.cjs) が依存を同梱した実行ファイルです。公式 [MCP TypeScript SDK](https://ts.sdk.modelcontextprotocol.io/v2/) を使い、stdioで接続します。
 
 共通形式での検出・読み込みと、ワークフローを実行できることは区別します。現行の実行には Codex のマルチエージェント機能と登録済みの `artifact-worker` が必要です。他の compatible client へ移植する際は、その client での役割定義・委任方法を別途確認します。全 client での同一動作は保証対象に含めません。
 
+### 合意済み計画のMCP
+
+実行にはPATH上の **Node.js 22.19以降**が必要です。配布物にSDKなどの依存を含めているため、利用時の `npm install` やビルドは不要です。クライアントが `mcp.json` を読み込み、`PLUGIN_ROOT` と書き込み可能な `PLUGIN_DATA` を提供してMCPを起動します。
+
+動作確認済みのローカル環境は以下のとおりです。
+
+| 項目 | 確認済み環境 |
+| --- | --- |
+| OS | Windows |
+| Node.js | 22.23.2 |
+| MCPクライアント | 公式 TypeScript SDK `@modelcontextprotocol/client` 2.0.0 によるstdioテストクライアント |
+
+OSごとのMCP検証は下記のCIで行います。Codexへの実インストールを通した動作は未検証です。
+
+- 新しい生成フローの開始時に `reset_session` で同じセッションの以前の内容をすべて初期化し、同じ保存先の完了記録済みセッションを削除する。未完了の別セッションは保持する。
+- 合意後に `save_plan` で要求・要件・制約・タスク・完了条件・入力参照・引き渡し情報・承認根拠をJSONへ保存する。
+- 以後は `get_plan` で保存済み計画を参照する。合意した計画の更新は、最新の版を指定して計画全体を書き戻す。
+- 全タスク・全体検証・完成品の提示または引き渡しが終わったら、親が `complete_session` で完了を記録する。完了済み計画への通常の保存は拒否する。
+- MCP再接続や会話の短縮では初期化しない。同じセッションIDと保存場所があれば、会話全体を再解釈せずに計画を読み戻せる。
+
+4ツールすべてが、成功時の `structuredContent` の形式を `outputSchema` として公開します。`reset_session` は `{ session, cleanup }`、他の3ツールは `{ session }` を返し、`get_plan` のみ未初期化・削除済みの場合に `session: null` を返します。`cleanup` は削除件数 `deleted` と、見送ったファイル名・理由コードの配列 `skipped: [{ file, code }]` です。同じJSONをテキストでも返します。ツール実行エラーは `isError: true` とテキストで返し、成功時のスキーマの対象外とします。
+
+保存先はリポジトリ外の `PLUGIN_DATA/task-memory/` です。セッションIDごとに1ファイルとし、履歴・DB・進捗の自動管理・別チャットからの復元機能は設けません。完了時は保存を残し、次の新しいフロー開始時に完了済みデータを削除します。削除はセッション単位のロック内で最新状態を確認して行い、ロック中・破損などで見送ったファイルは `cleanup.skipped` に理由を返します。完了記録のない旧形式や中断中のデータは保持します。後日の修正は、旧計画の有無によらず現在の成果物を確認し、新しい修正タスクの計画から始めます。詳細なJSON形式、初期化の境界、競合時の扱いは[タスク計画の一時保持](skills/artifact-workflow/references/task-memory.md)を参照してください。
+
+開発時はPlugin rootで以下を実行します。GitHub Actionsでも同じ検証を行います。
+
+```sh
+npm ci
+npm run check
+npm run lint
+npm run format:check
+npm test
+```
+
+- `npm run check` はTypeScriptの型検査です。
+- `npm run lint` はOxlintの型情報を使い、未処理Promise・Promiseの誤用・未使用コードなどを検査します。TypeScript 7に対応する `oxlint-tsgolint` を併用します。
+- `npm run format:check` はPrettierでMCPソース・テスト・ビルドスクリプト・開発設定・CI設定の書式を検査します。`npm run format` で整形できます。
+- `npm test` は最初に `npm run check:dist` で配布物と再生成結果の完全一致を確認します。配布物の更新・欠落があれば失敗し、既存ファイルを上書きしません。その後、`.test-build` を削除し、現在のソースだけをコンパイルしてテストします。
+- ソースや正本設定を変更したら `npm run build` で配布物を更新してください。型検査に成功してから、MCP実行ファイル・ライセンス通知・[依存ライセンス](mcp/THIRD_PARTY_LICENSES.txt)・Codex互換設定を生成します。生成ファイルも変更と一緒にコミットし、直接編集しないでください。
+
+[GitHub ActionsのCI](../../.github/workflows/artifact-workflow-ci.yml)はPR・`main` へのpush・手動実行を対象に、Windows・Linux・macOS × Node.js 22.19.0・24で検証します。ビルドによって更新漏れを隠さないよう、チェックアウトした配布物をそのまま検証・起動します。
+
+テストではOSの一時ディレクトリを使い、セッションの分離、更新競合、不正データの拒否、完了済みデータの削除、未完了・旧形式の保護、後日の修正タスク、実MCP通信、Node.jsだけでの起動と再接続後の読み戻しを確認します。1 MiBの上限は完了日時の増加分を含めて保存時に判定し、上限ちょうどの完了済みデータと1 byte超過の拒否を検証します。書き込み・`sync`・`rename` にI/Oエラーを注入するテストでは、旧データの保持、一時ファイルとロックの解放、再試行の成功を確認します。型エラーによる配布ビルドの停止と配布物の保持、配布物5種類の欠落・改変、ソースだけを変更した際の更新漏れ、削除済みテストのコンパイル残骸の掃除も隔離環境で検証します。
+
+### MCPソースの責務
+
+状態遷移は現在の状態と検証済み計画、更新用の時刻・revisionを受け取る関数とし、ファイル操作を伴わずに検証します。読み取り・revision検証・書き込みは、呼び出し元の `PlanStore` が同じセッションロック内で実行します。
+
+| ファイル | 担当する責務 |
+| --- | --- |
+| `mcp/src/store.ts` | 状態遷移と保存の接続、ロック内の処理順序 |
+| `mcp/src/session.ts` | 初期化・計画の全置換・完了の条件と次の状態 |
+| `mcp/src/schema.ts`、`task-dependencies.ts` | 入力・保存形式のスキーマと、ID重複・未定義の依存先・循環の検証 |
+| `mcp/src/snapshot.ts` | 保存JSONの解析・生成、完了日時を含む容量制限 |
+| `mcp/src/snapshot-files.ts` | ファイル名、読み取り、ロック、一時ファイルからの置換 |
+| `mcp/src/cleanup.ts` | 完了済みセッションの選定・再確認・削除、回収失敗の集約 |
+| `mcp/src/repository.ts`、`errors.ts` | 保存先に依存しない4操作と、独自エラーコードの契約 |
+| `mcp/src/server.ts`、`config.ts`、`index.ts` | MCP応答と操作案内、保存先設定の解決、起動時の依存組み立て |
+
+保存の失敗は例外として伝播し、回収の失敗は `cleanup.skipped` に記録して続行します。OS由来のエラーコードは独自コードと分けて扱います。保存層には失敗理由を置き、`get_plan` などの操作案内はMCP応答で補います。
+
+テストも各責務に対応するファイルへ分けています。状態遷移・依存関係・スキーマ・保存形式はディスクを使わずに確認し、`server.test.ts` は小さな代替保存実装とインメモリMCP通信で応答契約を確認します。`store.test.ts` は保存処理全体の連携、`snapshot-files.test.ts` はI/O障害とロック、`cleanup.test.ts` は回収と失敗時の続行を検証します。配布物を別プロセスで起動する `mcp.test.ts` と配布物検証の `build.test.ts` も継続します。
+
+
 ### Codex 互換設定
+
+共通形式の `plugin.json` と `mcp.json` を正本とし、`plugin-creator` の検証と旧形式の読み込みに対応するため `.codex-plugin/plugin.json` と `.mcp.json` をビルド時に生成します。現行のポータブル形式ではルートの共通設定が優先されます。これは[OpenAI公式のパッケージ仕様](https://developers.openai.com/plugins/build/plugins)に基づく互換設定で、マーケットプレイスの別エントリや別サーバーは追加しません。
 
 [Agent Plugins の client extensions](https://agent-plugins.org/plugin-authors/client-extensions) に合わせ、Custom Agent の TOML は Plugin root の `com.openai/` 配下へ置きます。固有の manifest データが必要になった場合は `extensions.com.openai` を使います。
 
@@ -32,14 +98,14 @@ MCP は同梱していません。追加する場合は Plugin root の `mcp.jso
 
 ## 基本フロー
 
-1. 依頼全体から今回の生成範囲を定め、成果物そのものを作成・変更する作業をタスクへ分解する。
+1. 新しい生成フローの開始時に親のセッションの保持内容を初期化し、同じ保存先の完了記録済みセッションを削除する。依頼全体から今回の生成範囲を定め、成果物そのものを作成・変更する作業をタスクへ分解する。
 2. 各タスクの目的・成果物・完了条件と、タスク外の品質確認・今回の全体の完了条件・完成品の提示と引き渡し情報を含む計画をユーザーへ提示する。
-3. 原則としてユーザーの承認を得てから生成へ進む。
-4. 親が承認済みの計画と依存関係から `artifact-worker` の担当を決め、成果物の生成を委任する。
+3. 原則としてユーザーの承認を得て、合意済み計画をMCPへ保存してから生成へ進む。
+4. 親がMCPから取得した承認済みの計画と依存関係から `artifact-worker` の担当を決め、成果物の生成を委任する。
 5. 各担当の `artifact-worker` が生成した成果物そのものをセルフレビューし、必要な修正後に成果物とレビュー結果を親へ返す。
 6. 親がタスクIDごとに成果物の実物を確認し、承認された完了条件を満たしたタスクを完了とする。
 7. 今回の生成計画の全作業タスク完了後、親が成果物を今回の全体の完了条件と照合して、成果物完成を確認する。
-8. 親が完成品と検証結果を提示するか、後続処理へ引き継いで生成フローを終了する。依頼された後続処理は、親が選択した手段の手順で続行する。
+8. 親が完成品と検証結果を提示するか、後続処理へ必要な情報を引き継ぎ、`complete_session` で完了を記録して生成フローを終了する。依頼された後続処理は、親が選択した手段の手順で続行する。
 
 委任人数や並列実行、担当範囲の判断は[生成の方針](skills/artifact-workflow/references/generation.md)を参照してください。
 
