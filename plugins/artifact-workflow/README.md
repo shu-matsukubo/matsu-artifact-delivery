@@ -1,6 +1,6 @@
 # artifact-workflow
 
-デリバリーを支援するプラグイン集のうち、成果物生成フローを担当する Plugin です。作業タスク計画へのユーザー承認、生成・セルフレビュー、タスクと全体の検証を行い、完成品と検証結果の提示・引き渡しで終了します。[Agent Plugins](https://agent-plugins.org/) の共通構造で Skill を配布し、Codex 向けに Custom Agent の定義を同梱しています。
+デリバリーを支援するプラグイン集のうち、成果物生成フローを担当する Plugin です。作業タスク計画へのユーザー承認、生成・セルフレビュー・独立レビュー、タスクと全体の検証を行い、完成品と検証結果の提示・引き渡しで終了します。[Agent Plugins](https://agent-plugins.org/) の共通構造で Skill を配布し、Codex 向けに Custom Agent の定義を同梱しています。
 
 コード、ドキュメント、プレゼン資料、調査レポートなど、作るものと完了条件を合意してから作業したい場面で利用できます。特定の開発工程・言語・フレームワーク・成果物形式には依存せず、他の Plugin や Skill、外部サービスなしで単独利用できます。実行に必要な Codex 側の登録は後述します。
 
@@ -14,15 +14,16 @@
 | --- | --- |
 | [plugin.json](plugin.json) | 共通の識別情報・メタデータの正本。`$schema` で対象規格、`version` で Plugin のリリースバージョンを管理する。 |
 | [skills/artifact-workflow/SKILL.md](skills/artifact-workflow/SKILL.md) | Agent Skills 形式の定義。`skills/` の直下から検出される。ワークフローと承認ルールの正本で、`compatibility` に実行環境の要件を記載する。 |
-| `skills/artifact-workflow/references/` | Skill 固有のタスク分解・生成・セルフレビュー・検証・完成品の引き渡しとフロー終了の方針。 |
+| `skills/artifact-workflow/references/` | Skill 固有のタスク分解・生成・セルフレビュー・独立レビュー・特化観点・検証・完成品の引き渡しとフロー終了の方針。 |
 | [skills/artifact-workflow/assets/task-plan-template.md](skills/artifact-workflow/assets/task-plan-template.md) | Skill 固有の日本語のタスク計画テンプレート。 |
 | [com.openai/agents/artifact-worker.toml](com.openai/agents/artifact-worker.toml) | Codex 固有の Custom Agent 定義。役割・生成とセルフレビューの指示・モデル・推論強度を管理する。 |
+| [com.openai/agents/artifact-reviewer.toml](com.openai/agents/artifact-reviewer.toml) | Codex 固有の読み取り専用の独立レビュワー。役割・モデル・推論強度を管理する。 |
 | [skills/artifact-workflow/agents/openai.yaml](skills/artifact-workflow/agents/openai.yaml) | Codex 互換用の表示情報と明示呼び出しの設定。共通規格の必須ファイルではない。 |
 | [../../.codex/config.toml](../../.codex/config.toml) | このリポジトリで Custom Agent を登録する Codex 固有の参照設定。Plugin パッケージの外側にある。 |
 
 合意済みの要求・制約・タスク計画をJSONで一時保持する `artifact-task-memory` MCP を同梱しています。[mcp.json](mcp.json) が共通設定、[mcp/src/](mcp/src/) がTypeScript実装、[mcp/task-memory.cjs](mcp/task-memory.cjs) が依存を同梱した実行ファイルです。公式 [MCP TypeScript SDK](https://ts.sdk.modelcontextprotocol.io/v2/) を使い、stdioで接続します。
 
-共通形式での検出・読み込みと、ワークフローを実行できることは区別します。現行の実行には Codex のマルチエージェント機能と登録済みの `artifact-worker` が必要です。他の compatible client へ移植する際は、その client での役割定義・委任方法を別途確認します。全 client での同一動作は保証対象に含めません。
+共通形式での検出・読み込みと、ワークフローを実行できることは区別します。現行の実行には Codex のマルチエージェント機能と登録済みの `artifact-worker` と `artifact-reviewer` が必要です。他の compatible client へ移植する際は、その client での役割定義・委任方法を別途確認します。全 client での同一動作は保証対象に含めません。
 
 ### 合意済み計画のMCP
 
@@ -103,23 +104,28 @@ npm test
 3. 原則としてユーザーの承認を得て、合意済み計画をMCPへ保存してから生成へ進む。
 4. 親がMCPから取得した承認済みの計画と依存関係から `artifact-worker` の担当を決め、成果物の生成を委任する。
 5. 各担当の `artifact-worker` が生成した成果物そのものをセルフレビューし、必要な修正後に成果物とレビュー結果を親へ返す。
-6. 親がタスクIDごとに成果物の実物を確認し、承認された完了条件を満たしたタスクを完了とする。
-7. 今回の生成計画の全作業タスク完了後、親が成果物を今回の全体の完了条件と照合して、成果物完成を確認する。
-8. 親が完成品と検証結果を提示するか、後続処理へ必要な情報を引き継ぎ、`complete_session` で完了を記録して生成フローを終了する。依頼された後続処理は、親が選択した手段の手順で続行する。
+6. 親が特化観点を0〜3個選び、生成担当と別の `artifact-reviewer` 1人へ独立レビューを依頼する。親が指摘を受け取り、必要な修正・セルフレビュー・影響部分の再レビューを管理する。
+7. 親がタスクIDごとに独立レビュー後の実物を確認し、承認された完了条件を満たしたタスクを完了とする。
+8. 今回の生成計画の全作業タスク完了後、親が成果物を今回の全体の完了条件と照合して、成果物完成を確認する。組み合わせた状態も独立レビューの対象に含める。
+9. 親が完成品とレビュー・検証結果を提示するか、後続処理へ必要な情報を引き継ぎ、`complete_session` で完了を記録して生成フローを終了する。依頼された後続処理は、親が選択した手段の手順で続行する。
 
 委任人数や並列実行、担当範囲の判断は[生成の方針](skills/artifact-workflow/references/generation.md)を参照してください。
 
-`T1`、`T2` などのタスクIDは、計画から生成・セルフレビュー・検証まで同じタスクを追跡するために使います。検証で条件を満たさない場合は、親が同じタスクIDで `artifact-worker` に修正と必要なセルフレビューを依頼し、返された実物を再検証します。
+`T1`、`T2` などのタスクIDは、計画から生成・セルフレビュー・独立レビュー・検証まで同じタスクを追跡するために使います。検証で条件を満たさない場合は、親が同じタスクIDで `artifact-worker` に修正と必要なセルフレビューを依頼し、影響部分の独立再レビューを経て実物を再検証します。
 
-### セルフレビューの共通原則
+### 共通原則と独立レビュー
 
 セルフレビューは、[成果物レビューの原理原則](skills/artifact-workflow/references/review-principles.md)に沿って作成者が実物を短く確認し、問題を修正する工程です。原則の定義を共通資料にまとめ、長いチェック表の記入は求めません。親による完了条件の検証は別に行います。
 
-将来レビュー専用エージェントを追加する際は、同じ原則と別資料の固有観点を組み合わせて確認する構成とします。現在のセルフレビューには共通原則を適用します。確認・修正・返却の手順と将来の責務分担は[セルフレビューの方針](skills/artifact-workflow/references/self-review.md)を参照してください。
+独立レビューでは、作業者と別の `artifact-reviewer` 1人が同じ5原則すべてと、親が選んだ0〜3個の特化観点を読み取り専用で確認します。共通原則は3個の上限に含めず、観点ごとにエージェントを増やしません。特化観点が該当しなくても共通原則による独立レビューを行います。
+
+初期の特化観点は[セキュリティ](skills/artifact-workflow/references/review-perspectives/security.md)のみです。[一覧と追加方法](skills/artifact-workflow/references/review-perspectives/index.md)に従い、コードやプレゼン資料などの観点を資料単位で拡張できます。
+
+すべての呼び出し・観点選択・指摘の採否・修正と再レビュー・相談へのエスカレーションは親が管理します。レビュワーは作業者の成果物を編集せず、指摘と相談依頼を親へ返します。セルフレビューと親の完了判定は継続します。入力・返却契約・利用不能時の扱いは[独立レビューの方針](skills/artifact-workflow/references/independent-review.md)、作業者の責務は[セルフレビューの方針](skills/artifact-workflow/references/self-review.md)を参照してください。
 
 ### タスク分解で守る二つの境界
 
-- **Task は成果物を作る作業単位**です。セルフレビュー、動作検証、完了条件の確認、全体検証はタスクを処理するフローとして実施し、独立した作業タスクにしません。
+- **Task は成果物を作る作業単位**です。セルフレビュー、独立レビュー、動作検証、完了条件の確認、全体検証はタスクを処理するフローとして実施し、独立した作業タスクにしません。
 - **後続処理は本 Plugin の責務外**です。Delivery は完成品と必要な情報を提示・引き渡して生成フローを終える境界です。後続処理の実行・検証・成功条件は、今回の計画や完了判定に含めません。本 Plugin の委任・承認・検証ルールも、後続処理には適用しません。
 
 デリバリー手段の例として Sites による公開があります。利用する手段は依頼に応じて選び、本 Plugin の必須依存にはしません。
@@ -136,7 +142,7 @@ Plugin のインストールにより、共通構造の `skills/` から Skill �
 
 ## Custom Agent の設定と登録
 
-親には現在のチャットで選択したモデルをそのまま使用します。`artifact-worker` のモデル名と推論強度は [com.openai/agents/artifact-worker.toml](com.openai/agents/artifact-worker.toml) の `model` と `model_reasoning_effort` だけで管理し、差し替え時も Skill の変更は不要です。
+親には現在のチャットで選択したモデルをそのまま使用します。生成担当のモデル名と推論強度は [artifact-worker.toml](com.openai/agents/artifact-worker.toml)、独立レビュワーの設定は [artifact-reviewer.toml](com.openai/agents/artifact-reviewer.toml) の `model` と `model_reasoning_effort` だけで管理し、差し替え時も Skill の変更は不要です。
 
 Agent Plugins の共通コンポーネントは Skill と MCP で、Custom Agent の登録方法は定義されていません。同梱した TOML は Codex の設定 `agents.<name>.config_file` で参照します。`com.openai/agents/` は本リポジトリで固有ファイルを整理する配置であり、このディレクトリから Custom Agent が自動登録されるわけではありません。
 
@@ -145,15 +151,18 @@ Agent Plugins の共通コンポーネントは Skill と MCP で、Custom Agent
 ```toml
 [agents.artifact-worker]
 config_file = "C:/path/to/matsu-artifact-delivery/plugins/artifact-workflow/com.openai/agents/artifact-worker.toml"
+
+[agents.artifact-reviewer]
+config_file = "C:/path/to/matsu-artifact-delivery/plugins/artifact-workflow/com.openai/agents/artifact-reviewer.toml"
 ```
 
 旧配置 `agents/artifact-worker.toml` を参照している場合は、上記の配置へ `config_file` を更新してください。
 
-Plugin のインストールだけでは、この参照設定は追加されません。登録後は新しいタスクで利用してください。複数人で実行する場合も同じ `artifact-worker` の役割定義を使います。本フローのタスク分解・計画提示・承認・計画変更・タスクと全体の完了判定・完成品の提示と引き渡しは親が担当し、これらの工程そのものは委任しません。`artifact-worker` は承認済みの担当範囲内で生成・修正・セルフレビューを行います。
+Plugin のインストールだけでは、この参照設定は追加されません。登録後は新しいタスクで利用してください。複数人で実行する場合も同じ `artifact-worker` の役割定義を使います。本フローのタスク分解・計画提示・承認・計画変更・タスクと全体の完了判定・完成品の提示と引き渡しは親が担当し、これらの工程そのものは委任しません。`artifact-worker` は承認済みの担当範囲内で生成・修正・セルフレビューを行います。`artifact-reviewer` は作業者の成果物を独立レビューして親へ返し、生成・修正や別の担当への直接依頼は行いません。
 
-親が任意の相談を検討するときは、[任意の相談の方針](skills/artifact-workflow/references/escalation.md)に従い、現在のタスクで利用可能な Skill 一覧から相談 Skill の本文を読んで明示的に依頼します。`expert-escalation` は通常のモデル向け一覧へ公開する設定のため、本 Workflow だけを指定した新規タスクでも発見できます。発見のための Python や Codex CLI の追加起動は不要です。候補なし・無効・読み込み不能なら相談を見送り、通常フローへ戻ります。子ワーカーは親識別子を添えて相談依頼と再開情報を親へ返し、直接起動しません。自律相談の最大3回、相談用の実行枠、利用不能・上限到達時の継続判断は、本 Workflow の親が管理します。相談 Plugin 自体にはこの上限を持たせません。
+親が任意の相談を検討するときは、[任意の相談の方針](skills/artifact-workflow/references/escalation.md)に従い、現在のタスクで利用可能な Skill 一覧から相談 Skill の本文を読んで明示的に依頼します。`expert-escalation` は通常のモデル向け一覧へ公開する設定のため、本 Workflow だけを指定した新規タスクでも発見できます。発見のための Python や Codex CLI の追加起動は不要です。候補なし・無効・読み込み不能なら相談を見送り、通常フローへ戻ります。子ワーカーとレビュワーは親識別子を添えて相談依頼と再開情報を親へ返し、直接起動しません。自律相談の最大3回、相談用の実行枠、利用不能・上限到達時の継続判断は、本 Workflow の親が管理します。相談 Plugin 自体にはこの上限を持たせません。
 
-相談役を生成ワーカーとは別に管理し、client の実行枠が共通なら相談用に1枠を予約します。既存の担当が全枠を使っている場合は、成果物と再開情報を回収し、枠の解放を確認してから交代します。相談不能や上限到達だけで全体を止めず、親が自力での継続・該当作業だけの停止・全体停止を判断します。特定の相談 Plugin やモデルを必須依存にせず、通常のセルフレビューと親の検証・完了判定を維持します。
+相談役を生成ワーカー・独立レビュワーとは別に管理し、client の実行枠が共通なら相談用に1枠を予約します。既存の担当が全枠を使っている場合は、成果物と再開情報を回収し、枠の解放を確認してから交代します。相談不能や上限到達だけで全体を止めず、親が自力での継続・該当作業だけの停止・全体停止を判断します。特定の相談 Plugin やモデルを必須依存にせず、通常のセルフレビュー・独立レビューと親の検証・完了判定を維持します。
 
 設定方法は、OpenAI 公式の [Custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents) と [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference) を参照してください。
 

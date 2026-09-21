@@ -6,7 +6,7 @@
 
 | Plugin | 目的 |
 | --- | --- |
-| [artifact-workflow](plugins/artifact-workflow/README.md) | 成果物を作る作業タスクを計画・承認し、生成・セルフレビュー・タスクと全体の検証を行う。完成品と検証結果を提示・引き渡してフローを終了し、後続処理の実行・検証は管理しない。 |
+| [artifact-workflow](plugins/artifact-workflow/README.md) | 成果物を作る作業タスクを計画・承認し、生成・セルフレビュー・独立レビュー・タスクと全体の検証を行う。完成品と検証結果を提示・引き渡してフローを終了し、後続処理の実行・検証は管理しない。 |
 | [expert-escalation](plugins/expert-escalation/README.md) | 親からの明示依頼で設計・セキュリティ・変更影響の論点を読み取り専用の相談役へ渡し、結果を返す。回数制限・実行枠・継続や停止の判断は呼び出し元の親が管理する。 |
 
 ## 共通規格への方針
