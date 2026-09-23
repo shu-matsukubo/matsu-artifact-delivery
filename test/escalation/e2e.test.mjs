@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readdir, unlink } from 'node:fs/promises';
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { assertReadOnly } from '../lib/contract-suite.mjs';
@@ -54,11 +54,4 @@ await test('EX-E02: Skill → advisor contract → both roles → result templat
     assert.ok(contract.includes(value), value);
     assert.ok(template.includes(value), value);
   }
-});
-
-await test('EX-E03: missing packaged advisor contract cannot be reported as a successful load', async (t) => {
-  const plugin = await stagePlugin(t, 'expert-escalation');
-  const root = plugin.skills.get('expert-escalation').root;
-  await unlink(join(root, 'references/advisor-contract.md'));
-  await assert.rejects(walkReferences(root), { code: 'ENOENT' });
 });

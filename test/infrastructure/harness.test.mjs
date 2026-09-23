@@ -54,6 +54,8 @@ await test('HAR-U04: local reference graph handles cycles and rejects broken fil
   await writeFile(join(root, 'SKILL.md'), '[child](child.md#section)\n[web](https://example.invalid)');
   await writeFile(join(root, 'child.md'), '# Section\n[parent](SKILL.md)');
   assert.deepEqual(await walkReferences(root), ['SKILL.md', 'child.md']);
+  await unlink(join(root, 'child.md'));
+  await assert.rejects(walkReferences(root), { code: 'ENOENT' });
   await writeFile(join(root, 'child.md'), '[missing](missing.md)');
   await assert.rejects(localLinks(root, 'child.md'), { code: 'ENOENT' });
   await writeFile(join(root, 'child.md'), '# Changed');
@@ -89,9 +91,13 @@ await test('HAR-U06: missing Skills, empty Agent instructions and lost read-only
     assert.throws(() => assertReadOnly(role));
   }
   const agentPath = join(plugin.root, 'com.openai/agents/escalation-advisor.toml');
+  const original = await read(agentPath);
+  await writeFile(agentPath, original.replace('enabled = false', 'enabled = true'));
+  const changed = await loadPlugin(plugin.root);
+  assert.throws(() => assertReadOnly(changed.agents.get('escalation-advisor')), /delegation/);
   await writeFile(
     agentPath,
-    (await read(agentPath)).replace(/developer_instructions = """[\s\S]*?"""/, 'developer_instructions = ""'),
+    original.replace(/developer_instructions = """[\s\S]*?"""/, 'developer_instructions = ""'),
   );
   await assert.rejects(loadPlugin(plugin.root), /Missing agent developer_instructions/);
   await unlink(join(plugin.root, 'skills/expert-escalation/SKILL.md'));

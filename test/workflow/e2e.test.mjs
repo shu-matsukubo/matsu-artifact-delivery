@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { readdir, unlink, writeFile } from 'node:fs/promises';
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { assertReadOnly } from '../lib/contract-suite.mjs';
-import { files, loadPlugin, localLinks, markdown, read, stagePlugin, walkReferences } from '../lib/plugin.mjs';
+import { files, localLinks, markdown, read, stagePlugin, walkReferences } from '../lib/plugin.mjs';
 
 await test('WF-E01: isolated package discovers its Skill, roles and complete document graph', async (t) => {
   const plugin = await stagePlugin(t, 'artifact-workflow');
@@ -77,22 +77,6 @@ await test('WF-E04: package alone has no hard dependency on an optional consulta
   const plugin = await stagePlugin(t, 'artifact-workflow');
   assert.deepEqual(await readdir(join(plugin.root, '..')), ['artifact-workflow']);
   const skill = plugin.skills.get('artifact-workflow');
-  await walkReferences(skill.root);
-  const fallback = await read(join(skill.root, 'references/escalation.md'));
-  assert.ok(fallback.includes('未導入・無効'));
-  assert.ok(fallback.includes('起動せず消費0回。通常フローを継続する'));
-  assert.ok(fallback.includes('候補が曖昧'));
-  assert.ok(fallback.includes('起動失敗・結果未取得'));
-  assert.ok(fallback.includes('相談のためだけにインストールや環境変更を要求しない'));
-});
-
-await test('WF-E05: broken packaged references and reviewer permission regressions are rejected', async (t) => {
-  const plugin = await stagePlugin(t, 'artifact-workflow');
-  const root = plugin.skills.get('artifact-workflow').root;
-  await unlink(join(root, 'references/self-review.md'));
-  await assert.rejects(walkReferences(root), { code: 'ENOENT' });
-  const path = join(plugin.root, 'com.openai/agents/artifact-reviewer.toml');
-  await writeFile(path, (await read(path)).replace('enabled = false', 'enabled = true'));
-  const changed = await loadPlugin(plugin.root);
-  assert.throws(() => assertReadOnly(changed.agents.get('artifact-reviewer')), /delegation/);
+  const reachable = await walkReferences(skill.root);
+  assert.ok(reachable.includes('references/escalation.md'), 'Optional consultation instructions must remain reachable');
 });

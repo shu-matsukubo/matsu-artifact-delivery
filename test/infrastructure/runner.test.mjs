@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { copyFile, mkdir, unlink, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { createPlan, executePlan, parseArguments } from '../../scripts/run-tests.mjs';
-import { environmentMatrix, suites, targetsFor, tests, validateTargets } from '../../scripts/test-targets.mjs';
-import { repository } from '../lib/plugin.mjs';
+import { selectTests } from '../../scripts/select-tests.mjs';
+import {
+  assertMcpTestRegistry,
+  environmentMatrix,
+  suites,
+  targetsFor,
+  tests,
+  validateTargets,
+} from '../../scripts/test-targets.mjs';
+import { files, repository, temporaryDirectory } from '../lib/plugin.mjs';
 
 await test('RUN-U01: CLI supports default, comma-separated and JSON targets without accepting typos', () => {
   assert.deepEqual(parseArguments(['unit']), { layer: 'unit', targets: suites, dryRun: false });
@@ -47,12 +55,12 @@ await test('RUN-U02: layer filters keep component unit tests and all selected E2
 });
 
 await test('RUN-U03: MCP unit and E2E registries cover every existing test exactly once', async () => {
-  const files = (await readdir(join(repository, 'plugins/artifact-workflow/test')))
+  const discovered = (await files(join(repository, 'plugins/artifact-workflow/test')))
     .filter((name) => name.endsWith('.test.ts'))
     .sort();
   const registered = [...tests.unit.mcp, ...tests.e2e.mcp];
   assert.equal(new Set(registered).size, registered.length);
-  assert.deepEqual(registered.sort(), files);
+  assert.deepEqual(registered.sort(), discovered);
   assert.deepEqual(tests.e2e.mcp, ['mcp.test.ts']);
   for (const layer of ['unit', 'e2e']) {
     const plan = createPlan(layer, ['mcp']);
@@ -122,4 +130,69 @@ await test('RUN-U06: runner CLI exposes its exact plan and refuses empty or inva
   assert.equal(plan.commands.length, 1);
   assert.throws(() => invoke('unit', '--targets', 'unknown'), { status: 1 });
   assert.throws(() => invoke('unit', '--targets', 'integration'), { status: 1 });
+});
+
+await test('RUN-U07: MCP preflight rejects unregistered, duplicate and missing files, including nested tests', async (t) => {
+  const directory = await temporaryDirectory(t);
+  await writeFile(join(directory, 'unit.test.ts'), '');
+  await writeFile(join(directory, 'e2e.test.ts'), '');
+  await writeFile(join(directory, 'helper.ts'), '');
+  const registry = { unit: { mcp: ['unit.test.ts'] }, e2e: { mcp: ['e2e.test.ts'] } };
+  assert.doesNotThrow(() => assertMcpTestRegistry(directory, registry));
+  assert.throws(
+    () => assertMcpTestRegistry(directory, { ...registry, e2e: { mcp: ['e2e.test.ts', 'unit.test.ts'] } }),
+    /Duplicate MCP registrations: unit\.test\.ts/,
+  );
+  assert.throws(
+    () => assertMcpTestRegistry(directory, { ...registry, unit: { mcp: ['unit.test.ts', 'absent.test.ts'] } }),
+    /Missing MCP test files: absent\.test\.ts/,
+  );
+  await unlink(join(directory, 'unit.test.ts'));
+  assert.throws(() => assertMcpTestRegistry(directory, registry), /Missing MCP test files: unit\.test\.ts/);
+  await writeFile(join(directory, 'unit.test.ts'), '');
+  await mkdir(join(directory, 'nested'));
+  await writeFile(join(directory, 'nested/new.test.ts'), '');
+  assert.throws(() => assertMcpTestRegistry(directory, registry), /Unregistered MCP tests: nested\/new\.test\.ts/);
+  assert.doesNotThrow(() =>
+    assertMcpTestRegistry(directory, { ...registry, unit: { mcp: ['unit.test.ts', 'nested/new.test.ts'] } }),
+  );
+});
+
+await test('RUN-U08: MCP-only CI fails before preparation when a new test is unregistered', async (t) => {
+  const root = await temporaryDirectory(t);
+  await mkdir(join(root, 'scripts'));
+  for (const file of ['run-tests.mjs', 'test-targets.mjs'])
+    await copyFile(join(repository, 'scripts', file), join(root, 'scripts', file));
+  const directory = join(root, 'plugins/artifact-workflow/test');
+  await mkdir(directory, { recursive: true });
+  for (const file of [...tests.unit.mcp, ...tests.e2e.mcp]) {
+    await mkdir(dirname(join(directory, file)), { recursive: true });
+    await writeFile(join(directory, file), '');
+  }
+  const invoke = (...args) =>
+    execFileSync(process.execPath, [join(root, 'scripts/run-tests.mjs'), ...args], {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  assert.equal(JSON.parse(invoke('unit', '--targets', 'mcp', '--dry-run')).batches[0].layer, 'unit');
+  const newTest = 'plugins/artifact-workflow/test/unregistered.test.ts';
+  await writeFile(join(root, newTest), 'throw new Error("This test must not be silently omitted");');
+  const selected = selectTests([newTest]).selected;
+  assert.deepEqual(selected, ['mcp']);
+  for (const layer of ['unit', 'e2e', 'all']) {
+    assert.throws(
+      () => invoke(layer, '--targets-json', JSON.stringify(selected)),
+      (error) => {
+        assert.equal(error.status, 1);
+        assert.match(error.stderr, /Unregistered MCP tests: unregistered\.test\.ts/);
+        assert.doesNotMatch(error.stdout, /\[MCP/);
+        return true;
+      },
+    );
+  }
+  assert.throws(() => invoke('unit', '--targets', 'mcp', '--dry-run'), { status: 1 });
+  assert.deepEqual(JSON.parse(invoke('unit', '--targets', 'workflow', '--dry-run')).batches, [
+    { layer: 'unit', targets: ['workflow'] },
+  ]);
 });

@@ -1,3 +1,6 @@
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
 export const suites = ['mcp', 'workflow', 'escalation', 'integration', 'infrastructure'];
 export const layers = ['unit', 'e2e'];
 
@@ -56,4 +59,26 @@ export function environmentMatrix(targets) {
     }
   }
   return { include };
+}
+
+function mcpTestFiles(directory, prefix = '') {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const relative = `${prefix}${entry.name}`;
+    if (entry.isDirectory()) return mcpTestFiles(join(directory, entry.name), `${relative}/`);
+    return entry.name.endsWith('.test.ts') ? [relative] : [];
+  });
+}
+
+export function assertMcpTestRegistry(directory, registry = tests) {
+  const discovered = mcpTestFiles(directory);
+  const registered = layers.flatMap((layer) => registry[layer].mcp);
+  const unregistered = discovered.filter((file) => !registered.includes(file)).sort();
+  const missing = registered.filter((file) => !discovered.includes(file)).sort();
+  const duplicates = [...new Set(registered.filter((file, index) => registered.indexOf(file) !== index))].sort();
+  const problems = [];
+  if (unregistered.length) problems.push(`Unregistered MCP tests: ${unregistered.join(', ')}`);
+  if (missing.length) problems.push(`Missing MCP test files: ${missing.join(', ')}`);
+  if (duplicates.length) problems.push(`Duplicate MCP registrations: ${duplicates.join(', ')}`);
+  if (problems.length)
+    throw new Error(`${problems.join('\n')}\nRegister each MCP .test.ts exactly once in scripts/test-targets.mjs.`);
 }

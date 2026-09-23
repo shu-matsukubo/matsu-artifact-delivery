@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { layers, suites, targetsFor, tests, validateTargets } from './test-targets.mjs';
+import { assertMcpTestRegistry, layers, suites, targetsFor, tests, validateTargets } from './test-targets.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const mcpRoot = resolve(root, 'plugins/artifact-workflow');
@@ -38,6 +38,8 @@ export function createPlan(layer, targets) {
   if (!batches.length) throw new Error(`No ${layer} tests for selected targets`);
   const commands = [];
   if (targets.includes('mcp')) {
+    // This preflight also runs for MCP-only CI, where infrastructure tests are not selected.
+    assertMcpTestRegistry(resolve(mcpRoot, 'test'));
     // Verify the committed distribution before running it; never rebuild it here.
     commands.push(
       { label: 'MCP distribution', cwd: mcpRoot, args: ['scripts/build.mjs', '--check'] },
