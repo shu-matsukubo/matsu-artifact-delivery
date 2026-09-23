@@ -19,8 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      mcp: ${{ steps.select.outputs.mcp }}
-      suites: ${{ steps.select.outputs.suites }}
+      unit_targets: ${{ steps.select.outputs.unit_targets }}
+      e2e_targets: ${{ steps.select.outputs.e2e_targets }}
+      matrix: ${{ steps.select.outputs.matrix }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -33,21 +34,22 @@ jobs:
         id: select
         run: node scripts/select-tests.mjs
 
-  mcp:
-    name: MCP / ${{ matrix.os }} / Node ${{ matrix.node }}
+  unit:
+    name: Unit / ${{ matrix.os }} / Node ${{ matrix.node }}
     needs: [changes]
-    # Detection failures must never silently skip the heavy matrix.
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.mcp != 'false') }}
+    # Missing classification runs all targets; the quality gate still reports the failure.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.unit_targets != '[]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        node: ['22.19.0', '24']
+      matrix: ${{ fromJSON(needs.changes.result == 'success' && needs.changes.outputs.matrix || '{"include":[{"os":"ubuntu-latest","node":"22.19.0","primary":true},{"os":"ubuntu-latest","node":"24","primary":false},{"os":"windows-latest","node":"22.19.0","primary":false},{"os":"windows-latest","node":"24","primary":false},{"os":"macos-latest","node":"22.19.0","primary":false},{"os":"macos-latest","node":"24","primary":false}]}') }}
+    env:
+      # Skills run once; the other five environments validate MCP only.
+      TEST_TARGETS: ${{ matrix.primary && (needs.changes.result == 'success' && needs.changes.outputs.unit_targets || '["mcp","workflow","escalation","infrastructure"]') || '["mcp"]' }}
     defaults:
       run:
-        working-directory: plugins/artifact-workflow
+        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
@@ -56,48 +58,69 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-          cache-dependency-path: plugins/artifact-workflow/package-lock.json
-      - run: npm ci
-      - name: Check types
-        run: npm run check
-      - name: Lint
-        run: npm run lint
-      - name: Check formatting
+          cache-dependency-path: |
+            package-lock.json
+            plugins/artifact-workflow/package-lock.json
+      - name: Install Skill and test infrastructure dependencies
+        if: env.TEST_TARGETS != '["mcp"]'
+        run: npm ci --ignore-scripts
+      - name: Install MCP dependencies
+        if: contains(fromJSON(env.TEST_TARGETS), 'mcp')
+        run: npm --prefix plugins/artifact-workflow ci
+      - name: Check test infrastructure formatting
+        if: contains(fromJSON(env.TEST_TARGETS), 'infrastructure')
         run: npm run format:check
-      - name: Verify shipped artifacts and run unit, integration and MCP E2E tests
-        run: npm test
+      - name: Check MCP types
+        if: contains(fromJSON(env.TEST_TARGETS), 'mcp')
+        run: npm --prefix plugins/artifact-workflow run check
+      - name: Lint MCP
+        if: contains(fromJSON(env.TEST_TARGETS), 'mcp')
+        run: npm --prefix plugins/artifact-workflow run lint
+      - name: Check MCP formatting
+        if: contains(fromJSON(env.TEST_TARGETS), 'mcp')
+        run: npm --prefix plugins/artifact-workflow run format:check
+      - name: Run selected Unit tests
+        run: npm run test:unit -- --targets-json "$TEST_TARGETS"
 
-  contracts:
-    name: Contracts / ${{ matrix.suite }}
+  e2e:
+    name: E2E / ${{ matrix.os }} / Node ${{ matrix.node }}
     needs: [changes]
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.suites != '[]') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Missing classification runs all targets; the quality gate still reports the failure.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.e2e_targets != '[]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
-      matrix:
-        suite: ${{ fromJSON(needs.changes.outputs.suites || '["workflow","escalation","integration","infrastructure"]') }}
+      matrix: ${{ fromJSON(needs.changes.result == 'success' && needs.changes.outputs.matrix || '{"include":[{"os":"ubuntu-latest","node":"22.19.0","primary":true},{"os":"ubuntu-latest","node":"24","primary":false},{"os":"windows-latest","node":"22.19.0","primary":false},{"os":"windows-latest","node":"24","primary":false},{"os":"macos-latest","node":"22.19.0","primary":false},{"os":"macos-latest","node":"24","primary":false}]}') }}
+    env:
+      # Skills run once; the other five environments validate MCP only.
+      TEST_TARGETS: ${{ matrix.primary && (needs.changes.result == 'success' && needs.changes.outputs.e2e_targets || '["mcp","workflow","escalation","integration"]') || '["mcp"]' }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
-          node-version: '22.19.0'
+          node-version: ${{ matrix.node }}
           cache: npm
-          cache-dependency-path: package-lock.json
-      - run: npm ci --ignore-scripts
-      - name: Check test infrastructure formatting
-        if: matrix.suite == 'infrastructure'
-        run: npm run format:check
-      - name: Run selected unit and configuration E2E tests
-        env:
-          TEST_SUITE: ${{ matrix.suite }}
-        run: npm run "test:$TEST_SUITE"
+          cache-dependency-path: |
+            package-lock.json
+            plugins/artifact-workflow/package-lock.json
+      - name: Install Skill and test infrastructure dependencies
+        if: env.TEST_TARGETS != '["mcp"]'
+        run: npm ci --ignore-scripts
+      - name: Install MCP dependencies
+        if: contains(fromJSON(env.TEST_TARGETS), 'mcp')
+        run: npm --prefix plugins/artifact-workflow ci
+      - name: Run selected E2E tests
+        run: npm run test:e2e -- --targets-json "$TEST_TARGETS"
 
   required:
     name: Quality gate
-    needs: [changes, mcp, contracts]
+    needs: [changes, unit, e2e]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -108,7 +131,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22.19.0'
-      - name: Require successful results for every selected suite
+      - name: Require successful results for every selected test layer
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
         run: node scripts/check-ci.mjs

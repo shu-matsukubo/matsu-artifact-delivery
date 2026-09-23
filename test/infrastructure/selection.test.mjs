@@ -85,8 +85,22 @@ await test('CI-U03: combined changes union dependencies; outputs contain only kn
   assert.deepEqual(selectTests([cases[0][0], cases[0][0]]).selected, workflow);
   assert.equal(
     formatOutputs(selectTests([cases[0][0]])),
-    'mcp=false\nworkflow=true\nescalation=false\nintegration=true\ninfrastructure=false\nsuites=["workflow","integration"]\n',
+    'unit_targets=["workflow"]\ne2e_targets=["workflow","integration"]\nmatrix={"include":[{"os":"ubuntu-latest","node":"22.19.0","primary":true}]}\n',
   );
+  const outputs = (selected) =>
+    Object.fromEntries(
+      formatOutputs({ selected })
+        .trim()
+        .split('\n')
+        .map((line) => line.split('=')),
+    );
+  assert.deepEqual(JSON.parse(outputs(['infrastructure']).unit_targets), ['infrastructure']);
+  assert.deepEqual(JSON.parse(outputs(['infrastructure']).e2e_targets), []);
+  assert.deepEqual(JSON.parse(outputs(['integration']).unit_targets), []);
+  assert.deepEqual(JSON.parse(outputs(['integration']).e2e_targets), ['integration']);
+  assert.deepEqual(JSON.parse(outputs(suites).unit_targets), ['mcp', 'workflow', 'escalation', 'infrastructure']);
+  assert.deepEqual(JSON.parse(outputs(suites).e2e_targets), ['mcp', 'workflow', 'escalation', 'integration']);
+  assert.equal(JSON.parse(outputs(['mcp']).matrix).include.length, 6);
   assert.deepEqual(allTests('manual'), { selected: suites, reason: 'manual' });
 });
 

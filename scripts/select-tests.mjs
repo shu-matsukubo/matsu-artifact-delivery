@@ -3,7 +3,9 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const suites = ['mcp', 'workflow', 'escalation', 'integration', 'infrastructure'];
+import { environmentMatrix, suites, targetsFor } from './test-targets.mjs';
+
+export { suites } from './test-targets.mjs';
 
 const workflow = ['workflow', 'integration'];
 const escalation = ['escalation', 'integration'];
@@ -86,7 +88,14 @@ export function selectEvent(eventName, event, cwd = process.cwd()) {
 }
 
 export function formatOutputs(selection) {
-  return `${suites.map((suite) => `${suite}=${selection.selected.includes(suite)}`).join('\n')}\nsuites=${JSON.stringify(selection.selected.filter((suite) => suite !== 'mcp'))}\n`;
+  const outputs = {
+    unit_targets: JSON.stringify(targetsFor('unit', selection.selected)),
+    e2e_targets: JSON.stringify(targetsFor('e2e', selection.selected)),
+    matrix: JSON.stringify(environmentMatrix(selection.selected)),
+  };
+  return Object.entries(outputs)
+    .map(([name, value]) => `${name}=${value}\n`)
+    .join('');
 }
 
 export function main(args = process.argv.slice(2), env = process.env) {

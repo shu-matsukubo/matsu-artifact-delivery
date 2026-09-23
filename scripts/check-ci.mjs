@@ -1,32 +1,24 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { suites } from './select-tests.mjs';
+import { layers, suites, targetsFor } from './test-targets.mjs';
 
 export function checkResults(needs) {
   const errors = [];
-  if (needs.changes?.result !== 'success') errors.push('Change detection did not succeed');
-  const outputs = needs.changes?.outputs ?? {};
-  if (!['true', 'false'].includes(outputs.mcp)) errors.push('Missing MCP selection');
-  let selected;
-  try {
-    selected = JSON.parse(outputs.suites);
-    if (
-      !Array.isArray(selected) ||
-      selected.some((suite) => !suites.includes(suite) || suite === 'mcp') ||
-      new Set(selected).size !== selected.length
-    )
-      throw new Error('Invalid suites');
-  } catch {
-    errors.push('Missing or invalid suite selection');
-    selected = suites.filter((suite) => suite !== 'mcp');
-  }
-  for (const [job, required] of [
-    ['mcp', outputs.mcp !== 'false'],
-    ['contracts', selected.length > 0],
-  ]) {
+  if (needs?.changes?.result !== 'success') errors.push('Change detection did not succeed');
+  const outputs = needs?.changes?.outputs ?? {};
+  for (const layer of layers) {
+    let selected;
+    try {
+      selected = JSON.parse(outputs[`${layer}_targets`]);
+      if (targetsFor(layer, selected).length !== selected.length) throw new Error('Wrong test layer');
+    } catch {
+      errors.push(`Missing or invalid ${layer} target selection`);
+      selected = targetsFor(layer, suites);
+    }
+    const required = selected.length > 0;
     const accepted = required ? ['success'] : ['success', 'skipped'];
-    if (!accepted.includes(needs[job]?.result))
-      errors.push(`${job}: ${needs[job]?.result ?? 'missing'}${required ? ' (required)' : ''}`);
+    if (!accepted.includes(needs?.[layer]?.result))
+      errors.push(`${layer}: ${needs?.[layer]?.result ?? 'missing'}${required ? ' (required)' : ''}`);
   }
   return errors;
 }

@@ -1,6 +1,6 @@
 # 試験と差分 CI
 
-Issue #19 の品質基盤。実装・設定・自然言語の契約をコンポーネント単位で検証し、変更した領域とその依存先だけを CI で実行する。
+Issue #19 の品質基盤。実装・設定・自然言語の契約をコンポーネント単位で検証し、変更した領域とその依存先だけを CI で実行する。試験ジョブの種類は **単体（Unit）** と **E2E** の 2 つとし、差分から選んだ対象を共通コマンドへ引数で渡す。
 
 ## 実行方法
 
@@ -13,8 +13,19 @@ npm ci --ignore-scripts
 # MCP の依存（全試験または MCP 試験の場合）
 npm --prefix plugins/artifact-workflow ci
 
-# すべての単体・静的検証・構成E2E・既存MCP試験
+# すべての単体・E2E
 npm test
+
+# 対象を指定しなければ、その層の全試験（MCP を含む）
+npm run test:unit
+npm run test:e2e
+
+# コンポーネントを指定する。CI も同じコマンドを使う
+npm run test:unit -- --targets workflow,mcp
+npm run test:e2e -- --targets workflow,integration
+
+# 実行せず、対象と実行コマンドを確認する
+npm run test:unit -- --targets workflow --dry-run
 
 # CI と同じコード品質チェック
 npm run format:check
@@ -23,37 +34,65 @@ npm --prefix plugins/artifact-workflow run lint
 npm --prefix plugins/artifact-workflow run format:check
 ```
 
-| コマンド                                               | 対象                                                             |
-| ------------------------------------------------------ | ---------------------------------------------------------------- |
-| `npm run test:workflow`                                | Workflow の単体・構成 E2E。MCP プロセスは起動しない              |
-| `npm run test:workflow:unit` / `test:workflow:e2e`     | 上記を個別実行                                                   |
-| `npm run test:escalation`                              | Escalation の単体・構成 E2E                                      |
-| `npm run test:escalation:unit` / `test:escalation:e2e` | 上記を個別実行                                                   |
-| `npm run test:integration`                             | Workflow と任意の Escalation の連携契約                          |
-| `npm run test:infrastructure`                          | 差分判定、集約チェック、検証器、共通カタログ・登録・ドキュメント |
-| `npm run test:contracts`                               | MCP 以外の全試験                                                 |
-| `npm run test:unit` / `test:e2e`                       | MCP 以外を試験層別に実行                                         |
-| `npm run test:mcp`                                     | 既存の配布物一致チェック・単体・統合・実 MCP E2E                 |
+引数は `--targets` にカンマ区切り、または `--targets-json` に JSON 配列を渡す。CI は差分判定の JSON を環境変数に入れ、`npm run test:unit -- --targets-json "$TEST_TARGETS"` のように引用して渡す。未知・重複・空の対象、不正な引数、指定した層に試験がない組み合わせは失敗にする。手動で `--targets` を指定したときは依存先を自動追加しない。必要なら `workflow,integration` のように明示する。
+
+| 対象名           | 単体の枠                                               | E2E の枠                                |
+| ---------------- | ------------------------------------------------------ | --------------------------------------- |
+| `mcp`            | MCP ロジック、保存のコンポーネント統合、ビルド検証     | 配布済み MCP の実プロセス・stdio 通信   |
+| `workflow`       | Workflow の Skill・Agent・manifest 契約                | Workflow の単独配布・参照グラフ         |
+| `escalation`     | Escalation の Skill・Agent・manifest 契約              | Escalation の単独配布・参照グラフ       |
+| `integration`    | なし                                                   | Workflow と任意の Escalation の連携契約 |
+| `infrastructure` | 差分判定、実行コマンド、集約チェック、共通検証器・構成 | なし                                    |
+
+連携 E2E も同じ E2E ジョブに含める。MCP を選んだ場合は、どちらの層でも配布物の一致確認・古いテスト出力の削除・TypeScript コンパイルを行ってから該当層の試験を起動する。`npm test` ではこの準備を一度だけ行う。
+
+既存のコンポーネント別コマンドも利用できる。
+
+| コマンド                                               | 対象                                                   |
+| ------------------------------------------------------ | ------------------------------------------------------ |
+| `npm run test:workflow`                                | Workflow の単体・構成 E2E。MCP プロセスは起動しない    |
+| `npm run test:workflow:unit` / `test:workflow:e2e`     | 上記を個別実行                                         |
+| `npm run test:escalation`                              | Escalation の単体・構成 E2E                            |
+| `npm run test:escalation:unit` / `test:escalation:e2e` | 上記を個別実行                                         |
+| `npm run test:integration`                             | Workflow と任意の Escalation の連携契約                |
+| `npm run test:infrastructure`                          | 差分判定、実行コマンド、集約チェック、検証器、共通構成 |
+| `npm run test:contracts`                               | MCP 以外の全試験                                       |
+| `npm run test:mcp`                                     | MCP の単体・E2E                                        |
+| `npm run test:mcp:unit` / `test:mcp:e2e`               | 上記を個別実行                                         |
 
 ## CI の選択
 
 [Actions 定義](../.github/workflows/artifact-workflow-ci.yml)は全 PR と `main` push で差分を分類する。`workflow_dispatch` は差分にかかわらず全試験を実行する。PR では base と head の merge-base からの差分、push では before と after の差分を使う。
 
-| 変更対象                                                                                                    | 実行する suite                                                 |
-| ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Workflow の `skills/`・`com.openai/`、`test/workflow/`                                                      | `workflow`（単体＋構成 E2E）と `integration`（連携 E2E）       |
-| MCP の `mcp/`・`test/`、TypeScript / lint / format 設定                                                     | `mcp`                                                          |
-| Workflow の manifest・MCP 設定・package / lockfile・ビルドスクリプト                                        | `mcp`、`workflow`、`integration`。配布 metadata への影響も検証 |
-| Escalation の既存構成・`skills/`・Agent 定義、`test/escalation/`                                            | `escalation`（単体＋構成 E2E）と `integration`                 |
-| `test/integration/`                                                                                         | `integration`                                                  |
-| 各 Plugin の README / LICENSE                                                                               | その Plugin と連携 E2E                                         |
-| ルート README・この試験ガイド                                                                               | `infrastructure`                                               |
-| CI、判定スクリプト、共通テスト helper、ルート package / lockfile、marketplace、Agent 登録、その他の共通設定 | 全 suite                                                       |
-| 未知のパス・新しい Plugin / 実装領域、差分なし、イベント不正、Git 履歴不足・取得失敗                        | 全 suite にフォールバック                                      |
+| 変更対象                                                                                                          | 選択する対象                                                   |
+| ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Workflow の `skills/`・`com.openai/`、`test/workflow/`                                                            | `workflow` と `integration`                                    |
+| MCP の `mcp/`・`test/`、TypeScript / lint / format 設定                                                           | `mcp`                                                          |
+| Workflow の manifest・MCP 設定・package / lockfile・ビルドスクリプト                                              | `mcp`、`workflow`、`integration`。配布 metadata への影響も検証 |
+| Escalation の既存構成・`skills/`・Agent 定義、`test/escalation/`                                                  | `escalation` と `integration`                                  |
+| `test/integration/`                                                                                               | `integration`                                                  |
+| 各 Plugin の README / LICENSE                                                                                     | その Plugin と連携 E2E                                         |
+| ルート README・この試験ガイド                                                                                     | `infrastructure`                                               |
+| CI、判定・実行スクリプト、共通テスト helper、ルート package / lockfile、marketplace、Agent 登録、その他の共通設定 | 全対象                                                         |
+| 未知のパス・新しい Plugin / 実装領域、差分なし、イベント不正、Git 履歴不足・取得失敗                              | 全対象にフォールバック                                         |
 
 複数領域の変更は和集合にする。rename は旧・新の両パス、削除は旧パスを含む。完全な Git diff を NUL 区切りで取得し、300 ファイル等の API / paths filter の打ち切りに依存しない。ファイル名をシェルコードへ展開しない。
 
-たとえば Workflow の Skill だけを修正した PR では `workflow` と `integration` を実行し、MCP マトリクスと Escalation 単体・構成 E2E はスキップする。MCP の試験だけは従来の Linux / Windows / macOS × Node.js 22.19.0 / 24 を維持する。自然言語契約の試験は Linux / Node.js 22.19.0 で決定的に実行する。
+差分判定の出力は `unit_targets`、`e2e_targets` と環境の `matrix`。GitHub Actions の [JSON 出力による matrix](https://docs.github.com/en/actions/reference/workflows-and-actions/expressions#example-returning-a-json-object)を使って次のように実行する。
+
+| PR の変更例              | 単体に渡す対象                           | E2E に渡す対象                        | 環境                                |
+| ------------------------ | ---------------------------------------- | ------------------------------------- | ----------------------------------- |
+| Workflow の Skill だけ   | `workflow`                               | `workflow,integration`                | 各 1 環境                           |
+| Escalation の Skill だけ | `escalation`                             | `escalation,integration`              | 各 1 環境                           |
+| MCP のソースだけ         | `mcp`                                    | `mcp`                                 | 各 6 環境                           |
+| Workflow の Skill と MCP | `mcp,workflow`                           | `mcp,workflow,integration`            | 各 6 環境。追加 5 環境は `mcp` のみ |
+| 連携 E2E だけ            | なし（スキップ）                         | `integration`                         | E2E の 1 環境                       |
+| この試験ガイドだけ       | `infrastructure`                         | なし（スキップ）                      | 単体の 1 環境                       |
+| CI・共通基盤             | `mcp,workflow,escalation,infrastructure` | `mcp,workflow,escalation,integration` | 各 6 環境。追加 5 環境は `mcp` のみ |
+
+基準の Linux / Node.js 22.19.0 で選択した全対象をまとめて実行する。MCP を含むときは Linux / Windows / macOS × Node.js 22.19.0 / 24 の 6 環境を単体・E2E の両方で維持し、追加 5 環境では MCP のみ実行する。Skills や連携の構成 E2E は基準環境だけで実行する。対象のない層のジョブはスキップする。
+
+試験ジョブの種類は 2 つだが、MCP 変更時には `Unit / OS / Node` と `E2E / OS / Node` が各 6 件並ぶ。別途、差分判定と集約のジョブがある。**CI 自体を変更する PR は引き続き全対象を実行する**。PR の判定は最新コミットだけでなく PR 全体の差分なので、同じ PR に Skill の変更を追加しても CI 基盤の差分が残る間は全対象になる。
 
 ```sh
 # CI の選択内容を変更前に確認する
@@ -61,7 +100,7 @@ npm run ci:select -- --files plugins/artifact-workflow/skills/artifact-workflow/
 npm run ci:select -- --all
 ```
 
-必須チェックに設定する名前は **Quality gate**。分類と選択した全 job の成功を要求し、必要な job の failure / cancelled / skipped を成功にしない。対象外の job の skipped は許容する。判定 job 自体が失敗した場合も各 suite は広い側へ実行を試み、集約チェックは失敗する。ブランチ保護の設定はリポジトリ管理者がこの名前を登録する。動的な matrix の個別 job をすべて必須にすると、対象外の変更を待ち続ける構成になるため避ける。
+必須チェックに設定する名前は **Quality gate**。分類と選択した全ジョブの成功を要求し、必要なジョブの failure / cancelled / skipped を成功にしない。対象外の層の skipped は許容する。判定ジョブ自体が失敗した場合も両層は全対象・全環境で実行を試み、集約チェックは失敗する。ブランチ保護の設定はリポジトリ管理者がこの名前を登録する。動的な matrix の個別ジョブをすべて必須にすると、対象外の変更を待ち続ける構成になるため避ける。
 
 ## 単体試験の観点
 
@@ -84,12 +123,13 @@ npm run ci:select -- --all
 | EX-U08 / EX-U09 / EX-U10 | 両相談役の責務と禁止事項、Workflow / MCP への必須依存なし                                              | Escalation 契約一覧、Escalation unit                                                        |
 | CI-U01〜CI-U08           | パス対応、未知・共通変更、和集合、イベント不正、merge-base、rename・削除、300 件超・Unicode、CLI 出力  | [差分判定試験](../test/infrastructure/selection.test.mjs)                                   |
 | CI-U09〜CI-U11           | 必須 job の集約判定、CLI 終了コード、Actions と npm コマンドの配線                                     | [CI 試験](../test/infrastructure/ci.test.mjs)                                               |
+| RUN-U01〜RUN-U06         | 引数の検証、層別実行、MCP 試験の分類漏れ・重複、環境選択、子プロセスの失敗伝搬、dry-run                | [実行コマンドの単体試験](../test/infrastructure/runner.test.mjs)                            |
 | HAR-U01〜HAR-U08         | YAML / TOML / Markdown、相対パス、参照循環・切断、metadata 不整合、権限制約、契約欠落・順序変更を拒否  | [検証器の単体試験](../test/infrastructure/harness.test.mjs)                                 |
 | PKG-U01〜PKG-U04         | marketplace、全 Agent 登録、README の参照、試験 ID とガイドの対応                                      | [共通構成試験](../test/infrastructure/package.test.mjs)                                     |
 
 ### 既存 MCP の対応表
 
-既存の試験名とファイル名を識別子として維持する。MCP 実装・ビルドスクリプトの単体・統合試験と、配布実行ファイルの E2E は [既存 test/](../plugins/artifact-workflow/test/) に残す。
+既存の試験名とファイル名を識別子として維持する。MCP 実装・ビルドスクリプトの単体・統合試験と、配布実行ファイルの E2E は [既存 test/](../plugins/artifact-workflow/test/) に残す。`mcp.test.ts` を E2E、それ以外を単体の枠に登録し、[対象一覧](../scripts/test-targets.mjs)で各ファイルが一度だけ選ばれることを検証する。
 
 | 対象実装                                       | 試験ファイル                                           | 主な確認                                                      |
 | ---------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------- |
@@ -130,5 +170,5 @@ npm run ci:select -- --all
 1. 該当コンポーネントの契約一覧に ID・観点・対象を追加する。文言の意図的な変更では旧契約の削除理由もレビューする。
 2. metadata・権限・参照は構文解析と実ファイルで検証する。参照を追加したら配布グラフ E2E でも到達を確認する。
 3. 実装コード・検証器・差分判定を追加したら正常系と失敗系の単体試験を追加する。新パスの CI 分類を [select-tests.mjs](../scripts/select-tests.mjs) とその試験で固定する。
-4. この対応表を更新し、該当 suite と連携 E2E を実行する。共通基盤の変更では `npm test` と各品質チェックを実行する。
+4. 新しい MCP 試験は [対象一覧](../scripts/test-targets.mjs)で単体または E2E に登録する。この対応表を更新し、該当対象と連携 E2E を実行する。共通基盤の変更では `npm test` と各品質チェックを実行する。
 5. 全体 RV ではこれらの再現可能な試験結果を基礎にし、自然言語の意味・実モデルの遵守・未確認環境は別途レビューする。Issue #19 では全体 RV 自体は実施しない。
