@@ -14,15 +14,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  changes:
+    name: Select affected checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mcp: ${{ steps.select.outputs.mcp }}
+      suites: ${{ steps.select.outputs.suites }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.19.0'
+      - name: Classify the complete Git diff
+        id: select
+        run: node scripts/select-tests.mjs
+
+  mcp:
     name: MCP / ${{ matrix.os }} / Node ${{ matrix.node }}
+    needs: [changes]
+    # Detection failures must never silently skip the heavy matrix.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.mcp != 'false') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node: ["22.19.0", "24"]
+        node: ['22.19.0', '24']
     defaults:
       run:
         working-directory: plugins/artifact-workflow
@@ -42,5 +64,51 @@ jobs:
         run: npm run lint
       - name: Check formatting
         run: npm run format:check
-      - name: Verify shipped artifacts and run tests
+      - name: Verify shipped artifacts and run unit, integration and MCP E2E tests
         run: npm test
+
+  contracts:
+    name: Contracts / ${{ matrix.suite }}
+    needs: [changes]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.suites != '[]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.changes.outputs.suites || '["workflow","escalation","integration","infrastructure"]') }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.19.0'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --ignore-scripts
+      - name: Check test infrastructure formatting
+        if: matrix.suite == 'infrastructure'
+        run: npm run format:check
+      - name: Run selected unit and configuration E2E tests
+        env:
+          TEST_SUITE: ${{ matrix.suite }}
+        run: npm run "test:$TEST_SUITE"
+
+  required:
+    name: Quality gate
+    needs: [changes, mcp, contracts]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.19.0'
+      - name: Require successful results for every selected suite
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/check-ci.mjs

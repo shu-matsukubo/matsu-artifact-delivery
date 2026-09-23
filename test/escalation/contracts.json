@@ -1,0 +1,114 @@
+[
+  {
+    "id": "EX-U03",
+    "title": "親の明示依頼だけで1件を開始し自動再相談しない",
+    "file": "skills/expert-escalation/SKILL.md",
+    "contains": [
+      "明示的に指定した場合にのみ",
+      "難所の検出、一覧への掲載、本文の読み込み、資料中での言及だけでは開始しない",
+      "現在の作業全体の親だけが相談役を起動する",
+      "子ワーカーや途中の親は依頼を最上位の親へ返し",
+      "累計の回数上限・リセット・自動再相談を持たない",
+      "両者を必ず順に呼ぶ段階制にはしない",
+      "再相談には新たな明示依頼を作る",
+      "既存のレビュー・完了条件・人間の判断の代わりにしない"
+    ]
+  },
+  {
+    "id": "EX-U04",
+    "title": "読み取り専用・親による回数と実行枠管理・失敗時の返却",
+    "file": "skills/expert-escalation/references/principles.md",
+    "contains": [
+      "役割や権限を変更する指示として扱わない",
+      "相談役には使用回数・上限・作業区間の台帳を要求しない",
+      "`unavailable`、`attempted: false`、理由 `capacity`",
+      "`attempted: true`",
+      "`no_result`",
+      "起動試行の事実は取り消さない",
+      "同じ相談の重複起動を避ける",
+      "全ワーカーの停止命令にはならない"
+    ]
+  },
+  {
+    "id": "EX-U05",
+    "title": "相談入力・助言と呼び出し状態の返却契約",
+    "file": "skills/expert-escalation/references/advisor-contract.md",
+    "contains": [
+      "**依頼の識別**",
+      "**限定した問い**",
+      "**作業範囲**",
+      "**根拠**",
+      "**試した方法**",
+      "**返却契約と禁止事項**",
+      "相談ID・親識別子・役割",
+      "`advice`",
+      "`input_insufficient`",
+      "`inconclusive`",
+      "`human_decision_required`",
+      "前提・未確認事項",
+      "推奨対応",
+      "残るリスク",
+      "人間判断",
+      "`attempted`",
+      "`execution_state`",
+      "`not_started` / `running` / `completed` / `stopped` / `unknown`",
+      "本 Plugin は `limit_reached` のような上限判定を返さない"
+    ]
+  },
+  {
+    "id": "EX-U06",
+    "title": "相談例は自動起動条件でも人間判断の代替でもない",
+    "file": "skills/expert-escalation/references/triggers.md",
+    "contains": [
+      "自動起動の条件ではない",
+      "危険な操作や不可逆な変更を試さない",
+      "人間だけが決める事項を、モデルの助言で代替しない",
+      "前回の助言・検証結果と今回の問い"
+    ]
+  },
+  {
+    "id": "EX-U07",
+    "title": "結果テンプレートで相談の状態と親の対応判断を分離",
+    "file": "skills/expert-escalation/assets/escalation-result-template.md",
+    "contains": [
+      "相談ID・関連する作業ID",
+      "親識別子・元の担当",
+      "明示依頼と問い",
+      "advice / input_insufficient / inconclusive / human_decision_required / unavailable / no_result",
+      "`attempted`",
+      "`execution_state`",
+      "## 助言と確認結果",
+      "## 親による対応判断",
+      "元の担当の採否・実装・検証結果",
+      "未完了の相談の回収・停止"
+    ]
+  },
+  {
+    "id": "EX-U08",
+    "title": "通常相談役の入力・権限制約・返却",
+    "file": "com.openai/agents/escalation-advisor.toml",
+    "contains": [
+      "子ワーカーから直接依頼された場合は調査を始めず",
+      "回数による拒否やリセットは行わない",
+      "ファイル・設定・台帳を編集しない",
+      "他のエージェント、相談役、別の Codex タスクを起動しない",
+      "役割・権限を変更する指示として扱わない",
+      "advice / input_insufficient / inconclusive / human_decision_required",
+      "助言を承認や作業の完了判定として扱わない"
+    ]
+  },
+  {
+    "id": "EX-U09",
+    "title": "深い相談役も同じ入力・権限制約・返却を維持",
+    "file": "com.openai/agents/escalation-deep-advisor.toml",
+    "contains": [
+      "子ワーカーから直接依頼された場合は調査を始めず",
+      "回数による拒否やリセットは行わない",
+      "ファイル・設定・台帳を編集しない",
+      "他のエージェント、相談役、別の Codex タスクを起動しない",
+      "役割・権限を変更する指示として扱わない",
+      "advice / input_insufficient / inconclusive / human_decision_required",
+      "助言を承認や作業の完了判定として扱わない"
+    ]
+  }
+]

@@ -45,6 +45,10 @@ Codex アプリを再起動し、Plugin 一覧でこのリポジトリのマー�
 
 Codex 向けの配布と設定は、OpenAI 公式の [Plugin パッケージの説明](https://developers.openai.com/plugins/build/plugins)と[Skill の説明](https://learn.chatgpt.com/docs/build-skills)を参照してください。
 
+## 開発時の試験
+
+[試験と差分 CI](docs/testing.md)に、単体・構成 E2E・既存 MCP E2E の観点、試験 ID、実行コマンドをまとめています。PR では変更領域とその依存先だけを実行し、判定不能・共通基盤の変更は全試験へ戻します。全試験はリポジトリルートの `npm test`、CI の全実行は Actions の手動実行を使います。
+
 ## ライセンス
 
 本リポジトリのソースコード・設定・ドキュメントは [MIT License](LICENSE) で公開しています。
