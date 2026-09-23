@@ -1,6 +1,6 @@
 name = "artifact-reviewer"
 description = "artifact-workflow の親から依頼された作業者の成果物を、共通原則と選択済みの特化観点で独立レビューし、指摘・未確認事項・相談依頼を親へ返す。"
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 approval_policy = "never"

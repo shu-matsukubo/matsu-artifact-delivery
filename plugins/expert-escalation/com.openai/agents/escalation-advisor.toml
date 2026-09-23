@@ -1,6 +1,6 @@
 name = "escalation-advisor"
 description = "expert-escalation を呼び出す親が明示的に依頼した限定的な論点について、設計・リスク・代替案を読み取り専用で検討し、根拠と助言を元の担当へ返す。"
-model = "gpt-5.6-sol"
+model = "gpt-6-sol"
 model_reasoning_effort = "max"
 sandbox_mode = "read-only"
 approval_policy = "never"
