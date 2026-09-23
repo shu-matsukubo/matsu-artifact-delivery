@@ -1,0 +1,36 @@
+{
+  "name": "matsu-artifact-delivery-tests",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "test": "node scripts/run-tests.mjs all",
+    "test:contracts": "node scripts/run-tests.mjs all --targets workflow,escalation,integration,infrastructure",
+    "test:unit": "node scripts/run-tests.mjs unit",
+    "test:e2e": "node scripts/run-tests.mjs e2e",
+    "test:infrastructure": "node scripts/run-tests.mjs unit --targets infrastructure",
+    "test:workflow": "node scripts/run-tests.mjs all --targets workflow",
+    "test:workflow:unit": "node scripts/run-tests.mjs unit --targets workflow",
+    "test:workflow:e2e": "node scripts/run-tests.mjs e2e --targets workflow",
+    "test:escalation": "node scripts/run-tests.mjs all --targets escalation",
+    "test:escalation:unit": "node scripts/run-tests.mjs unit --targets escalation",
+    "test:escalation:e2e": "node scripts/run-tests.mjs e2e --targets escalation",
+    "test:integration": "node scripts/run-tests.mjs e2e --targets integration",
+    "test:mcp": "node scripts/run-tests.mjs all --targets mcp",
+    "ci:select": "node scripts/select-tests.mjs",
+    "format": "prettier --write \"scripts/*.mjs\" \"test/**/*.mjs\" \"test/**/*.json\" package.json .prettierrc.json \".github/workflows/*.yml\" docs/testing.md",
+    "format:check": "prettier --check \"scripts/*.mjs\" \"test/**/*.mjs\" \"test/**/*.json\" package.json .prettierrc.json \".github/workflows/*.yml\" docs/testing.md",
+    "test:mcp:unit": "node scripts/run-tests.mjs unit --targets mcp",
+    "test:mcp:e2e": "node scripts/run-tests.mjs e2e --targets mcp"
+  },
+  "devDependencies": {
+    "@actions/expressions": "0.3.61",
+    "github-slugger": "2.0.0",
+    "marked": "18.0.14",
+    "prettier": "3.9.6",
+    "smol-toml": "1.9.0",
+    "yaml": "2.9.0"
+  }
+}
