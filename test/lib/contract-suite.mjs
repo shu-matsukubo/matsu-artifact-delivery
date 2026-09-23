@@ -51,6 +51,7 @@ export async function registerContracts({ name, prefix, implicit, agents, readOn
         cases.some((item) => item.file === path),
         `No unit contract: ${path}`,
       );
+    // Contract-only changes select this suite, not infrastructure / PKG-U04.
     const inventory = await read(join(repository, 'docs/testing.md'));
     for (const item of cases) {
       assert.ok(inventory.includes(item.id), `Undocumented contract: ${item.id}`);

@@ -50,11 +50,15 @@ await test('PKG-U03: contributor documentation and Plugin README local links res
 });
 
 await test('PKG-U04: all contract IDs and runnable suites appear in the test inventory', async () => {
+  // Guide-only changes select infrastructure, not the Workflow / Escalation units.
   const docs = await read(join(repository, 'docs/testing.md'));
   for (const suite of ['workflow', 'escalation']) {
     for (const contract of await json(join(repository, `test/${suite}/contracts.json`)))
       assert.ok(docs.includes(contract.id), `Undocumented ${contract.id}`);
   }
-  for (const command of ['test:workflow', 'test:escalation', 'test:integration', 'test:infrastructure', 'test:mcp'])
+  const { scripts } = await json(join(repository, 'package.json'));
+  for (const command of ['test:workflow', 'test:escalation', 'test:integration', 'test:infrastructure', 'test:mcp']) {
+    assert.ok(scripts[command], `Missing command: ${command}`);
     assert.ok(docs.includes(command), `Undocumented ${command}`);
+  }
 });

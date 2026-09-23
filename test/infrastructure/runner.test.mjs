@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { copyFile, mkdir, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -130,6 +130,16 @@ await test('RUN-U06: runner CLI exposes its exact plan and refuses empty or inva
   assert.equal(plan.commands.length, 1);
   assert.throws(() => invoke('unit', '--targets', 'unknown'), { status: 1 });
   assert.throws(() => invoke('unit', '--targets', 'integration'), { status: 1 });
+  // Exercise the public npm entry points, without fixing their script bodies.
+  for (const layer of ['unit', 'e2e']) {
+    const output = execSync(`npm run --silent test:${layer} -- --targets workflow,mcp --dry-run`, {
+      cwd: repository,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 10000,
+    });
+    assert.deepEqual(JSON.parse(output).batches, [{ layer, targets: ['mcp', 'workflow'] }]);
+  }
 });
 
 await test('RUN-U07: MCP preflight rejects unregistered, duplicate and missing files, including nested tests', async (t) => {
