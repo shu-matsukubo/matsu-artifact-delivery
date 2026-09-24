@@ -3,12 +3,13 @@ import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { assertReadOnly } from '../lib/contract-suite.mjs';
-import { files, read, stagePlugin, walkReferences } from '../lib/plugin.mjs';
+import { files, localLinks, read, stagePlugin, walkReferences } from '../lib/plugin.mjs';
 
 await test('EX-E01: standalone package discovers the Skill, both advisors and all references', async (t) => {
   const plugin = await stagePlugin(t, 'expert-escalation');
   assert.deepEqual(await readdir(join(plugin.root, '..')), ['expert-escalation']);
   assert.equal(plugin.codex.mcpServers, undefined);
+  await localLinks(plugin.root, 'README.md');
   const skill = plugin.skills.get('expert-escalation');
   assert.equal(skill.settings.policy.allow_implicit_invocation, true);
   assert.deepEqual(

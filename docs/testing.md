@@ -60,6 +60,22 @@ npm --prefix plugins/artifact-workflow run format:check
 | `npm run test:mcp`                                     | MCP の単体・E2E                                        |
 | `npm run test:mcp:unit` / `test:mcp:e2e`               | 上記を個別実行                                         |
 
+## 配布・manifest検証
+
+`npm run check:manifests` で固定した公式plugin/MCP schemaと互換manifestの整合性を確認する。`npm run package` が生成した `dist/` をローカルインストールとリリースに共用する。Codex CLIが利用可能な環境では `npm run test:install` で同じ配布物を一時ホームへインストールし、キャッシュの全ファイルと内容、リンク、不要ディレクトリ不在、NodeだけでのMCP起動を検証する。詳細は[配布と更新](distribution.md)を参照。
+
+追加の回帰試験は [distribution.test.mjs](../test/infrastructure/distribution.test.mjs) に集約する。
+
+| ID      | 観点                                                               |
+| ------- | ------------------------------------------------------------------ |
+| MAN-U01 | 共通manifestの追加禁止項目・未対応schema・不正な入れ子             |
+| MAN-U02 | MCPのtransport・追加項目・予約環境変数・schemaバージョン           |
+| MAN-U03 | Codex互換設定の不一致・パス逸脱・bundle欠落                        |
+| PKG-U05 | 開発依存・ビルド残骸の有無によらない配布内容一致と全Markdownの参照 |
+| PKG-U06 | 生成marketplaceのカタログ一致・再生成時の残骸除去                  |
+| PKG-U07 | 配布元と出力先のリンク拒否・外部ディレクトリの保全                 |
+| VER-U01 | 両Pluginの正本同期・正しいcachebusterの取り込み・不正な版の拒否    |
+
 ## CI の選択
 
 [Actions 定義](../.github/workflows/artifact-workflow-ci.yml)は全 PR と `main` push で差分を分類する。`workflow_dispatch` は差分にかかわらず全試験を実行する。PR では base と head の merge-base からの差分、push では before と after の差分を使う。

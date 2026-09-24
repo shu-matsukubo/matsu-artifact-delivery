@@ -19,9 +19,9 @@
 | [com.openai/agents/artifact-worker.toml](com.openai/agents/artifact-worker.toml) | Codex 固有の Custom Agent 定義。役割・生成とセルフレビューの指示・モデル・推論強度を管理する。 |
 | [com.openai/agents/artifact-reviewer.toml](com.openai/agents/artifact-reviewer.toml) | Codex 固有の読み取り専用の独立レビュワー。役割・モデル・推論強度を管理する。 |
 | [skills/artifact-workflow/agents/openai.yaml](skills/artifact-workflow/agents/openai.yaml) | Codex 互換用の表示情報と明示呼び出しの設定。共通規格の必須ファイルではない。 |
-| [../../.codex/config.toml](../../.codex/config.toml) | このリポジトリで Custom Agent を登録する Codex 固有の参照設定。Plugin パッケージの外側にある。 |
+| [リポジトリのAgent登録例](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/.codex/config.toml) | このリポジトリで Custom Agent を登録する Codex 固有の参照設定。Plugin パッケージの外側にある。 |
 
-合意済みの要求・制約・タスク計画をJSONで一時保持する `artifact-task-memory` MCP を同梱しています。[mcp.json](mcp.json) が共通設定、[mcp/src/](mcp/src/) がTypeScript実装、[mcp/task-memory.cjs](mcp/task-memory.cjs) が依存を同梱した実行ファイルです。公式 [MCP TypeScript SDK](https://ts.sdk.modelcontextprotocol.io/v2/) を使い、stdioで接続します。
+合意済みの要求・制約・タスク計画をJSONで一時保持する `artifact-task-memory` MCP を同梱しています。[mcp.json](mcp.json) が共通設定、[mcp/src/（ソースリポジトリ）](https://github.com/shu-matsukubo/matsu-artifact-delivery/tree/main/plugins/artifact-workflow/mcp/src) がTypeScript実装、[mcp/task-memory.cjs](mcp/task-memory.cjs) が依存を同梱した実行ファイルです。公式 [MCP TypeScript SDK](https://ts.sdk.modelcontextprotocol.io/v2/) を使い、stdioで接続します。
 
 共通形式での検出・読み込みと、ワークフローを実行できることは区別します。現行の実行には Codex のマルチエージェント機能と登録済みの `artifact-worker` と `artifact-reviewer` が必要です。他の compatible client へ移植する際は、その client での役割定義・委任方法を別途確認します。全 client での同一動作は保証対象に含めません。
 
@@ -37,7 +37,7 @@
 | Node.js | 22.23.2 |
 | MCPクライアント | 公式 TypeScript SDK `@modelcontextprotocol/client` 2.0.0 によるstdioテストクライアント |
 
-OSごとのMCP検証は下記のCIで行います。Codexへの実インストールを通した動作は未検証です。
+OSごとのMCP検証は下記のCIで行います。ソースリポジトリの `npm run test:install` では、配布物を隔離したCodex CLI環境へインストールし、キャッシュ内容とMCP起動を検証します。実モデルによる生成・承認・レビューを含む受け入れ試験は別途行います。
 
 - 新しい生成フローの開始時に `reset_session` で同じセッションの以前の内容をすべて初期化し、同じ保存先の完了記録済みセッションを削除する。未完了の別セッションは保持する。
 - 合意後に `save_plan` で要求・要件・制約・タスク・完了条件・入力参照・引き渡し情報・承認根拠をJSONへ保存する。
@@ -49,7 +49,7 @@ OSごとのMCP検証は下記のCIで行います。Codexへの実インスト�
 
 保存先はリポジトリ外の `PLUGIN_DATA/task-memory/` です。セッションIDごとに1ファイルとし、履歴・DB・進捗の自動管理・別チャットからの復元機能は設けません。完了時は保存を残し、次の新しいフロー開始時に完了済みデータを削除します。削除はセッション単位のロック内で最新状態を確認して行い、ロック中・破損などで見送ったファイルは `cleanup.skipped` に理由を返します。完了記録のない旧形式や中断中のデータは保持します。後日の修正は、旧計画の有無によらず現在の成果物を確認し、新しい修正タスクの計画から始めます。詳細なJSON形式、初期化の境界、競合時の扱いは[タスク計画の一時保持](skills/artifact-workflow/references/task-memory.md)を参照してください。
 
-開発時はPlugin rootで以下を実行します。GitHub Actionsでも同じ検証を行います。
+開発時はソースリポジトリのPlugin rootで以下を実行します。GitHub Actionsでも同じ検証を行います。
 
 ```sh
 npm ci
@@ -65,7 +65,7 @@ npm test
 - `npm test` は最初に `npm run check:dist` で配布物と再生成結果の完全一致を確認します。配布物の更新・欠落があれば失敗し、既存ファイルを上書きしません。その後、`.test-build` を削除し、現在のソースだけをコンパイルしてテストします。
 - ソースや正本設定を変更したら `npm run build` で配布物を更新してください。型検査に成功してから、MCP実行ファイル・ライセンス通知・[依存ライセンス](mcp/THIRD_PARTY_LICENSES.txt)・Codex互換設定を生成します。生成ファイルも変更と一緒にコミットし、直接編集しないでください。
 
-[GitHub ActionsのCI](../../.github/workflows/artifact-workflow-ci.yml)はPR・`main` へのpushで変更範囲を判定し、MCPに影響する場合だけWindows・Linux・macOS × Node.js 22.19.0・24で検証します。skillsやAgent定義だけの変更ではWorkflowの単体・構成E2Eと連携E2Eを実行します。手動実行は全試験が対象です。試験ID・差分判定・全試験の実行方法は[試験ガイド](../../docs/testing.md)を参照してください。ビルドによって更新漏れを隠さないよう、チェックアウトした配布物をそのまま検証・起動します。
+[GitHub ActionsのCI](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/.github/workflows/artifact-workflow-ci.yml)はPR・`main` へのpushで変更範囲を判定し、MCPに影響する場合だけWindows・Linux・macOS × Node.js 22.19.0・24で検証します。skillsやAgent定義だけの変更ではWorkflowの単体・構成E2Eと連携E2Eを実行します。手動実行は全試験が対象です。試験ID・差分判定・全試験の実行方法は[試験ガイド](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/testing.md)を参照してください。ビルドによって更新漏れを隠さないよう、チェックアウトした配布物をそのまま検証・起動します。
 
 テストではOSの一時ディレクトリを使い、セッションの分離、更新競合、不正データの拒否、完了済みデータの削除、未完了・旧形式の保護、後日の修正タスク、実MCP通信、Node.jsだけでの起動と再接続後の読み戻しを確認します。1 MiBの上限は完了日時の増加分を含めて保存時に判定し、上限ちょうどの完了済みデータと1 byte超過の拒否を検証します。書き込み・`sync`・`rename` にI/Oエラーを注入するテストでは、旧データの保持、一時ファイルとロックの解放、再試行の成功を確認します。型エラーによる配布ビルドの停止と配布物の保持、配布物5種類の欠落・改変、ソースだけを変更した際の更新漏れ、削除済みテストのコンパイル残骸の掃除も隔離環境で検証します。
 
@@ -136,7 +136,9 @@ npm test
 
 ## Codex での使い方
 
-Plugin のインストールにより、共通構造の `skills/` から Skill を検出できるようになります。ワークフローの実行には、次の Custom Agent の登録も必要です。このリポジトリでは [.codex/config.toml](../../.codex/config.toml) に登録済みで、別の作業場所では利用先に参照設定を追加してください。役割を利用できない場合、ワークフローは生成を開始せず登録に必要な対応を案内します。
+インストール元は、ソースリポジトリの `npm run package` で生成する `dist/` を使います。初回登録・更新・cachebusterの手順は[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md)を参照してください。
+
+Plugin のインストールにより、共通構造の `skills/` から Skill を検出できるようになります。ワークフローの実行には、次の Custom Agent の登録も必要です。このリポジトリでは [.codex/config.toml](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/.codex/config.toml) に登録済みで、別の作業場所では利用先に参照設定を追加してください。役割を利用できない場合、ワークフローは生成を開始せず登録に必要な対応を案内します。
 
 登録後の新しいタスクで、作りたい成果物とともに `artifact-workflow` の利用を指定してください。提示されたタスク計画を確認し、承認またはタスクIDを指定した修正依頼を返します。
 
@@ -146,7 +148,7 @@ Plugin のインストールにより、共通構造の `skills/` から Skill �
 
 Agent Plugins の共通コンポーネントは Skill と MCP で、Custom Agent の登録方法は定義されていません。同梱した TOML は Codex の設定 `agents.<name>.config_file` で参照します。`com.openai/agents/` は本リポジトリで固有ファイルを整理する配置であり、このディレクトリから Custom Agent が自動登録されるわけではありません。
 
-このリポジトリでは [../../.codex/config.toml](../../.codex/config.toml) に参照を登録しています。別のプロジェクトで利用する場合は、そのプロジェクトの `.codex/config.toml`（個人共通なら `~/.codex/config.toml`）に以下を追加し、パスを同梱 TOML の実際の絶対パスへ置き換えてください。相対パスの場合は、この設定を記載する `config.toml` の場所が基準です。
+このリポジトリでは [リポジトリのAgent登録例](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/.codex/config.toml) に参照を登録しています。別のプロジェクトで利用する場合は、そのプロジェクトの `.codex/config.toml`（個人共通なら `~/.codex/config.toml`）に以下を追加し、パスを同梱 TOML の実際の絶対パスへ置き換えてください。相対パスの場合は、この設定を記載する `config.toml` の場所が基準です。
 
 ```toml
 [agents.artifact-worker]

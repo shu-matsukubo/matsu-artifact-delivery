@@ -24,13 +24,13 @@ OpenAI の [Max / Ultra の説明](https://learn.chatgpt.com/docs/models#know-wh
 
 例えば「`$expert-escalation` で、この設計案が必須条件を満たせるか相談してください」と依頼します。Codex では `allow_implicit_invocation: true` とし、通常のモデル向け一覧へ名前・説明・パスを公開します。設定上は暗黙選択を許可し、相談の開始条件は Skill の description と本文で「ユーザーまたは呼び出し元の親の明示依頼」に制限します。一覧への掲載や本文の読み込みだけでは相談を開始しません。[公式の呼び出し設定](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。
 
-呼び出し元の親は、現在のタスクで利用可能として提示された実際のパスから `SKILL.md` を読み、その契約に従って1件の相談を明示的に依頼します。client の正式な一覧機能を使う場合も、現在のタスクの設定が反映された一覧に限ります。`artifact-workflow` には[発見・読み込み手順](../artifact-workflow/skills/artifact-workflow/references/escalation.md#相談-skill-の発見読み込み)を定義しています。候補が見つからない・無効・本文を読めない場合は相談を見送り、発見のための Python や Codex CLI の追加起動は行いません。
+呼び出し元の親は、現在のタスクで利用可能として提示された実際のパスから `SKILL.md` を読み、その契約に従って1件の相談を明示的に依頼します。client の正式な一覧機能を使う場合も、現在のタスクの設定が反映された一覧に限ります。`artifact-workflow` には[発見・読み込み手順](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/plugins/artifact-workflow/skills/artifact-workflow/references/escalation.md#相談-skill-の発見読み込み)を定義しています。候補が見つからない・無効・本文を読めない場合は相談を見送り、発見のための Python や Codex CLI の追加起動は行いません。
 
 相談役の起動は現在の作業全体の親だけが行います。子ワーカーは問い・証拠・試した方法を親へ返し、本 Skill や相談役を直接起動しません。子の依頼を受けた親が、相談の必要性と今回の呼び出しを判断します。単独作業では自分が親になります。親の識別には実行環境のID・正規名（取得できなければ作業IDと一意な親ラベルの組）を使い、相談IDとともに結果へ引き継ぎます。固定の親名や専用の親役割を追加する必要はありません。
 
 相談役は生成ワーカーとは別の役割として管理します。ただし client の同時起動枠が共通なら、親が相談用に1枠を予約するか、成果物・実行状態・再開情報を保全して枠を解放します。全ワーカーが相談待ちのまま完了を待ち続けません。枠を確保できなければ起動を試さず、利用不能として親の判断へ戻します。
 
-既存の Workflow と組み合わせる場合は、親へ相談依頼を返す経路と、親側の呼び出し方針を用意します。このリポジトリの `artifact-workflow` は[呼び出し元の方針](../artifact-workflow/skills/artifact-workflow/references/escalation.md)に自律相談の上限とフォールバックを持ち、本 Plugin を必須依存にはしていません。工程の責任、計画への承認、通常のレビュー・完了判定は元の Workflow が保持します。生成中の設計判断にも、後続の GitHub 提出・公開に関する判断にも、同じ相談契約を利用できます。
+既存の Workflow と組み合わせる場合は、親へ相談依頼を返す経路と、親側の呼び出し方針を用意します。このリポジトリの `artifact-workflow` は[呼び出し元の方針](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/plugins/artifact-workflow/skills/artifact-workflow/references/escalation.md)に自律相談の上限とフォールバックを持ち、本 Plugin を必須依存にはしていません。工程の責任、計画への承認、通常のレビュー・完了判定は元の Workflow が保持します。生成中の設計判断にも、後続の GitHub 提出・公開に関する判断にも、同じ相談契約を利用できます。
 
 ## 共通規格と Codex 互換設定
 
@@ -44,21 +44,24 @@ OpenAI の [Max / Ultra の説明](https://learn.chatgpt.com/docs/models#know-wh
 | [.codex-plugin/plugin.json](.codex-plugin/plugin.json) | plugin-creator が生成する Codex 互換用 manifest。共通 manifest の識別情報に Codex の Skill 位置・表示情報を加える。 |
 | [skills/expert-escalation/agents/openai.yaml](skills/expert-escalation/agents/openai.yaml) | Codex 向けの表示情報と `allow_implicit_invocation: true`。相談の開始条件は Skill の description と本文で管理する。 |
 
-`.codex-plugin/plugin.json` と Skill の `agents/openai.yaml` は、Codex の既存の読み込み位置を維持する互換性上の例外です。共通規格のコンポーネントを増やす独自の検出方式ではなく、Codex 固有の設定として扱います。[Plugin パッケージ](https://developers.openai.com/plugins/build/plugins)と[Skill の optional metadata](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。manifest の共通フィールドは root を正本とし、変更時は互換 manifest の同名フィールドにも同期します。
+`.codex-plugin/plugin.json` と Skill の `agents/openai.yaml` は、Codex の既存の読み込み位置を維持する互換性上の例外です。共通規格のコンポーネントを増やす独自の検出方式ではなく、Codex 固有の設定として扱います。[Plugin パッケージ](https://developers.openai.com/plugins/build/plugins)と[Skill の optional metadata](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。manifest の共通フィールドは root を正本とし、変更時はリポジトリルートの `npm run sync:manifests` で互換 manifest を同期します。
 
 MCP、外部 API、中央ログ、専用のリスクスコアは追加していません。Custom Agent、モデル選択、sandbox、同時起動枠の管理は Agent Plugins の共通仕様に含まれません。他の client では同等の読み取り専用の相談役と親による明示呼び出しの経路を用意してください。
 
 ## Codex への登録
 
-リポジトリのマーケットプレイスを未登録の場合は、リポジトリのルートで登録します。
+ソースリポジトリのルートで配布用マーケットプレイスを生成し、登録します。更新時も同じ配布物を使います。詳細は[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md)を参照してください。
 
 ```sh
-codex plugin marketplace add .
+npm ci --ignore-scripts
+npm --prefix plugins/artifact-workflow ci
+npm run package
+codex plugin marketplace add ./dist
 ```
 
 Codex アプリでこのマーケットプレイスの `expert-escalation` をインストールし、次の役割登録を確認したうえで新しいタスクを開始します。Plugin のインストールだけでは Custom Agent の参照設定は追加されません。
 
-このリポジトリでは [../../.codex/config.toml](../../.codex/config.toml) に登録しています。別の作業場所では、そのプロジェクトの `.codex/config.toml`（個人共通なら `~/.codex/config.toml`）に以下を追加し、パスを同梱 TOML の実際の絶対パスへ置き換えてください。
+このリポジトリでは [リポジトリのAgent登録例](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/.codex/config.toml) に登録しています。別の作業場所では、そのプロジェクトの `.codex/config.toml`（個人共通なら `~/.codex/config.toml`）に以下を追加し、パスを同梱 TOML の実際の絶対パスへ置き換えてください。
 
 ```toml
 [agents.escalation-advisor]
