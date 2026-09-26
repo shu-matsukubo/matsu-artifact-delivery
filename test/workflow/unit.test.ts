@@ -4,9 +4,9 @@ import { copyFile, cp, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
-import { packageMarketplace } from '../../scripts/package-plugins.mjs';
-import { syncManifests } from '../../scripts/sync-manifests.mjs';
-import { registerContracts } from '../lib/contract-suite.mjs';
+import { packageMarketplace } from '../../scripts/package-plugins.ts';
+import { syncManifests } from '../../scripts/sync-manifests.ts';
+import { registerContracts } from '../lib/contract-suite.ts';
 import {
   assertContract,
   inside,
@@ -16,7 +16,16 @@ import {
   read,
   repository,
   temporaryDirectory,
-} from '../lib/plugin.mjs';
+} from '../lib/plugin.ts';
+
+import type {
+  CodexManifest,
+  McpManifest,
+  PackageLock,
+  PackageMetadata,
+  PluginManifest,
+} from '../../scripts/manifest-types.ts';
+import type { FileContract } from '../lib/types.ts';
 
 await registerContracts(
   {
@@ -32,35 +41,36 @@ await registerContracts(
 await test('WF-U18: MCP manifests and package metadata resolve to the shipped runtime', async () => {
   const root = pluginRoot('artifact-workflow');
   const { manifest, codex } = await loadPlugin(root);
-  const packageMetadata = await json(join(root, 'package.json'));
+  const packageMetadata = await json<PackageMetadata>(join(root, 'package.json'));
   assert.equal(packageMetadata.name, manifest.name);
   // Only the normalized suffix accepted by --adopt-cachebuster is a local
   // cache key. Release and unrelated build metadata must still match exactly.
   const cachebuster = /^([^+]+)\+codex\.[a-z0-9]+(?:-[a-z0-9]+)*$/.exec(manifest.version);
   const expectedVersion = cachebuster ? cachebuster[1] : manifest.version;
   assert.equal(packageMetadata.version, expectedVersion);
-  const lockfile = await json(join(root, 'package-lock.json'));
+  const lockfile = await json<PackageLock>(join(root, 'package-lock.json'));
   assert.equal(lockfile.version, packageMetadata.version, 'Lockfile version differs from package.json');
   assert.equal(
-    lockfile.packages[''].version,
+    lockfile.packages['']!.version,
     packageMetadata.version,
     'Root lockfile package version differs from package.json',
   );
-  const portable = await json(join(root, 'mcp.json'));
-  const compatibility = await json(inside(root, codex.mcpServers));
+  const portable = await json<McpManifest>(join(root, 'mcp.json'));
+  const compatibility = await json<McpManifest>(inside(root, codex.mcpServers!));
   assert.deepEqual(compatibility.mcpServers, portable.mcpServers);
   assert.deepEqual(Object.keys(portable.mcpServers), ['artifact-task-memory']);
-  const server = portable.mcpServers['artifact-task-memory'];
+  const server = portable.mcpServers['artifact-task-memory']!;
   assert.equal(server.type, 'stdio');
   assert.equal(server.command, 'node');
   assert.deepEqual(server.args, ['${PLUGIN_ROOT}/mcp/task-memory.cjs']);
   assert.deepEqual(server.env, { ARTIFACT_WORKFLOW_DATA_DIR: '${PLUGIN_DATA}/task-memory' });
-  assert.ok((await stat(inside(root, server.args[0].replace('${PLUGIN_ROOT}/', '')))).isFile());
+  assert.ok((await stat(inside(root, server.args[0]!.replace('${PLUGIN_ROOT}/', '')))).isFile());
 });
 
 await test('WF-U19: the optional consultation unit contract rejects missing installation and fallback safeguards', async () => {
-  const cases = await json(new URL('./contracts.json', import.meta.url));
+  const cases = await json<FileContract[]>(new URL('./contracts.json', import.meta.url));
   const contract = cases.find((item) => item.id === 'WF-U14');
+  assert.ok(contract, 'Missing WF-U14 contract');
   const source = await read(join(pluginRoot('artifact-workflow'), contract.file));
   for (const clause of [
     '相談のためだけにインストールや環境変更を要求しない',
@@ -74,7 +84,8 @@ await test('WF-U19: the optional consultation unit contract rejects missing inst
 
 await test(
   'WF-U20: WF-U18 accepts adopted cachebusters and rejects release or lockfile drift',
-  { timeout: 30_000 },
+  // Fifteen separate Node processes also strip the shared TypeScript harness.
+  { timeout: 60_000 },
   async (t) => {
     // Run the real WF-U18 in a separate package copy. The name filter prevents
     // re-entering this regression and keeps production versions unchanged.
@@ -93,10 +104,11 @@ await test(
     for (const path of ['package.json', 'package-lock.json']) {
       await copyFile(join(pluginRoot('artifact-workflow'), path), join(root, path));
     }
-    const manifest = await json(join(root, 'plugin.json'));
-    const metadata = await json(join(root, 'package.json'));
-    const lockfile = await json(join(root, 'package-lock.json'));
-    const writeJson = (path, value) => writeFile(join(root, path), JSON.stringify(value, null, 2) + '\n');
+    const manifest = await json<PluginManifest>(join(root, 'plugin.json'));
+    const metadata = await json<PackageMetadata>(join(root, 'package.json'));
+    const lockfile = await json<PackageLock>(join(root, 'package-lock.json'));
+    const writeJson = (path: string, value: unknown) =>
+      writeFile(join(root, path), JSON.stringify(value, null, 2) + '\n');
     const execute = promisify(execFile);
     const childEnv = { ...process.env };
     delete childEnv.NODE_TEST_CONTEXT;
@@ -159,21 +171,21 @@ await test(
           const before = await Promise.all(['package.json', 'package-lock.json'].map((path) => read(join(root, path))));
           // Fixture of the standard helper's output; CI needs neither Python nor
           // an installed plugin-creator skill to cover adoption -> actual WF-U18.
-          const compatibility = await json(join(root, '.codex-plugin/plugin.json'));
+          const compatibility = await json<CodexManifest>(join(root, '.codex-plugin/plugin.json'));
           await writeJson('.codex-plugin/plugin.json', { ...compatibility, version: scenario.pluginVersion });
           await syncManifests(root, { adoptCachebuster: true });
-          assert.equal((await json(join(root, 'plugin.json'))).version, scenario.pluginVersion);
+          assert.equal((await json<PluginManifest>(join(root, 'plugin.json'))).version, scenario.pluginVersion);
           assert.deepEqual(
             await Promise.all(['package.json', 'package-lock.json'].map((path) => read(join(root, path)))),
             before,
           );
         }
-        let result;
+        let result: { code: number; stdout: string; stderr: string };
         try {
           result = {
             ...(await execute(
               process.execPath,
-              ['--test', '--test-name-pattern=^WF-U18:', 'test/workflow/unit.test.mjs'],
+              ['--test', '--test-name-pattern=^WF-U18:', 'test/workflow/unit.test.ts'],
               {
                 cwd: fixture,
                 env: childEnv,
@@ -185,8 +197,17 @@ await test(
             code: 0,
           };
         } catch (error) {
-          if (typeof error.code !== 'number') throw error;
-          result = error;
+          if (
+            !(error instanceof Error) ||
+            !('code' in error) ||
+            typeof error.code !== 'number' ||
+            !('stdout' in error) ||
+            typeof error.stdout !== 'string' ||
+            !('stderr' in error) ||
+            typeof error.stderr !== 'string'
+          )
+            throw error;
+          result = { code: error.code, stdout: error.stdout, stderr: error.stderr };
         }
         assert.equal(result.code, scenario.reject ? 1 : 0, result.stdout + result.stderr);
         assert.match(result.stdout, scenario.reject ? /not ok \d+ - WF-U18:/ : /ok \d+ - WF-U18:/);

@@ -2,6 +2,18 @@
 
 Issue #19 の品質基盤。実装・設定・自然言語の契約をコンポーネント単位で検証し、変更した領域とその依存先だけを CI で実行する。試験ジョブの種類は **単体（Unit）** と **E2E** の 2 つとし、差分から選んだ対象を共通コマンドへ引数で渡す。
 
+## 実装言語
+
+人間・AIが保守するソース、テスト、補助スクリプトは常に TypeScript（`.ts`）を使う。新規実装で JavaScript / TypeScript の選択は行わない。[作業方針](../AGENTS.md)にも同じルールを記載する。
+
+ルートのスクリプトとテスト、プラグインの補助スクリプトは Node.js の型除去で直接実行する。実行時の import は `.ts` を明記し、型だけの参照は `import type` を使う。ルートの `tsconfig.json` とプラグインの `tsconfig.scripts.json` が型除去できる構文を検査する。MCP のソースとテストは従来どおりコンパイルするため、その相対 import は出力先の `.js` を参照する。
+
+`npm run check` は言語方針とルート全体の strict 型検査、`npm run lint` は型情報を使う lint を実行する。プラグインの `check` にはビルド・清掃スクリプトも含める。`any` や型検査の無効化で移行を済ませず、設定データ・引数・戻り値の型を定義する。
+
+`npm run check:typescript` は Git 管理ファイルと未ステージの新規ファイルを調べ、`.js` / `.mjs` / `.cjs` / `.jsx` を拒否する。生成済みの `plugins/artifact-workflow/mcp/task-memory.cjs` は明示的な例外とし、`check:dist` で生成元との一致を確認する。依存と Git が除外する未追跡のビルド出力（`node_modules/`、`.build/`、`.test-build/`、`dist/`）も対象外。新たに生成物を Git 管理する場合は、[許可一覧](../scripts/check-typescript.ts)と生成元の一致検証を合わせて追加する。
+
+CI は差分判定前に言語方針を検査する。ルートの型検査・lint・整形はルート試験を含む単体ジョブで行い、連携 E2E だけの変更では E2E ジョブで行う。
+
 ## 実行方法
 
 Node.js 22.19.0 以降と Git を使う。リポジトリルートと MCP の依存は独立している。skills の試験だけなら MCP の `npm ci` は不要。
@@ -28,6 +40,8 @@ npm run test:e2e -- --targets workflow,integration
 npm run test:unit -- --targets workflow --dry-run
 
 # CI と同じコード品質チェック
+npm run check
+npm run lint
 npm run format:check
 npm --prefix plugins/artifact-workflow run check
 npm --prefix plugins/artifact-workflow run lint
@@ -64,7 +78,7 @@ npm --prefix plugins/artifact-workflow run format:check
 
 `npm run check:manifests` で固定した公式plugin/MCP schemaと互換manifestの整合性を確認する。`npm run package` が生成した `dist/` をローカルインストールとリリースに共用する。Codex CLIが利用可能な環境では `npm run test:install` で同じ配布物を一時ホームへインストールし、キャッシュの全ファイルと内容、リンク、不要ディレクトリ不在、NodeだけでのMCP起動を検証する。詳細は[配布と更新](distribution.md)を参照。
 
-追加の回帰試験は [distribution.test.mjs](../test/infrastructure/distribution.test.mjs) に集約する。
+追加の回帰試験は [distribution.test.ts](../test/infrastructure/distribution.test.ts) に集約する。
 
 | ID      | 観点                                                               |
 | ------- | ------------------------------------------------------------------ |
@@ -124,57 +138,58 @@ npm run ci:select -- --all
 
 `WF-U20` は隔離コピーでhelper出力のfixtureを正本へ取り込み、実際の `WF-U18` を子プロセスで実行する。通常版・開発版・prereleaseと不一致の負例を検証し、CIにPythonやplugin-creatorの配置を要求しない。
 
-| ID                       | 観点                                                                                                           | 実装                                                                                        |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| WF-U01 / WF-U02          | manifest 整合、Skill / Agent 検出、呼び出し policy、read-only 設定、参照ファイルとアンカー、契約の網羅         | [Workflow unit](../test/workflow/unit.test.mjs)、[共通検証](../test/lib/contract-suite.mjs) |
-| WF-U03                   | 明示呼び出し、必須役割、承認、9 工程の順序                                                                     | Workflow 契約一覧                                                                           |
-| WF-U04 / WF-U05          | タスクの境界、生成入力、担当範囲、相談の親返却                                                                 | Workflow 契約一覧                                                                           |
-| WF-U06 / WF-U07          | Self Review の責務・返却、共通 5 原則                                                                          | Workflow 契約一覧                                                                           |
-| WF-U08 / WF-U09 / WF-U10 | Independent Review の入力・返却・再レビュー、特化観点 0〜3 件、security の限界                                 | Workflow 契約一覧                                                                           |
-| WF-U11 / WF-U12          | 親のタスク・全体検証、引き渡しと完了、後日の修正                                                               | Workflow 契約一覧                                                                           |
-| WF-U13 / WF-U14          | MCP の親限定更新・保存失敗、任意相談の発見・失敗・回数・フォールバック                                         | Workflow 契約一覧                                                                           |
-| WF-U15 / WF-U16 / WF-U17 | 計画テンプレート、Worker / Reviewer の責務・入出力・再委任禁止                                                 | Workflow 契約一覧                                                                           |
-| WF-U18                   | package / lockfileの版、MCP正本・互換設定・配布先の整合                                                        | Workflow unit                                                                               |
-| WF-U20                   | cachebuster取り込み後のWF-U18、正式版・基底版・suffix・lockfile不一致の拒否                                    | Workflow unit                                                                               |
-| EX-U01 / EX-U02          | manifest、Skill 発見 policy、両相談役の read-only・承認禁止・子起動禁止、参照・契約網羅                        | [Escalation unit](../test/escalation/unit.test.mjs)、共通検証                               |
-| EX-U03 / EX-U04          | 親の明示依頼、単発起動、回数・枠管理、失敗時の返却                                                             | Escalation 契約一覧                                                                         |
-| EX-U05 / EX-U06 / EX-U07 | 入出力契約・実行状態、相談例の非自動性、結果テンプレート                                                       | Escalation 契約一覧                                                                         |
-| EX-U08 / EX-U09 / EX-U10 | 両相談役の責務と禁止事項、Workflow / MCP への必須依存なし                                                      | Escalation 契約一覧、Escalation unit                                                        |
-| WF-U19                   | 導入・環境変更を要求しない指示とフォールバックの欠落を、Workflow 単体契約で検出                                | Workflow unit                                                                               |
-| EX-U11                   | 両相談役の返却指示から親識別子などの必須項目だけを削除しても、単体契約で検出                                   | Escalation unit                                                                             |
-| CI-U01〜CI-U08           | パス対応、未知・共通変更、和集合、イベント不正、merge-base、rename・削除、300 件超・Unicode、CLI 出力          | [差分判定試験](../test/infrastructure/selection.test.mjs)                                   |
-| CI-U09〜CI-U11           | 必須 job の集約判定、CLI 終了コード、CI の条件式が選ぶ対象・環境・依存と失敗／取消時の挙動                     | [CI 試験](../test/infrastructure/ci.test.mjs)                                               |
-| RUN-U01〜RUN-U08         | 引数、層別実行、MCP 登録の網羅性・欠落・重複・入れ子、MCP 限定 CLI の登録漏れ拒否、環境選択、失敗伝搬、dry-run | [実行コマンドの単体試験](../test/infrastructure/runner.test.mjs)                            |
-| HAR-U01〜HAR-U08         | YAML / TOML / Markdown、相対パス、参照循環・切断、metadata 不整合、権限制約、契約欠落・順序変更を拒否          | [検証器の単体試験](../test/infrastructure/harness.test.mjs)                                 |
-| PKG-U01〜PKG-U04         | marketplace、全 Agent 登録、README の参照、試験 ID とガイドの対応                                              | [共通構成試験](../test/infrastructure/package.test.mjs)                                     |
+| ID                       | 観点                                                                                                           | 実装                                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| WF-U01 / WF-U02          | manifest 整合、Skill / Agent 検出、呼び出し policy、read-only 設定、参照ファイルとアンカー、契約の網羅         | [Workflow unit](../test/workflow/unit.test.ts)、[共通検証](../test/lib/contract-suite.ts) |
+| WF-U03                   | 明示呼び出し、必須役割、承認、9 工程の順序                                                                     | Workflow 契約一覧                                                                         |
+| WF-U04 / WF-U05          | タスクの境界、生成入力、担当範囲、相談の親返却                                                                 | Workflow 契約一覧                                                                         |
+| WF-U06 / WF-U07          | Self Review の責務・返却、共通 5 原則                                                                          | Workflow 契約一覧                                                                         |
+| WF-U08 / WF-U09 / WF-U10 | Independent Review の入力・返却・再レビュー、特化観点 0〜3 件、security の限界                                 | Workflow 契約一覧                                                                         |
+| WF-U11 / WF-U12          | 親のタスク・全体検証、引き渡しと完了、後日の修正                                                               | Workflow 契約一覧                                                                         |
+| WF-U13 / WF-U14          | MCP の親限定更新・保存失敗、任意相談の発見・失敗・回数・フォールバック                                         | Workflow 契約一覧                                                                         |
+| WF-U15 / WF-U16 / WF-U17 | 計画テンプレート、Worker / Reviewer の責務・入出力・再委任禁止                                                 | Workflow 契約一覧                                                                         |
+| WF-U18                   | package / lockfileの版、MCP正本・互換設定・配布先の整合                                                        | Workflow unit                                                                             |
+| WF-U20                   | cachebuster取り込み後のWF-U18、正式版・基底版・suffix・lockfile不一致の拒否                                    | Workflow unit                                                                             |
+| EX-U01 / EX-U02          | manifest、Skill 発見 policy、両相談役の read-only・承認禁止・子起動禁止、参照・契約網羅                        | [Escalation unit](../test/escalation/unit.test.ts)、共通検証                              |
+| EX-U03 / EX-U04          | 親の明示依頼、単発起動、回数・枠管理、失敗時の返却                                                             | Escalation 契約一覧                                                                       |
+| EX-U05 / EX-U06 / EX-U07 | 入出力契約・実行状態、相談例の非自動性、結果テンプレート                                                       | Escalation 契約一覧                                                                       |
+| EX-U08 / EX-U09 / EX-U10 | 両相談役の責務と禁止事項、Workflow / MCP への必須依存なし                                                      | Escalation 契約一覧、Escalation unit                                                      |
+| WF-U19                   | 導入・環境変更を要求しない指示とフォールバックの欠落を、Workflow 単体契約で検出                                | Workflow unit                                                                             |
+| EX-U11                   | 両相談役の返却指示から親識別子などの必須項目だけを削除しても、単体契約で検出                                   | Escalation unit                                                                           |
+| CI-U01〜CI-U08           | パス対応、未知・共通変更、和集合、イベント不正、merge-base、rename・削除、300 件超・Unicode、CLI 出力          | [差分判定試験](../test/infrastructure/selection.test.ts)                                  |
+| CI-U09〜CI-U11           | 必須 job の集約判定、CLI 終了コード、CI の条件式が選ぶ対象・環境・依存と失敗／取消時の挙動                     | [CI 試験](../test/infrastructure/ci.test.ts)                                              |
+| TS-U01〜TS-U03           | 保守対象の JS 拒否、生成物の例外、未ステージ・追跡済みファイル、依存不要の CLI                                 | [TypeScript 方針試験](../test/infrastructure/typescript.test.ts)                          |
+| RUN-U01〜RUN-U08         | 引数、層別実行、MCP 登録の網羅性・欠落・重複・入れ子、MCP 限定 CLI の登録漏れ拒否、環境選択、失敗伝搬、dry-run | [実行コマンドの単体試験](../test/infrastructure/runner.test.ts)                           |
+| HAR-U01〜HAR-U08         | YAML / TOML / Markdown、相対パス、参照循環・切断、metadata 不整合、権限制約、契約欠落・順序変更を拒否          | [検証器の単体試験](../test/infrastructure/harness.test.ts)                                |
+| PKG-U01〜PKG-U04         | marketplace、全 Agent 登録、README の参照、試験 ID とガイドの対応                                              | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 
 ### 既存 MCP の対応表
 
-既存の試験名とファイル名を識別子として維持する。MCP 実装・ビルドスクリプトの単体・統合試験と、配布実行ファイルの E2E は [既存 test/](../plugins/artifact-workflow/test/) に残す。`mcp.test.ts` を E2E、それ以外を単体の枠に登録する。[対象一覧](../scripts/test-targets.mjs)の網羅性を MCP 実行の前提として検査し、新規試験の追加だけでも登録漏れを検出する。
+既存の試験名とファイル名を識別子として維持する。MCP 実装・ビルドスクリプトの単体・統合試験と、配布実行ファイルの E2E は [既存 test/](../plugins/artifact-workflow/test/) に残す。`mcp.test.ts` を E2E、それ以外を単体の枠に登録する。[対象一覧](../scripts/test-targets.ts)の網羅性を MCP 実行の前提として検査し、新規試験の追加だけでも登録漏れを検出する。
 
-| 対象実装                                       | 試験ファイル                                           | 主な確認                                                      |
-| ---------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------- |
-| `config.ts`                                    | `config.test.ts`                                       | 保存先の既定値・絶対パス・優先順位                            |
-| `schema.ts` / `task-dependencies.ts`           | `schema.test.ts` / `task-dependencies.test.ts`         | 承認済み計画、入力不正、依存グラフ・循環・境界                |
-| `session.ts`                                   | `session.test.ts`                                      | 初期化・置換・完了、revision、状態遷移                        |
-| `snapshot.ts`                                  | `snapshot.test.ts`                                     | JSON、旧形式、サイズ上限、破損                                |
-| `snapshot-files.ts`                            | `snapshot-files.test.ts`                               | 保存・読込・ロック・I/O 失敗・後始末                          |
-| `store.ts` / `repository.ts` / `cleanup.ts`    | `store.test.ts` / `server.test.ts` / `cleanup.test.ts` | Repository 契約、保存の統合、競合、完了済みだけの回収         |
-| `server.ts` / `errors.ts`                      | `server.test.ts`                                       | ツール入出力、既知・OS・未知のエラー契約                      |
-| `scripts/build.mjs` / `scripts/clean-test.mjs` | `build.test.ts`                                        | 配布物の欠落・更新漏れ、型エラー、古いコンパイル結果の削除    |
-| `index.ts` / 配布 bundle / MCP 接続            | `mcp.test.ts`                                          | 実プロセスの起動・通信・再起動・分離・完了・競合・出力 schema |
+| 対象実装                                     | 試験ファイル                                           | 主な確認                                                      |
+| -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------- |
+| `config.ts`                                  | `config.test.ts`                                       | 保存先の既定値・絶対パス・優先順位                            |
+| `schema.ts` / `task-dependencies.ts`         | `schema.test.ts` / `task-dependencies.test.ts`         | 承認済み計画、入力不正、依存グラフ・循環・境界                |
+| `session.ts`                                 | `session.test.ts`                                      | 初期化・置換・完了、revision、状態遷移                        |
+| `snapshot.ts`                                | `snapshot.test.ts`                                     | JSON、旧形式、サイズ上限、破損                                |
+| `snapshot-files.ts`                          | `snapshot-files.test.ts`                               | 保存・読込・ロック・I/O 失敗・後始末                          |
+| `store.ts` / `repository.ts` / `cleanup.ts`  | `store.test.ts` / `server.test.ts` / `cleanup.test.ts` | Repository 契約、保存の統合、競合、完了済みだけの回収         |
+| `server.ts` / `errors.ts`                    | `server.test.ts`                                       | ツール入出力、既知・OS・未知のエラー契約                      |
+| `scripts/build.ts` / `scripts/clean-test.ts` | `build.test.ts`                                        | 配布物の欠落・更新漏れ、型エラー、古いコンパイル結果の削除    |
+| `index.ts` / 配布 bundle / MCP 接続          | `mcp.test.ts`                                          | 実プロセスの起動・通信・再起動・分離・完了・競合・出力 schema |
 
 ## 構成 E2E の観点と限界
 
 配布時に必要な manifest・Skill・参照資料・Agent 定義・MCP bundle だけを OS の一時ディレクトリへ配置する。元リポジトリの Agent 登録、テスト、`node_modules` に依存せず、そこから metadata を解析して参照グラフをたどる。実 Codex のインストール処理やモデル出力は再現しない。
 
-| ID                | シナリオ                                                                                    | 実装                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| WF-E01 / WF-E02   | 単体パッケージの発見、9 工程、Self Review → Independent Review → 親の検証・引き渡しへの参照 | [Workflow E2E](../test/workflow/e2e.test.mjs)         |
-| WF-E03            | 特化観点なし／security ありの双方で共通 5 原則と返却契約が参照できる                        | Workflow E2E                                          |
-| WF-E04            | Escalation 未導入の単独配布で、任意相談の参照先へ到達できる                                 | Workflow E2E                                          |
-| EX-E01 / EX-E02   | Escalation 単独配布、両相談役とテンプレートの識別子・状態整合                               | [Escalation E2E](../test/escalation/e2e.test.mjs)     |
-| INT-E01 / INT-E02 | 任意相談先の発見と入出力の一致、Reviewer → Parent → Advisor → Worker / Reviewer の責務整合  | [連携 E2E](../test/integration/consultation.test.mjs) |
+| ID                | シナリオ                                                                                    | 実装                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| WF-E01 / WF-E02   | 単体パッケージの発見、9 工程、Self Review → Independent Review → 親の検証・引き渡しへの参照 | [Workflow E2E](../test/workflow/e2e.test.ts)         |
+| WF-E03            | 特化観点なし／security ありの双方で共通 5 原則と返却契約が参照できる                        | Workflow E2E                                         |
+| WF-E04            | Escalation 未導入の単独配布で、任意相談の参照先へ到達できる                                 | Workflow E2E                                         |
+| EX-E01 / EX-E02   | Escalation 単独配布、両相談役とテンプレートの識別子・状態整合                               | [Escalation E2E](../test/escalation/e2e.test.ts)     |
+| INT-E01 / INT-E02 | 任意相談先の発見と入出力の一致、Reviewer → Parent → Advisor → Worker / Reviewer の責務整合  | [連携 E2E](../test/integration/consultation.test.ts) |
 
 参照切れ・権限退行の負例は検証器の単体試験 `HAR-U04` / `HAR-U06` に集約する。従来の `WF-E05` / `EX-E03` は廃止し、ID を再利用しない。
 
@@ -198,6 +213,6 @@ CI-U11 は [GitHub の式評価ライブラリ](https://github.com/actions/langu
 
 1. 該当コンポーネントの契約一覧に ID・観点・対象を追加する。文言の意図的な変更では旧契約の削除理由もレビューする。
 2. metadata・権限・参照は構文解析と実ファイルで検証する。参照を追加したら配布グラフ E2E でも到達を確認する。
-3. 実装コード・検証器・差分判定を追加したら正常系と失敗系の単体試験を追加する。新パスの CI 分類を [select-tests.mjs](../scripts/select-tests.mjs) とその試験で固定する。
-4. 新しい MCP 試験は [対象一覧](../scripts/test-targets.mjs)で単体または E2E に登録する。この対応表を更新し、該当対象と連携 E2E を実行する。共通基盤の変更では `npm test` と各品質チェックを実行する。
+3. 実装コード・検証器・差分判定を追加したら正常系と失敗系の単体試験を追加する。新パスの CI 分類を [select-tests.ts](../scripts/select-tests.ts) とその試験で固定する。
+4. 新しい MCP 試験は [対象一覧](../scripts/test-targets.ts)で単体または E2E に登録する。この対応表を更新し、該当対象と連携 E2E を実行する。共通基盤の変更では `npm test` と各品質チェックを実行する。
 5. 全体 RV ではこれらの再現可能な試験結果を基礎にし、自然言語の意味・実モデルの遵守・未確認環境は別途レビューする。Issue #19 では全体 RV 自体は実施しない。

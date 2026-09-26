@@ -3,19 +3,22 @@ import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { marked } from 'marked';
+import { marked, type Token } from 'marked';
+import type { PathLike } from 'node:fs';
+import type { TestContext } from 'node:test';
+import type { Agent, Contract, Skill, SkillMetadata, SkillSettings } from './types.ts';
 import GithubSlugger from 'github-slugger';
 import { parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
-import { packagePlugin } from '../../scripts/package-plugins.mjs';
-import { validateManifests } from '../../scripts/validate-manifests.mjs';
+import { packagePlugin } from '../../scripts/package-plugins.ts';
+import { validateManifests } from '../../scripts/validate-manifests.ts';
 
 export const repository = fileURLToPath(new URL('../../', import.meta.url));
-export const pluginRoot = (name) => join(repository, 'plugins', name);
-export const read = (path) => readFile(path, 'utf8');
-export const json = async (path) => JSON.parse(await read(path));
+export const pluginRoot = (name: string) => join(repository, 'plugins', name);
+export const read = (path: PathLike) => readFile(path, 'utf8');
+export const json = async <T = unknown>(path: PathLike): Promise<T> => JSON.parse(await read(path));
 
-export function inside(root, path) {
+export function inside(root: string, path: string) {
   const result = resolve(root, path);
   const difference = relative(root, result);
   assert.ok(
@@ -29,8 +32,8 @@ export function inside(root, path) {
   return result;
 }
 
-export async function files(root) {
-  const result = [];
+export async function files(root: string): Promise<string[]> {
+  const result: string[] = [];
   for (const entry of await readdir(root, { withFileTypes: true })) {
     assert.ok(!entry.isSymbolicLink(), `Unexpected symlink: ${entry.name}`);
     if (entry.isDirectory())
@@ -40,23 +43,23 @@ export async function files(root) {
   return result.sort();
 }
 
-export function frontmatter(source) {
+export function frontmatter(source: string) {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(source);
   assert.ok(match, 'Missing YAML frontmatter');
-  const metadata = parseYaml(match[1]);
+  const metadata = parseYaml(match[1]!) as SkillMetadata;
   assert.ok(metadata && typeof metadata === 'object' && !Array.isArray(metadata), 'Invalid frontmatter');
-  for (const key of ['name', 'description'])
+  for (const key of ['name', 'description'] as const)
     assert.ok(typeof metadata[key] === 'string' && metadata[key].trim(), `Missing ${key}`);
   assert.match(metadata.name, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);
   assert.ok(metadata.name.length <= 64 && metadata.description.length <= 1024);
   return { metadata, body: source.slice(match[0].length) };
 }
 
-export async function loadPlugin(root) {
+export async function loadPlugin(root: string) {
   const { manifest, codex } = await validateManifests(root);
   assert.equal(manifest.name, basename(root));
   assert.match(manifest.name, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);
-  for (const key of ['name', 'version', 'description', 'author', 'license']) {
+  for (const key of ['name', 'version', 'description', 'author', 'license'] as const) {
     assert.ok(manifest[key], `Missing manifest ${key}`);
     assert.deepEqual(codex[key], manifest[key], `Inconsistent manifest ${key}`);
   }
@@ -66,49 +69,52 @@ export async function loadPlugin(root) {
   assert.ok(codex.interface.displayName && codex.interface.shortDescription);
   assert.equal(codex.skills, './skills/');
   const skillDirectory = inside(root, codex.skills);
-  const skills = new Map();
+  const skills = new Map<string, Skill>();
   for (const entry of await readdir(skillDirectory, { withFileTypes: true })) {
     assert.ok(entry.isDirectory(), `Unexpected skill entry: ${entry.name}`);
     const path = join(skillDirectory, entry.name);
     const skill = frontmatter(await read(join(path, 'SKILL.md')));
     assert.equal(skill.metadata.name, entry.name);
-    const settings = parseYaml(await read(join(path, 'agents/openai.yaml')));
+    const settings = parseYaml(await read(join(path, 'agents/openai.yaml'))) as SkillSettings;
     assert.ok(settings.interface.display_name && settings.interface.short_description);
     assert.equal(typeof settings.policy.allow_implicit_invocation, 'boolean');
     skills.set(entry.name, { ...skill, root: path, settings });
   }
   assert.ok(skills.size, 'No skills discovered');
-  const agents = new Map();
+  const agents = new Map<string, Agent>();
   for (const path of await files(join(root, 'com.openai/agents'))) {
     assert.ok(path.endsWith('.toml'), `Unexpected agent file: ${path}`);
-    const agent = parseToml(await read(join(root, 'com.openai/agents', path)));
+    const agent = parseToml(await read(join(root, 'com.openai/agents', path))) as unknown as Agent;
     assert.equal(agent.name, basename(path, '.toml'));
-    for (const key of ['description', 'model', 'model_reasoning_effort', 'developer_instructions'])
+    for (const key of ['description', 'model', 'model_reasoning_effort', 'developer_instructions'] as const)
       assert.ok(typeof agent[key] === 'string' && agent[key].trim(), `Missing agent ${key}`);
     agents.set(agent.name, agent);
   }
   return { root, manifest, codex, skills, agents };
 }
 
-export function markdown(source) {
+export function markdown(source: string) {
   const tokens = marked.lexer(source);
-  const links = [];
-  const headings = [];
+  const links: string[] = [];
+  const headings: string[] = [];
   const slugger = new GithubSlugger();
-  const plain = (items) => items.map((token) => (token.tokens ? plain(token.tokens) : (token.text ?? ''))).join('');
-  marked.walkTokens(tokens, (token) => {
+  const plain = (items: Token[]): string =>
+    items
+      .map((token) => ('tokens' in token && token.tokens ? plain(token.tokens) : 'text' in token ? token.text : ''))
+      .join('');
+  void marked.walkTokens(tokens, (token) => {
     if (token.type === 'link' || token.type === 'image') links.push(token.href);
-    if (token.type === 'heading') headings.push(slugger.slug(plain(token.tokens)));
+    if (token.type === 'heading') headings.push(slugger.slug(plain(token.tokens ?? [])));
   });
   return { links, headings, tokens };
 }
 
-export async function localLinks(root, path) {
+export async function localLinks(root: string, path: string) {
   const { links } = markdown(await read(inside(root, path)));
   const result = [];
   for (const href of links) {
     if (/^(https?:|mailto:)/i.test(href)) continue;
-    const [target, fragment] = href.split('#');
+    const [target = '', fragment] = href.split('#');
     assert.ok(!target.startsWith('//') && !/^[a-z][a-z0-9+.-]*:/i.test(target), `Unsupported link: ${href}`);
     const absolute = inside(root, target ? join(dirname(path), decodeURIComponent(target)) : path);
     const info = await stat(absolute);
@@ -124,11 +130,11 @@ export async function localLinks(root, path) {
   return result;
 }
 
-export async function walkReferences(root, start = 'SKILL.md') {
-  const visited = new Set();
+export async function walkReferences(root: string, start = 'SKILL.md') {
+  const visited = new Set<string>();
   const pending = [start];
   while (pending.length) {
-    const path = pending.pop();
+    const path = pending.pop()!;
     if (visited.has(path)) continue;
     visited.add(path);
     if (path.endsWith('.md')) pending.push(...(await localLinks(root, path)));
@@ -136,20 +142,20 @@ export async function walkReferences(root, start = 'SKILL.md') {
   return [...visited].sort();
 }
 
-export async function temporaryDirectory(t) {
+export async function temporaryDirectory(t: TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'plugin-contract-'));
   t.after(() => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   return root;
 }
 
 // Exercise the same package boundary used by npm run package, including README.
-export async function stagePlugin(t, name) {
+export async function stagePlugin(t: TestContext, name: string) {
   const root = join(await temporaryDirectory(t), name);
   await packagePlugin(pluginRoot(name), root);
   return loadPlugin(root);
 }
 
-export function assertContract(source, contract) {
+export function assertContract(source: string, contract: Contract) {
   for (const text of contract.contains ?? []) assert.ok(source.includes(text), `${contract.id}: missing ${text}`);
   for (const pattern of contract.matches ?? []) assert.match(source, new RegExp(pattern, 'u'), contract.id);
   for (const text of contract.excludes ?? []) assert.ok(!source.includes(text), `${contract.id}: forbidden ${text}`);

@@ -21,6 +21,7 @@ await test(
       '.codex-plugin',
       'package.json',
       'tsconfig.json',
+      'tsconfig.scripts.json',
       'plugin.json',
       'mcp.json',
       '.mcp.json',
@@ -30,7 +31,7 @@ await test(
     // Copy dependencies so esbuild sees the same module paths on every OS.
     await cp(join(root, 'node_modules'), join(directory, 'node_modules'), { recursive: true });
     const build = (check = true) =>
-      execute(process.execPath, [join(directory, 'scripts/build.mjs'), ...(check ? ['--check'] : [])], {
+      execute(process.execPath, [join(directory, 'scripts/build.ts'), ...(check ? ['--check'] : [])], {
         cwd: directory,
       });
     const outdated = (error: unknown) => error instanceof Error && error.message.includes('missing or outdated');
@@ -89,7 +90,7 @@ await test('test cleanup removes deleted or renamed compiled tests before the ne
   await writeFile(join(output, 'deleted.test.js'), 'throw new Error("stale test");');
   const source = join(directory, 'keep.ts');
   await writeFile(source, '// source must survive cleanup');
-  await execute(process.execPath, [join(directory, 'scripts/clean-test.mjs')], { cwd: directory });
+  await execute(process.execPath, [join(directory, 'scripts/clean-test.ts')], { cwd: directory });
   await assert.rejects(readFile(join(output, 'deleted.test.js')), { code: 'ENOENT' });
   assert.equal(await readFile(source, 'utf8'), '// source must survive cleanup');
 });

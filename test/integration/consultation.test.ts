@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import test from 'node:test';
-import { assertReadOnly } from '../lib/contract-suite.mjs';
-import { read, stagePlugin, walkReferences } from '../lib/plugin.mjs';
+import { assertReadOnly } from '../lib/contract-suite.ts';
+import { read, stagePlugin, walkReferences } from '../lib/plugin.ts';
 
 await test('INT-E01: installed optional Skill is discoverable and its return contract matches Workflow', async (t) => {
   const workflow = await stagePlugin(t, 'artifact-workflow');
   const escalation = await stagePlugin(t, 'expert-escalation');
-  const consultation = escalation.skills.get('expert-escalation');
-  const caller = await read(join(workflow.skills.get('artifact-workflow').root, 'references/escalation.md'));
+  const consultation = escalation.skills.get('expert-escalation')!;
+  const caller = await read(join(workflow.skills.get('artifact-workflow')!.root, 'references/escalation.md'));
   assert.ok(caller.includes(`\`${consultation.metadata.name}\``));
   assert.ok(caller.includes(`\`${escalation.manifest.name}:${consultation.metadata.name}\``));
   assert.equal(consultation.settings.policy.allow_implicit_invocation, true);
@@ -33,10 +33,10 @@ await test('INT-E01: installed optional Skill is discoverable and its return con
 await test('INT-E02: reviewer findings return through Parent to advisors, then back to the correct roles', async (t) => {
   const workflow = await stagePlugin(t, 'artifact-workflow');
   const escalation = await stagePlugin(t, 'expert-escalation');
-  const reviewer = workflow.agents.get('artifact-reviewer');
+  const reviewer = workflow.agents.get('artifact-reviewer')!;
   assertReadOnly(reviewer);
   assert.ok(reviewer.developer_instructions.includes('指摘・不足情報・エスカレーションが必要な論点はすべて親へ返す'));
-  const caller = await read(join(workflow.skills.get('artifact-workflow').root, 'references/escalation.md'));
+  const caller = await read(join(workflow.skills.get('artifact-workflow')!.root, 'references/escalation.md'));
   assert.ok(caller.includes('発見元のレビュワーと修正担当のワーカーを区別'));
   assert.ok(caller.includes('生成・修正はワーカー、独立再レビューはレビュワー'));
   assert.ok(caller.includes('親が指摘の採否と通常の完了条件を判断する'));

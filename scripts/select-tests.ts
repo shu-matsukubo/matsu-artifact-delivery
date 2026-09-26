@@ -3,18 +3,28 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { environmentMatrix, suites, targetsFor } from './test-targets.mjs';
+import { environmentMatrix, suites, targetsFor, type Suite } from './test-targets.ts';
 
-export { suites } from './test-targets.mjs';
+export { suites } from './test-targets.ts';
 
-const workflow = ['workflow', 'integration'];
-const escalation = ['escalation', 'integration'];
-const workflowPackage = ['mcp', ...workflow];
+export interface Selection {
+  selected: Suite[];
+  reason: string;
+}
+export interface GitHubEvent {
+  pull_request?: { base?: { sha?: unknown }; head?: { sha?: unknown } };
+  before?: unknown;
+  after?: unknown;
+}
+
+const workflow: Suite[] = ['workflow', 'integration'];
+const escalation: Suite[] = ['escalation', 'integration'];
+const workflowPackage: Suite[] = ['mcp', ...workflow];
 
 // Unknown paths deliberately run everything. Keep narrower rules ahead of broad ones.
-export function selectTests(files) {
+export function selectTests(files: unknown): Selection {
   if (!Array.isArray(files) || files.length === 0) return allTests('No reliable changed-file list');
-  const selected = new Set();
+  const selected = new Set<Suite>();
   for (const file of files) {
     if (
       typeof file !== 'string' ||
@@ -24,7 +34,7 @@ export function selectTests(files) {
     ) {
       return allTests('Unrecognized path');
     }
-    let affected;
+    let affected: Suite[];
     if (/^plugins\/artifact-workflow\/(skills\/|com\.openai\/agents\/)/.test(file)) affected = workflow;
     else if (/^plugins\/artifact-workflow\/(mcp|test)\//.test(file)) affected = ['mcp'];
     else if (/^plugins\/artifact-workflow\/scripts\//.test(file)) affected = workflowPackage;
@@ -53,11 +63,11 @@ export function selectTests(files) {
   return { selected: suites.filter((suite) => selected.has(suite)), reason: 'Changed-file dependencies' };
 }
 
-export function allTests(reason) {
+export function allTests(reason: string): Selection {
   return { selected: [...suites], reason };
 }
 
-export function selectEvent(eventName, event, cwd = process.cwd()) {
+export function selectEvent(eventName: string | undefined, event: GitHubEvent | null, cwd = process.cwd()): Selection {
   if (eventName === 'workflow_dispatch') return allTests('Manual full run');
   const refs =
     eventName === 'pull_request'
@@ -87,7 +97,7 @@ export function selectEvent(eventName, event, cwd = process.cwd()) {
   }
 }
 
-export function formatOutputs(selection) {
+export function formatOutputs(selection: { selected: readonly Suite[] }) {
   const outputs = {
     unit_targets: JSON.stringify(targetsFor('unit', selection.selected)),
     e2e_targets: JSON.stringify(targetsFor('e2e', selection.selected)),
@@ -104,7 +114,10 @@ export function main(args = process.argv.slice(2), env = process.env) {
     if (args.length === 1 && args[0] === '--all') selection = allTests('Explicit full run');
     else if (args[0] === '--files') selection = selectTests(args.slice(1));
     else if (args.length) selection = allTests('Unknown selector arguments');
-    else selection = selectEvent(env.GITHUB_EVENT_NAME, JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8')));
+    else {
+      if (!env.GITHUB_EVENT_PATH) throw new Error('Missing event path');
+      selection = selectEvent(env.GITHUB_EVENT_NAME, JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8')));
+    }
   } catch {
     selection = allTests('Event data unavailable; run all suites');
   }

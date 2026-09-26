@@ -2,29 +2,26 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { readFile, readdir, mkdtemp, mkdir, rm } from 'node:fs/promises';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
-import { repository } from './package-plugins.mjs';
-import { validateManifests } from './validate-manifests.mjs';
-import { files, json, localLinks } from '../test/lib/plugin.mjs';
+import { repository } from './package-plugins.ts';
+import { validateManifests } from './validate-manifests.ts';
+import { files, json, localLinks } from '../test/lib/plugin.ts';
+
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/client/stdio';
+import type { Marketplace, McpManifest, PluginManifest } from './manifest-types.ts';
 
 const execute = promisify(execFile);
-const requireMcp = createRequire(join(repository, 'plugins/artifact-workflow/package.json'));
-const { Client } = await import(pathToFileURL(requireMcp.resolve('@modelcontextprotocol/client')));
-const { StdioClientTransport, getDefaultEnvironment } = await import(
-  pathToFileURL(requireMcp.resolve('@modelcontextprotocol/client/stdio'))
-);
 const args = process.argv.slice(2);
-assert.ok(args.length <= 1 && !args[0]?.startsWith('-'), 'Usage: node scripts/test-install.mjs [marketplace-root]');
+assert.ok(args.length <= 1 && !args[0]?.startsWith('-'), 'Usage: node scripts/test-install.ts [marketplace-root]');
 const source = resolve(args[0] ?? join(repository, 'dist'));
 const temporary = await mkdtemp(join(tmpdir(), 'matsu-plugin-install-'));
 const isolatedHome = join(temporary, 'codex-home');
-const catalog = await json(join(source, '.agents/plugins/marketplace.json'));
+const catalog = await json<Marketplace>(join(source, '.agents/plugins/marketplace.json'));
 const summary = [];
-const cli = (args) =>
+const cli = (args: string[]) =>
   execute(process.env.CODEX_CLI ?? 'codex', args, {
     cwd: temporary,
     env: { ...process.env, CODEX_HOME: isolatedHome },
@@ -44,7 +41,7 @@ try {
     const versionsRoot = join(isolatedHome, 'plugins/cache', catalog.name, entry.name);
     const versions = await readdir(versionsRoot);
     assert.equal(versions.length, 1, 'Expected one version in empty isolated home');
-    const installed = join(versionsRoot, versions[0]);
+    const installed = join(versionsRoot, versions[0]!);
     const expected = join(source, entry.source.path);
     await validateManifests(installed);
     const paths = await files(installed);
@@ -60,13 +57,18 @@ try {
       bytes += contents.length;
       if (path.endsWith('.md')) await localLinks(installed, path);
     }
-    const manifest = await json(join(installed, 'plugin.json'));
-    const result = { name: entry.name, version: manifest.version, files: paths.length, bytes };
+    const manifest = await json<PluginManifest>(join(installed, 'plugin.json'));
+    const result: { name: string; version: string; files: number; bytes: number; mcp?: string } = {
+      name: entry.name,
+      version: manifest.version,
+      files: paths.length,
+      bytes,
+    };
     if (entry.name === 'artifact-workflow') {
       for (const configName of ['mcp.json', '.mcp.json']) {
-        const config = (await json(join(installed, configName))).mcpServers['artifact-task-memory'];
+        const config = (await json<McpManifest>(join(installed, configName))).mcpServers['artifact-task-memory']!;
         const data = join(temporary, '日本語 data', configName);
-        const expand = (value) =>
+        const expand = (value: string) =>
           value.replace(/\$\{(PLUGIN_ROOT|PLUGIN_DATA)\}/g, (_, key) => (key === 'PLUGIN_ROOT' ? installed : data));
         const client = new Client({ name: 'distribution-check', version: '1.0.0' });
         try {
@@ -103,7 +105,7 @@ try {
   console.log(JSON.stringify({ passed: true, packages: summary }, null, 2));
 } finally {
   // mkdtemp owns this exact tree; never target an existing user Codex home.
-  assert.equal(resolve(temporary), join(tmpdir(), temporary.split(/[\\/]/).at(-1)));
-  assert.ok(temporary.split(/[\\/]/).at(-1).startsWith('matsu-plugin-install-'));
+  assert.equal(resolve(temporary), join(tmpdir(), temporary.split(/[\\/]/).at(-1)!));
+  assert.ok(temporary.split(/[\\/]/).at(-1)!.startsWith('matsu-plugin-install-'));
   await rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

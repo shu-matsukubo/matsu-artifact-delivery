@@ -2,20 +2,21 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import test from 'node:test';
-import { allTests, formatOutputs, selectEvent, selectTests, suites } from '../../scripts/select-tests.mjs';
-import { read, repository, temporaryDirectory } from '../lib/plugin.mjs';
+import test, { type TestContext } from 'node:test';
+import type { Suite } from '../../scripts/test-targets.ts';
+import { allTests, formatOutputs, selectEvent, selectTests, suites } from '../../scripts/select-tests.ts';
+import { read, repository, temporaryDirectory } from '../lib/plugin.ts';
 
 const workflow = ['workflow', 'integration'];
 const escalation = ['escalation', 'integration'];
 const packageChecks = ['mcp', ...workflow];
-const cases = [
+const cases: [string, string[]][] = [
   ['plugins/artifact-workflow/skills/artifact-workflow/SKILL.md', workflow],
   ['plugins/artifact-workflow/skills/artifact-workflow/references/self-review.md', workflow],
   ['plugins/artifact-workflow/skills/artifact-workflow/agents/openai.yaml', workflow],
   ['plugins/artifact-workflow/com.openai/agents/artifact-reviewer.toml', workflow],
   ['test/workflow/contracts.json', workflow],
-  ['test/workflow/e2e.test.mjs', workflow],
+  ['test/workflow/e2e.test.ts', workflow],
   ['plugins/artifact-workflow/mcp/src/server.ts', ['mcp']],
   ['plugins/artifact-workflow/mcp/task-memory.cjs', ['mcp']],
   ['plugins/artifact-workflow/mcp/THIRD_PARTY_LICENSES.txt', ['mcp']],
@@ -23,7 +24,7 @@ const cases = [
   ['plugins/artifact-workflow/tsconfig.json', ['mcp']],
   ['plugins/artifact-workflow/.oxlintrc.json', ['mcp']],
   ['plugins/artifact-workflow/.prettierrc.json', ['mcp']],
-  ['plugins/artifact-workflow/scripts/build.mjs', packageChecks],
+  ['plugins/artifact-workflow/scripts/build.ts', packageChecks],
   ['plugins/artifact-workflow/plugin.json', packageChecks],
   ['plugins/artifact-workflow/.codex-plugin/plugin.json', packageChecks],
   ['plugins/artifact-workflow/mcp.json', packageChecks],
@@ -38,8 +39,8 @@ const cases = [
   ['plugins/expert-escalation/.codex-plugin/plugin.json', escalation],
   ['plugins/expert-escalation/README.md', escalation],
   ['plugins/expert-escalation/LICENSE', escalation],
-  ['test/escalation/unit.test.mjs', escalation],
-  ['test/integration/consultation.test.mjs', ['integration']],
+  ['test/escalation/unit.test.ts', escalation],
+  ['test/integration/consultation.test.ts', ['integration']],
   ['README.md', ['infrastructure']],
   ['docs/testing.md', ['infrastructure']],
 ];
@@ -54,9 +55,9 @@ await test('CI-U02: shared, unknown, malformed and empty changes fail open to al
     '.github/workflows/artifact-workflow-ci.yml',
     '.agents/plugins/marketplace.json',
     '.codex/config.toml',
-    'scripts/select-tests.mjs',
-    'test/infrastructure/selection.test.mjs',
-    'test/lib/plugin.mjs',
+    'scripts/select-tests.ts',
+    'test/infrastructure/selection.test.ts',
+    'test/lib/plugin.ts',
     'package.json',
     'package-lock.json',
     '.gitignore',
@@ -80,14 +81,14 @@ await test('CI-U02: shared, unknown, malformed and empty changes fail open to al
 });
 
 await test('CI-U03: combined changes union dependencies; outputs contain only known names', () => {
-  assert.deepEqual(selectTests([cases[0][0], cases[6][0]]).selected, packageChecks);
-  assert.deepEqual(selectTests([cases[0][0], cases[22][0]]).selected, ['workflow', 'escalation', 'integration']);
-  assert.deepEqual(selectTests([cases[0][0], cases[0][0]]).selected, workflow);
+  assert.deepEqual(selectTests([cases[0]![0], cases[6]![0]]).selected, packageChecks);
+  assert.deepEqual(selectTests([cases[0]![0], cases[22]![0]]).selected, ['workflow', 'escalation', 'integration']);
+  assert.deepEqual(selectTests([cases[0]![0], cases[0]![0]]).selected, workflow);
   assert.equal(
-    formatOutputs(selectTests([cases[0][0]])),
+    formatOutputs(selectTests([cases[0]![0]])),
     'unit_targets=["workflow"]\ne2e_targets=["workflow","integration"]\nmatrix={"include":[{"os":"ubuntu-latest","node":"22.19.0","primary":true}]}\n',
   );
-  const outputs = (selected) =>
+  const outputs = (selected: readonly Suite[]) =>
     Object.fromEntries(
       formatOutputs({ selected })
         .trim()
@@ -114,15 +115,15 @@ await test('CI-U04: unsupported events, missing/zero/unsafe refs and unavailable
     ['push', { before: '0'.repeat(40), after: sha }],
     ['push', { before: '--output=oops', after: sha }],
     ['push', { before: sha, after: 'b'.repeat(40) }],
-  ])
+  ] as const)
     assert.deepEqual(selectEvent(name, event).selected, suites);
 });
 
-async function gitFixture(t) {
+async function gitFixture(t: TestContext) {
   const cwd = await temporaryDirectory(t);
-  const git = (...args) =>
+  const git = (...args: string[]) =>
     execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  const put = async (path, value) => {
+  const put = async (path: string, value: string) => {
     await mkdir(dirname(join(cwd, path)), { recursive: true });
     await writeFile(join(cwd, path), value);
   };
@@ -130,7 +131,7 @@ async function gitFixture(t) {
   git('config', 'user.name', 'Test');
   git('config', 'user.email', 'test@example.invalid');
   git('config', 'commit.gpgsign', 'false');
-  await put(cases[0][0], 'base');
+  await put(cases[0]![0], 'base');
   const commit = () => {
     git('add', '.');
     git('commit', '-qm', 'fixture');
@@ -143,10 +144,10 @@ async function gitFixture(t) {
 await test('CI-U05: PR uses merge-base and excludes changes made only on the base branch', async (t) => {
   const fixture = await gitFixture(t);
   fixture.git('checkout', '-b', 'topic');
-  await fixture.put(cases[0][0], 'workflow change');
+  await fixture.put(cases[0]![0], 'workflow change');
   const head = fixture.commit();
   fixture.git('checkout', 'main');
-  await fixture.put(cases[6][0], 'base-only MCP change');
+  await fixture.put(cases[6]![0], 'base-only MCP change');
   const base = fixture.commit();
   const event = { pull_request: { base: { sha: base }, head: { sha: head } } };
   assert.deepEqual(selectEvent('pull_request', event, fixture.cwd).selected, workflow);
@@ -154,15 +155,15 @@ await test('CI-U05: PR uses merge-base and excludes changes made only on the bas
 
 await test('CI-U06: push includes deleted paths and both sides of cross-component renames', async (t) => {
   const fixture = await gitFixture(t);
-  await mkdir(dirname(join(fixture.cwd, cases[22][0])), { recursive: true });
-  await rename(join(fixture.cwd, cases[0][0]), join(fixture.cwd, cases[22][0]));
+  await mkdir(dirname(join(fixture.cwd, cases[22]![0])), { recursive: true });
+  await rename(join(fixture.cwd, cases[0]![0]), join(fixture.cwd, cases[22]![0]));
   const renamed = fixture.commit();
   assert.deepEqual(selectEvent('push', { before: fixture.base, after: renamed }, fixture.cwd).selected, [
     'workflow',
     'escalation',
     'integration',
   ]);
-  await unlink(join(fixture.cwd, cases[22][0]));
+  await unlink(join(fixture.cwd, cases[22]![0]));
   const deleted = fixture.commit();
   assert.deepEqual(selectEvent('push', { before: renamed, after: deleted }, fixture.cwd).selected, escalation);
   assert.deepEqual(selectEvent('push', { before: deleted, after: deleted }, fixture.cwd).selected, suites);
@@ -186,9 +187,9 @@ await test('CI-U07: complete Git diff handles more than 300 files, Unicode, spac
 await test('CI-U08: selector CLI writes Actions outputs and falls back on unreadable event data', async (t) => {
   const cwd = await temporaryDirectory(t);
   const output = join(cwd, 'output');
-  const invoke = (args, eventPath = join(cwd, 'missing')) =>
+  const invoke = (args: string[], eventPath = join(cwd, 'missing')) =>
     JSON.parse(
-      execFileSync(process.execPath, [join(repository, 'scripts/select-tests.mjs'), ...args], {
+      execFileSync(process.execPath, [join(repository, 'scripts/select-tests.ts'), ...args], {
         cwd,
         encoding: 'utf8',
         env: {
@@ -199,8 +200,8 @@ await test('CI-U08: selector CLI writes Actions outputs and falls back on unread
         },
       }),
     );
-  assert.deepEqual(invoke(['--files', cases[0][0]]).selected, workflow);
-  assert.equal(await read(output), formatOutputs(selectTests([cases[0][0]])));
+  assert.deepEqual(invoke(['--files', cases[0]![0]]).selected, workflow);
+  assert.equal(await read(output), formatOutputs(selectTests([cases[0]![0]])));
   assert.deepEqual(invoke([]).selected, suites);
   assert.deepEqual(invoke(['--all']).selected, suites);
   assert.deepEqual(invoke(['--typo']).selected, suites);

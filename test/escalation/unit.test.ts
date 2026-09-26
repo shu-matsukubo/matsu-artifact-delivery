@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import test from 'node:test';
-import { registerContracts } from '../lib/contract-suite.mjs';
-import { assertContract, json, loadPlugin, pluginRoot, read } from '../lib/plugin.mjs';
+import { registerContracts } from '../lib/contract-suite.ts';
+import { assertContract, json, loadPlugin, pluginRoot, read } from '../lib/plugin.ts';
+
+import type { FileContract } from '../lib/types.ts';
 
 await registerContracts(
   {
@@ -23,9 +25,10 @@ await test('EX-U10: Escalation has no mandatory Workflow or MCP dependency', asy
 });
 
 await test('EX-U11: each advisor unit contract rejects removal of a required return field', async () => {
-  const cases = await json(new URL('./contracts.json', import.meta.url));
+  const cases = await json<FileContract[]>(new URL('./contracts.json', import.meta.url));
   for (const id of ['EX-U08', 'EX-U09']) {
     const contract = cases.find((item) => item.id === id);
+    assert.ok(contract, `Missing contract: ${id}`);
     const source = await read(join(pluginRoot('expert-escalation'), contract.file));
     const output = source.split(/\r?\n/).find((line) => line.startsWith('- 相談ID・受け取った親識別子'));
     assert.ok(output, 'Missing advisor return instruction');

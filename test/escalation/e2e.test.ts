@@ -2,15 +2,15 @@ import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { assertReadOnly } from '../lib/contract-suite.mjs';
-import { files, localLinks, read, stagePlugin, walkReferences } from '../lib/plugin.mjs';
+import { assertReadOnly } from '../lib/contract-suite.ts';
+import { files, localLinks, read, stagePlugin, walkReferences } from '../lib/plugin.ts';
 
 await test('EX-E01: standalone package discovers the Skill, both advisors and all references', async (t) => {
   const plugin = await stagePlugin(t, 'expert-escalation');
   assert.deepEqual(await readdir(join(plugin.root, '..')), ['expert-escalation']);
   assert.equal(plugin.codex.mcpServers, undefined);
   await localLinks(plugin.root, 'README.md');
-  const skill = plugin.skills.get('expert-escalation');
+  const skill = plugin.skills.get('expert-escalation')!;
   assert.equal(skill.settings.policy.allow_implicit_invocation, true);
   assert.deepEqual(
     await walkReferences(skill.root),
@@ -25,7 +25,7 @@ await test('EX-E01: standalone package discovers the Skill, both advisors and al
 
 await test('EX-E02: Skill → advisor contract → both roles → result template preserve states and identity', async (t) => {
   const plugin = await stagePlugin(t, 'expert-escalation');
-  const root = plugin.skills.get('expert-escalation').root;
+  const root = plugin.skills.get('expert-escalation')!.root;
   const contract = await read(join(root, 'references/advisor-contract.md'));
   const template = await read(join(root, 'assets/escalation-result-template.md'));
   for (const value of [
