@@ -56,7 +56,7 @@ npm run package
 npm run test:install
 ```
 
-生成されたカタログについても `read_marketplace_name.py --marketplace-path dist/.agents/plugins/marketplace.json` で名前を確認する。上記の登録先確認・再インストール・新しいタスクでの確認までを一続きの更新手順とする。開発用cachebusterは正式リリースの版として扱わず、package.json / lockfileの基底バージョンは維持する。
+生成されたカタログについても `read_marketplace_name.py --marketplace-path dist/.agents/plugins/marketplace.json` で名前を確認する。上記の登録先確認・再インストール・新しいタスクでの確認までを一続きの更新手順とする。開発用cachebusterは正式リリースの版として扱わず、package.json / lockfileの基底バージョンは維持する。`WF-U18` は、標準helperが生成する形式の `+codex.<token>` だけを除いてpackage.jsonの版と照合し、lockfileの最上位と `packages[""]` も同じ版であることを確認する。通常版や無関係なsuffixは省略せず完全一致を要求する。
 
 ## 正式版の確定
 
