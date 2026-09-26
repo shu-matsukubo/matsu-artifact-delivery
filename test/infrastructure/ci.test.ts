@@ -4,12 +4,46 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { data, Evaluator, Lexer, Parser } from '@actions/expressions';
 import { parse as parseYaml } from 'yaml';
-import { checkResults } from '../../scripts/check-ci.mjs';
-import { formatOutputs } from '../../scripts/select-tests.mjs';
-import { environmentMatrix, layers, suites, targetsFor } from '../../scripts/test-targets.mjs';
-import { read, repository } from '../lib/plugin.mjs';
+import { checkResults } from '../../scripts/check-ci.ts';
+import { formatOutputs } from '../../scripts/select-tests.ts';
+import { environmentMatrix, layers, suites, targetsFor } from '../../scripts/test-targets.ts';
+import { read, repository } from '../lib/plugin.ts';
 
-const needs = (selected, unitResult = 'success', e2eResult = 'success') => ({
+import type { Suite } from '../../scripts/test-targets.ts';
+
+interface Step {
+  uses?: string;
+  run?: string;
+  id?: string;
+  if?: string;
+  with?: Record<string, unknown>;
+  env?: Record<string, string>;
+}
+interface TestJob {
+  needs: string | string[];
+  if: string;
+  steps: Step[];
+  strategy: { matrix: string; 'fail-fast': boolean };
+  env: Record<string, string>;
+  'runs-on': string;
+}
+interface Workflow {
+  on: Record<string, { paths?: string[]; 'paths-ignore'?: string[] } | null>;
+  permissions: Record<string, string>;
+  jobs: {
+    changes: { steps: Step[]; outputs: Record<string, string> };
+    required: { name: string; needs: string | string[]; if: string; steps: Step[] };
+    unit: TestJob;
+    e2e: TestJob;
+  };
+}
+interface NeedsFixture {
+  changes: { result: string; outputs: Record<string, string | undefined> };
+  unit?: { result: string };
+  e2e?: { result: string };
+}
+
+const needs = (selected: readonly Suite[], unitResult = 'success', e2eResult = 'success'): NeedsFixture => ({
   changes: {
     result: 'success',
     outputs: Object.fromEntries(
@@ -32,7 +66,7 @@ await test('CI-U09: required-check gate accepts only successful selected layers'
   for (const layer of layers) {
     for (const result of ['failure', 'cancelled', 'skipped']) {
       const required = needs(['workflow']);
-      required[layer].result = result;
+      required[layer]!.result = result;
       assert.ok(checkResults(required).length);
     }
     const missing = needs(['workflow']);
@@ -56,8 +90,8 @@ await test('CI-U09: required-check gate accepts only successful selected layers'
 });
 
 await test('CI-U10: gate CLI returns nonzero on failure or malformed job data', () => {
-  const invoke = (value) =>
-    execFileSync(process.execPath, [join(repository, 'scripts/check-ci.mjs')], {
+  const invoke = (value: string) =>
+    execFileSync(process.execPath, [join(repository, 'scripts/check-ci.ts')], {
       encoding: 'utf8',
       env: { ...process.env, CI_NEEDS: value },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -70,9 +104,14 @@ await test('CI-U10: gate CLI returns nonzero on failure or malformed job data', 
 
 // Only provide the runner's status functions. Parsing, values and operators are
 // evaluated by GitHub's library; this is not a local Actions runner or shell parser.
-function evaluate(source, context = {}, status = 'success', condition = false) {
-  if (source === undefined && condition) return status === 'success';
-  if (typeof source !== 'string' && typeof source !== 'boolean') return source;
+function evaluate<T = unknown>(
+  source: unknown,
+  context: Record<string, unknown> = {},
+  status = 'success',
+  condition = false,
+): T {
+  if (source === undefined && condition) return (status === 'success') as T;
+  if (typeof source !== 'string' && typeof source !== 'boolean') return source as T;
   const expression = String(source)
     .trim()
     .replace(/^\$\{\{([\s\S]*)\}\}$/, '$1');
@@ -100,34 +139,36 @@ function evaluate(source, context = {}, status = 'success', condition = false) {
   const explicitStatus = tokens.some(
     (token, index) => functions.has(token.lexeme.toLowerCase()) && tokens[index + 1]?.lexeme === '(',
   );
-  if (condition && !explicitStatus && status !== 'success') return false;
+  if (condition && !explicitStatus && status !== 'success') return false as T;
   return JSON.parse(JSON.stringify(result, data.replacer));
 }
 
 await test('CI-U11: Actions selects the right layers, environments and dependencies for each change', async () => {
-  const workflow = parseYaml(await read(join(repository, '.github/workflows/artifact-workflow-ci.yml')));
+  const workflow = parseYaml(await read(join(repository, '.github/workflows/artifact-workflow-ci.yml'))) as Workflow;
   for (const event of ['pull_request', 'push', 'workflow_dispatch']) assert.ok(Object.hasOwn(workflow.on, event));
   assert.equal(workflow.on.pull_request?.paths, undefined);
   assert.equal(workflow.on.pull_request?.['paths-ignore'], undefined);
   assert.deepEqual(workflow.permissions, { contents: 'read' });
   const { changes, required } = workflow.jobs;
-  assert.equal(changes.steps.find((step) => step.uses?.startsWith('actions/checkout@')).with['fetch-depth'], 0);
-  const selector = changes.steps.find((step) => /(?:select-tests\.mjs|ci:select)/.test(step.run ?? ''));
+  assert.equal(changes.steps.find((step) => step.uses?.startsWith('actions/checkout@'))?.with?.['fetch-depth'], 0);
+  const sourcePolicy = changes.steps.find((step) => step.run?.includes('check-typescript.ts'));
+  assert.ok(sourcePolicy && !sourcePolicy.if, 'Every diff must check the implementation language');
+  const selector = changes.steps.find((step) => /(?:select-tests\.ts|ci:select)/.test(step.run ?? ''));
   assert.ok(selector?.id, 'Change selection must publish job outputs');
   assert.equal(required.name, 'Quality gate'); // Branch protection depends on this public name.
   assert.deepEqual(new Set([required.needs].flat()), new Set(['changes', ...layers]));
   for (const status of ['success', 'failure', 'cancelled']) assert.equal(evaluate(required.if, {}, status, true), true);
-  const gate = required.steps.find((step) => step.run?.includes('check-ci.mjs'));
+  const gate = required.steps.find((step) => step.run?.includes('check-ci.ts'));
   assert.ok(gate, 'The required job must run the result gate');
-  assert.deepEqual(JSON.parse(evaluate(gate.env.CI_NEEDS, { needs: needs(suites) })), needs(suites));
+  assert.deepEqual(JSON.parse(evaluate<string>(gate.env?.CI_NEEDS, { needs: needs(suites) })), needs(suites));
   for (const job of Object.values(workflow.jobs)) {
     for (const step of job.steps)
-      if (step.uses?.startsWith('actions/checkout@')) assert.equal(step.with['persist-credentials'], false);
+      if (step.uses?.startsWith('actions/checkout@')) assert.equal(step.with?.['persist-credentials'], false);
   }
 
   // Path ownership is tested in CI-U01–08. Here the selected targets cross the
   // actual YAML expressions, including failures, empty layers and cancellation.
-  const scenarios = [
+  const scenarios: { selected: readonly Suite[]; result?: string; cancelled?: boolean }[] = [
     { selected: ['workflow', 'integration'] },
     { selected: ['escalation', 'integration'] },
     { selected: ['mcp'] },
@@ -140,12 +181,12 @@ await test('CI-U11: Actions selects the right layers, environments and dependenc
   ];
   for (const { selected, result = 'success', cancelled = false } of scenarios) {
     const published = needs(selected).changes.outputs;
-    const outputs =
+    const outputs: Record<string, string> =
       result === 'success'
         ? Object.fromEntries(
             Object.entries(changes.outputs).map(([key, expression]) => [
               key,
-              evaluate(expression, { steps: { [selector.id]: { outputs: published } } }),
+              evaluate<string>(expression, { steps: { [selector.id!]: { outputs: published } } }),
             ]),
           )
         : {};
@@ -162,16 +203,17 @@ await test('CI-U11: Actions selects the right layers, environments and dependenc
         label,
       );
       if (cancelled || !targets.length) continue;
-      const matrix = evaluate(job.strategy.matrix, context);
+      const matrix = evaluate<ReturnType<typeof environmentMatrix>>(job.strategy.matrix, context);
       const expectedRows = environmentMatrix(effective).include;
-      const identities = (rows) => new Set(rows.map(({ os, node, primary }) => `${os}/${node}/${primary}`));
+      const identities = (rows: ReturnType<typeof environmentMatrix>['include']) =>
+        new Set(rows.map(({ os, node, primary }) => `${os}/${node}/${primary}`));
       assert.equal(matrix.include.length, expectedRows.length, label);
       assert.deepEqual(identities(matrix.include), identities(expectedRows), label);
       assert.equal(job.strategy['fail-fast'], false);
       const run = job.steps.find((step) =>
-        new RegExp(`\\b(?:test:${layer}|run-tests\\.mjs\\s+${layer})\\b`).test(step.run ?? ''),
+        new RegExp(`\\b(?:test:${layer}|run-tests\\.ts\\s+${layer})\\b`).test(step.run ?? ''),
       );
-      assert.ok(run, `Missing ${layer} test command`);
+      assert.ok(run?.run, `Missing ${layer} test command`);
       assert.match(
         run.run,
         /--targets-json\s+"\$(?:TEST_TARGETS|\{TEST_TARGETS\})"/,
@@ -179,12 +221,12 @@ await test('CI-U11: Actions selects the right layers, environments and dependenc
       );
       for (const row of matrix.include) {
         const environment = { ...context, matrix: row };
-        const encoded = evaluate(job.env.TEST_TARGETS, environment);
-        const actual = JSON.parse(encoded);
+        const encoded = evaluate<string>(job.env.TEST_TARGETS, environment);
+        const actual: Suite[] = JSON.parse(encoded);
         assert.deepEqual(actual.toSorted(), (row.primary ? targets : ['mcp']).toSorted(), label);
         assert.equal(evaluate(job['runs-on'], environment), row.os);
         const node = job.steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
-        assert.equal(evaluate(node.with['node-version'], environment), row.node);
+        assert.equal(evaluate(node?.with?.['node-version'], environment), row.node);
         const stepContext = { ...environment, env: { TEST_TARGETS: encoded } };
         const rootInstall = job.steps.find((step) => /npm\s+ci/.test(step.run ?? ''));
         assert.ok(rootInstall, 'Skill tests need root dependencies');
@@ -200,12 +242,27 @@ await test('CI-U11: Actions selects the right layers, environments and dependenc
         if (layer === 'unit') {
           for (const script of ['check', 'lint', 'format:check'])
             assert.ok(
-              mcpSteps.some((step) => new RegExp(`\\brun\\s+['\"]?${script}['\"]?(?:\\s|$)`).test(step.run)),
+              mcpSteps.some((step) => new RegExp(`\\brun\\s+['"]?${script}['"]?(?:\\s|$)`).test(step.run ?? '')),
               `Missing MCP ${script}`,
             );
-          const format = job.steps.find((step) => !mcpSteps.includes(step) && step.run?.includes('format:check'));
-          assert.ok(format, 'Infrastructure formatting must be checked');
-          assert.equal(evaluate(format.if, stepContext, 'success', true), actual.includes('infrastructure'), label);
+          for (const script of ['check', 'lint', 'format:check']) {
+            const quality = job.steps.find((step) => !mcpSteps.includes(step) && step.run === `npm run ${script}`);
+            assert.ok(quality, `Missing root ${script}`);
+            assert.equal(
+              evaluate(quality.if, stepContext, 'success', true),
+              actual.some((target) => target !== 'mcp'),
+              label,
+            );
+          }
+        } else {
+          const quality = job.steps.find((step) => step.run?.startsWith('npm run check &&'));
+          assert.ok(quality?.run, 'E2E-only changes need root quality checks');
+          for (const script of ['check', 'lint', 'format:check']) assert.ok(quality.run.includes(`npm run ${script}`));
+          assert.equal(
+            evaluate(quality.if, stepContext, 'success', true),
+            actual.length === 1 && actual[0] === 'integration',
+            label,
+          );
         }
       }
     }

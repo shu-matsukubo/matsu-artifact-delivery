@@ -30,9 +30,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22.19.0'
+      - name: Require TypeScript for maintained code
+        run: node scripts/check-typescript.ts
       - name: Classify the complete Git diff
         id: select
-        run: node scripts/select-tests.mjs
+        run: node scripts/select-tests.ts
 
   unit:
     name: Unit / ${{ matrix.os }} / Node ${{ matrix.node }}
@@ -67,8 +69,14 @@ jobs:
       - name: Install MCP dependencies
         if: contains(fromJSON(env.TEST_TARGETS), 'mcp')
         run: npm --prefix plugins/artifact-workflow ci
-      - name: Check test infrastructure formatting
-        if: contains(fromJSON(env.TEST_TARGETS), 'infrastructure')
+      - name: Check root types
+        if: env.TEST_TARGETS != '["mcp"]'
+        run: npm run check
+      - name: Lint root code
+        if: env.TEST_TARGETS != '["mcp"]'
+        run: npm run lint
+      - name: Check root formatting
+        if: env.TEST_TARGETS != '["mcp"]'
         run: npm run format:check
       - name: Check MCP types
         if: contains(fromJSON(env.TEST_TARGETS), 'mcp')
@@ -115,6 +123,9 @@ jobs:
       - name: Install MCP dependencies
         if: contains(fromJSON(env.TEST_TARGETS), 'mcp')
         run: npm --prefix plugins/artifact-workflow ci
+      - name: Check root quality for E2E-only changes
+        if: env.TEST_TARGETS == '["integration"]'
+        run: npm run check && npm run lint && npm run format:check
       - name: Run selected E2E tests
         run: npm run test:e2e -- --targets-json "$TEST_TARGETS"
 
@@ -134,4 +145,4 @@ jobs:
       - name: Require successful results for every selected test layer
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
-        run: node scripts/check-ci.mjs
+        run: node scripts/check-ci.ts

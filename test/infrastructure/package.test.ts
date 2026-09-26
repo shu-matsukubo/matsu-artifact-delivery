@@ -3,10 +3,13 @@ import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { parse as parseToml } from 'smol-toml';
-import { inside, json, loadPlugin, localLinks, read, repository } from '../lib/plugin.mjs';
+import { inside, json, loadPlugin, localLinks, read, repository } from '../lib/plugin.ts';
+
+import type { Marketplace, PackageMetadata } from '../../scripts/manifest-types.ts';
+import type { FileContract } from '../lib/types.ts';
 
 await test('PKG-U01: marketplace discovers every package with matching metadata and local paths', async () => {
-  const catalog = await json(join(repository, '.agents/plugins/marketplace.json'));
+  const catalog = await json<Marketplace>(join(repository, '.agents/plugins/marketplace.json'));
   assert.match(catalog.name, /^[A-Za-z0-9_-]+$/);
   assert.ok(catalog.interface.displayName);
   const names = catalog.plugins.map((entry) => entry.name).sort();
@@ -25,14 +28,16 @@ await test('PKG-U01: marketplace discovers every package with matching metadata 
 });
 
 await test('PKG-U02: repository Agent registrations match every shipped role', async () => {
-  const config = parseToml(await read(join(repository, '.codex/config.toml')));
-  const catalog = await json(join(repository, '.agents/plugins/marketplace.json'));
+  const config = parseToml(await read(join(repository, '.codex/config.toml'))) as {
+    agents: Record<string, { config_file: string }>;
+  };
+  const catalog = await json<Marketplace>(join(repository, '.agents/plugins/marketplace.json'));
   const shipped = [];
   for (const entry of catalog.plugins) {
     const plugin = await loadPlugin(inside(repository, entry.source.path));
     for (const [name, agent] of plugin.agents) {
       shipped.push(name);
-      const path = inside(repository, join('.codex', config.agents[name].config_file));
+      const path = inside(repository, join('.codex', config.agents[name]!.config_file));
       assert.deepEqual(parseToml(await read(path)), agent);
     }
   }
@@ -54,10 +59,10 @@ await test('PKG-U04: all contract IDs and runnable suites appear in the test inv
   // Guide-only changes select infrastructure, not the Workflow / Escalation units.
   const docs = await read(join(repository, 'docs/testing.md'));
   for (const suite of ['workflow', 'escalation']) {
-    for (const contract of await json(join(repository, `test/${suite}/contracts.json`)))
+    for (const contract of await json<FileContract[]>(join(repository, `test/${suite}/contracts.json`)))
       assert.ok(docs.includes(contract.id), `Undocumented ${contract.id}`);
   }
-  const { scripts } = await json(join(repository, 'package.json'));
+  const { scripts } = await json<PackageMetadata>(join(repository, 'package.json'));
   for (const command of ['test:workflow', 'test:escalation', 'test:integration', 'test:infrastructure', 'test:mcp']) {
     assert.ok(scripts[command], `Missing command: ${command}`);
     assert.ok(docs.includes(command), `Undocumented ${command}`);

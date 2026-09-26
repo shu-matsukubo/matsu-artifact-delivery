@@ -1,33 +1,35 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import test from 'node:test';
-import {
-  assertContract,
-  files,
-  inside,
-  json,
-  loadPlugin,
-  localLinks,
-  pluginRoot,
-  read,
-  repository,
-} from './plugin.mjs';
+import { assertContract, files, inside, json, loadPlugin, localLinks, pluginRoot, read, repository } from './plugin.ts';
 
-export function assertReadOnly(agent) {
+import type { Agent, FileContract } from './types.ts';
+
+export function assertReadOnly(agent: Partial<Agent> | undefined) {
+  assert.ok(agent, 'Missing Agent');
   assert.equal(agent.sandbox_mode, 'read-only', `${agent.name}: sandbox`);
   assert.equal(agent.approval_policy, 'never', `${agent.name}: approvals`);
   assert.equal(agent.agents?.enabled, false, `${agent.name}: delegation`);
 }
 
-export async function registerContracts({ name, prefix, implicit, agents, readOnly }, casesUrl) {
+export async function registerContracts(
+  {
+    name,
+    prefix,
+    implicit,
+    agents,
+    readOnly,
+  }: { name: string; prefix: string; implicit: boolean; agents: string[]; readOnly: string[] },
+  casesUrl: URL,
+) {
   const root = pluginRoot(name);
-  const cases = await json(casesUrl);
+  const cases = await json<FileContract[]>(casesUrl);
   await test(`${prefix}-U01: Plugin / Skill / Agent metadata and permissions`, async () => {
     const plugin = await loadPlugin(root);
     assert.equal(await read(join(root, 'LICENSE')), await read(join(repository, 'LICENSE')));
     await localLinks(repository, `plugins/${name}/README.md`);
     assert.deepEqual([...plugin.skills.keys()], [name]);
-    assert.equal(plugin.skills.get(name).settings.policy.allow_implicit_invocation, implicit);
+    assert.equal(plugin.skills.get(name)!.settings.policy.allow_implicit_invocation, implicit);
     assert.deepEqual([...plugin.agents.keys()].sort(), agents.toSorted());
     readOnly.forEach((role) => assertReadOnly(plugin.agents.get(role)));
     assert.ok(plugin.codex.interface.defaultPrompt.some((prompt) => prompt.includes(`$${name}`)));
@@ -58,7 +60,7 @@ export async function registerContracts({ name, prefix, implicit, agents, readOn
       assert.match(item.id, new RegExp(`^${prefix}-U\\d{2}$`));
       assert.ok(item.title && required.includes(item.file), `Unknown contract target: ${item.file}`);
       assert.ok(
-        ['contains', 'matches', 'excludes', 'ordered'].some((key) => item[key]?.length),
+        (['contains', 'matches', 'excludes', 'ordered'] as const).some((key) => item[key]?.length),
         `Empty contract: ${item.id}`,
       );
     }

@@ -4,8 +4,8 @@ import { copyFile, mkdir, readFile, symlink, unlink, writeFile } from 'node:fs/p
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
-import { packageMarketplace, packagePlugin } from '../../scripts/package-plugins.mjs';
-import { syncManifests } from '../../scripts/sync-manifests.mjs';
+import { packageMarketplace, packagePlugin } from '../../scripts/package-plugins.ts';
+import { syncManifests } from '../../scripts/sync-manifests.ts';
 import {
   files,
   json,
@@ -16,11 +16,13 @@ import {
   repository,
   stagePlugin,
   temporaryDirectory,
-} from '../lib/plugin.mjs';
+} from '../lib/plugin.ts';
+
+import type { McpManifest } from '../../scripts/manifest-types.ts';
 
 const execute = promisify(execFile);
-const writeJson = (path, value) => writeFile(path, JSON.stringify(value, null, 2) + '\n');
-const snapshot = async (root) =>
+const writeJson = (path: string, value: unknown) => writeFile(path, JSON.stringify(value, null, 2) + '\n');
+const snapshot = async (root: string) =>
   Promise.all((await files(root)).map(async (path) => [path, (await readFile(join(root, path))).toString('base64')]));
 
 await test('MAN-U01: portable manifest schema rejects Codex fields, unsupported versions and invalid nested metadata', async (t) => {
@@ -49,7 +51,14 @@ await test('MAN-U02: MCP schema rejects invalid transports, extra fields, reserv
     await writeJson(path, invalid);
     await assert.rejects(loadPlugin(plugin.root), /schema/i);
   }
-  for (const mutate of [
+  // Deliberately permit malformed server fields at this negative-test boundary.
+  type InvalidMcp = {
+    $schema: string;
+    mcpServers: {
+      'artifact-task-memory': { type: string; command: unknown; url?: string; env: Record<string, string> };
+    };
+  };
+  const mutations: ((value: InvalidMcp) => void)[] = [
     (value) => {
       value.$schema = value.$schema.replace('/1.0.0/', '/2.0.0/');
     },
@@ -65,8 +74,9 @@ await test('MAN-U02: MCP schema rejects invalid transports, extra fields, reserv
     (value) => {
       value.mcpServers['artifact-task-memory'].command = ['node'];
     },
-  ]) {
-    const invalid = structuredClone(original);
+  ];
+  for (const mutate of mutations) {
+    const invalid = structuredClone(original) as InvalidMcp;
     mutate(invalid);
     await writeJson(path, invalid);
     await assert.rejects(loadPlugin(plugin.root), /schema/i);
@@ -86,9 +96,9 @@ await test('MAN-U03: compatibility divergence, escaping cwd and missing runtime 
   await writeJson(manifestPath, { ...plugin.codex, unsupported: true });
   await assert.rejects(loadPlugin(plugin.root), /Unsupported Codex field/);
   await writeJson(manifestPath, plugin.codex);
-  const portable = await json(join(plugin.root, 'mcp.json'));
+  const portable = await json<McpManifest>(join(plugin.root, 'mcp.json'));
   const escaped = structuredClone(portable);
-  escaped.mcpServers['artifact-task-memory'].cwd = './../../../outside';
+  escaped.mcpServers['artifact-task-memory']!.cwd = './../../../outside';
   await writeJson(join(plugin.root, 'mcp.json'), escaped);
   await writeJson(compatibilityPath, { mcpServers: escaped.mcpServers });
   await assert.rejects(loadPlugin(plugin.root), /Path escapes package/);
@@ -110,7 +120,7 @@ await test('PKG-U05: production packaging is byte-identical with development dep
       '.build/stale.js',
       '.test-build/deleted.test.js',
       'test/extra.js',
-      'scripts/extra.mjs',
+      'scripts/extra.ts',
       'mcp/src/extra.ts',
       'skills/' + name + '/node_modules/a/index.js',
     ]) {
@@ -131,9 +141,9 @@ await test('PKG-U06: packaged marketplace uses the source catalog and CLI regene
   await packageMarketplace(repository, source);
   const output = join(source, 'dist');
   await mkdir(join(source, 'scripts'));
-  await copyFile(join(repository, 'scripts/package-plugins.mjs'), join(source, 'scripts/package-plugins.mjs'));
+  await copyFile(join(repository, 'scripts/package-plugins.ts'), join(source, 'scripts/package-plugins.ts'));
   await writeFile(join(source, 'keep.txt'), 'source remains');
-  const build = () => execute(process.execPath, [join(source, 'scripts/package-plugins.mjs')], { cwd: temporary });
+  const build = () => execute(process.execPath, [join(source, 'scripts/package-plugins.ts')], { cwd: temporary });
   await build();
   const expected = await snapshot(output);
   assert.deepEqual(
@@ -158,9 +168,9 @@ await test('PKG-U07: packaging refuses linked runtime directories and linked out
   await symlink(outside, join(source, 'skills/linked'), process.platform === 'win32' ? 'junction' : 'dir');
   await assert.rejects(packagePlugin(source, join(temporary, 'package')), /Symlink/);
   await mkdir(join(temporary, 'scripts'));
-  await copyFile(join(repository, 'scripts/package-plugins.mjs'), join(temporary, 'scripts/package-plugins.mjs'));
+  await copyFile(join(repository, 'scripts/package-plugins.ts'), join(temporary, 'scripts/package-plugins.ts'));
   await symlink(outside, join(temporary, 'dist'), process.platform === 'win32' ? 'junction' : 'dir');
-  await assert.rejects(execute(process.execPath, [join(temporary, 'scripts/package-plugins.mjs')]), /real directory/);
+  await assert.rejects(execute(process.execPath, [join(temporary, 'scripts/package-plugins.ts')]), /real directory/);
   assert.equal(await read(join(outside, 'keep.txt')), 'preserve');
 });
 

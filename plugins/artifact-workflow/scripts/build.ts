@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const args = process.argv.slice(2);
-if (args.some((arg) => arg !== '--check')) throw new Error('Usage: node scripts/build.mjs [--check]');
+if (args.some((arg) => arg !== '--check')) throw new Error('Usage: node scripts/build.ts [--check]');
 const check = args.includes('--check');
 const result = await build({
   absWorkingDir: root,
@@ -27,7 +27,7 @@ const artifacts = new Map(result.outputFiles.map((file) => [relative(root, file.
 const packages = new Set(
   Object.keys(result.metafile.inputs).flatMap((path) => {
     const match = path.match(/^node_modules\/((?:@[^/]+\/)?[^/]+)\//);
-    return match ? [match[1]] : [];
+    return match ? [match[1]!] : [];
   }),
 );
 const notices = [];
@@ -44,7 +44,7 @@ artifacts.set('mcp/THIRD_PARTY_LICENSES.txt', Buffer.from(`${notices.join('\n\n-
 
 // Portable manifests remain canonical; compatibility files are generated from them.
 const manifest = JSON.parse(await readFile(new URL('../plugin.json', import.meta.url), 'utf8'));
-const { $schema, ...identity } = manifest;
+const { $schema: _schema, ...identity } = manifest;
 const compatibility = {
   ...identity,
   skills: './skills/',
@@ -71,7 +71,7 @@ for (const [path, contents] of artifacts) {
     try {
       current = await readFile(filename);
     } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
     }
     if (!current?.equals(contents)) outdated.push(path);
   } else {

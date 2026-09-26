@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { assertReadOnly } from '../lib/contract-suite.mjs';
+import { assertReadOnly } from '../lib/contract-suite.ts';
 import {
   assertContract,
   frontmatter,
@@ -15,7 +15,9 @@ import {
   stagePlugin,
   temporaryDirectory,
   walkReferences,
-} from '../lib/plugin.mjs';
+} from '../lib/plugin.ts';
+
+import type { CodexManifest } from '../../scripts/manifest-types.ts';
 
 await test('HAR-U01: frontmatter parses YAML and rejects absent, duplicate or invalid metadata', () => {
   const source = '---\r\nname: sample\r\ndescription: Sample skill\r\n---\r\n# Body';
@@ -70,7 +72,7 @@ await test('HAR-U05: packaged metadata mismatches and invalid Agent / YAML synta
   const plugin = await stagePlugin(t, 'expert-escalation');
   const manifestPath = join(plugin.root, '.codex-plugin/plugin.json');
   const original = await read(manifestPath);
-  await writeFile(manifestPath, JSON.stringify({ ...(await json(manifestPath)), version: '999.0.0' }));
+  await writeFile(manifestPath, JSON.stringify({ ...(await json<CodexManifest>(manifestPath)), version: '999.0.0' }));
   await assert.rejects(loadPlugin(plugin.root), /Inconsistent manifest version/);
   await writeFile(manifestPath, original);
   const agentPath = join(plugin.root, 'com.openai/agents/escalation-advisor.toml');
@@ -85,7 +87,7 @@ await test('HAR-U05: packaged metadata mismatches and invalid Agent / YAML synta
 
 await test('HAR-U06: missing Skills, empty Agent instructions and lost read-only settings are detected', async (t) => {
   const plugin = await stagePlugin(t, 'expert-escalation');
-  for (const field of ['sandbox_mode', 'approval_policy', 'agents']) {
+  for (const field of ['sandbox_mode', 'approval_policy', 'agents'] as const) {
     const role = { ...plugin.agents.get('escalation-advisor') };
     delete role[field];
     assert.throws(() => assertReadOnly(role));

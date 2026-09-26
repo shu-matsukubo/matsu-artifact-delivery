@@ -3,6 +3,8 @@ import { copyFile, lstat, mkdir, readFile, readdir, realpath, rm } from 'node:fs
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import type { Marketplace, PluginManifest } from './manifest-types.ts';
+
 export const repository = fileURLToPath(new URL('../', import.meta.url));
 const common = ['plugin.json', '.codex-plugin/plugin.json', 'README.md', 'LICENSE', 'skills', 'com.openai/agents'];
 const runtime = [
@@ -15,12 +17,12 @@ const runtime = [
 const excluded = new Set(['node_modules', '.build', '.test-build', '.git']);
 
 // This is the production package boundary, also used by isolated package tests.
-export async function packageFiles(source) {
-  const manifest = JSON.parse(await readFile(join(source, 'plugin.json'), 'utf8'));
+export async function packageFiles(source: string): Promise<string[]> {
+  const manifest: PluginManifest = JSON.parse(await readFile(join(source, 'plugin.json'), 'utf8'));
   assert.ok(['artifact-workflow', 'expert-escalation'].includes(manifest.name), 'Unknown package');
   assert.equal(manifest.name, basename(source));
-  const result = [];
-  async function visit(path) {
+  const result: string[] = [];
+  async function visit(path: string): Promise<void> {
     assert.ok(!path.split('/').some((part) => excluded.has(part)), `Development directory in package: ${path}`);
     const info = await lstat(join(source, path));
     assert.ok(!info.isSymbolicLink(), `Symlink in package: ${path}`);
@@ -45,7 +47,7 @@ export async function packageFiles(source) {
   return result.sort();
 }
 
-export async function packagePlugin(source, destination) {
+export async function packagePlugin(source: string, destination: string) {
   const paths = await packageFiles(source);
   // Refuse existing destinations so obsolete or unlisted files cannot survive.
   await mkdir(destination, { recursive: false });
@@ -56,9 +58,9 @@ export async function packagePlugin(source, destination) {
   return paths;
 }
 
-export async function packageMarketplace(source, destination) {
+export async function packageMarketplace(source: string, destination: string) {
   const catalogPath = '.agents/plugins/marketplace.json';
-  const catalog = JSON.parse(await readFile(join(source, catalogPath), 'utf8'));
+  const catalog: Marketplace = JSON.parse(await readFile(join(source, catalogPath), 'utf8'));
   assert.match(catalog.name, /^[A-Za-z0-9_-]+$/);
   assert.equal(new Set(catalog.plugins.map((entry) => entry.name)).size, catalog.plugins.length);
   for (const entry of catalog.plugins) {
@@ -77,7 +79,7 @@ export async function packageMarketplace(source, destination) {
 }
 
 export async function main(args = process.argv.slice(2)) {
-  assert.equal(args.length, 0, 'Usage: node scripts/package-plugins.mjs');
+  assert.equal(args.length, 0, 'Usage: node scripts/package-plugins.ts');
   const root = await realpath(repository);
   const output = resolve(root, 'dist');
   assert.equal(relative(root, output), 'dist');
@@ -87,7 +89,7 @@ export async function main(args = process.argv.slice(2)) {
     const actual = await realpath(output);
     assert.ok(actual.startsWith(`${root}${sep}`) && relative(root, actual) === 'dist', 'Unsafe package output');
   } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
   }
   await rm(output, { recursive: true, force: true, maxRetries: 5 });
   await packageMarketplace(root, output);

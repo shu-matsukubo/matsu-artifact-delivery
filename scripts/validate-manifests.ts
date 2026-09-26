@@ -2,25 +2,31 @@ import assert from 'node:assert/strict';
 import { lstat, readFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep, win32 } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import Ajv2020 from 'ajv/dist/2020.js';
+import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js';
+import type { CodexManifest, McpManifest, PluginManifest } from './manifest-types.ts';
 
 const repository = fileURLToPath(new URL('../', import.meta.url));
-const readJson = async (path) => JSON.parse(await readFile(path, 'utf8'));
+const readJson = async <T>(path: string): Promise<T> => JSON.parse(await readFile(path, 'utf8'));
 const ajv = new Ajv2020({ allErrors: true });
-const validators = new Map();
+const validators = new Map<string, { id: string; validate: ValidateFunction }>();
 for (const kind of ['plugin', 'mcp']) {
-  const schema = await readJson(join(repository, 'test/schemas/agent-plugins-1.0.0/' + kind + '.schema.json'));
+  const schema = await readJson<{ $id: string }>(
+    join(repository, 'test/schemas/agent-plugins-1.0.0/' + kind + '.schema.json'),
+  );
   validators.set(kind, { id: schema.$id, validate: ajv.compile(schema) });
 }
 
-export function validatePortable(document, kind) {
+export function validatePortable(document: unknown, kind: 'plugin'): asserts document is PluginManifest;
+export function validatePortable(document: unknown, kind: 'mcp'): asserts document is McpManifest;
+export function validatePortable(document: unknown, kind: 'plugin' | 'mcp') {
   assert.ok(document && typeof document === 'object' && !Array.isArray(document), kind + ' schema: expected an object');
-  const { id, validate } = validators.get(kind);
-  assert.equal(document.$schema, id, 'Unsupported ' + kind + ' schema: ' + document.$schema);
+  const { id, validate } = validators.get(kind)!;
+  const schema = '$schema' in document ? document.$schema : undefined;
+  assert.equal(schema, id, 'Unsupported ' + kind + ' schema: ' + schema);
   assert.ok(validate(document), kind + ' schema: ' + ajv.errorsText(validate.errors, { separator: '; ' }));
 }
 
-async function packagePath(root, path, directory = false) {
+async function packagePath(root: string, path: string, directory = false) {
   assert.equal(typeof path, 'string', 'Package path must be a string');
   const difference = relative(root, resolve(root, path));
   assert.ok(
@@ -40,13 +46,22 @@ async function packagePath(root, path, directory = false) {
   }
 }
 
-export async function validateManifests(root) {
+export async function validateManifests(root: string) {
   const manifest = await readJson(join(root, 'plugin.json'));
   validatePortable(manifest, 'plugin');
-  const codex = await readJson(join(root, '.codex-plugin/plugin.json'));
+  const codex = await readJson<CodexManifest>(join(root, '.codex-plugin/plugin.json'));
   // Codex compatibility is a separate contract, not a portable schema instance.
-  const identity = ['name', 'version', 'description', 'author', 'license', 'homepage', 'repository', 'keywords'];
-  const allowed = new Set([...identity, 'id', 'skills', 'apps', 'mcpServers', 'interface']);
+  const identity = [
+    'name',
+    'version',
+    'description',
+    'author',
+    'license',
+    'homepage',
+    'repository',
+    'keywords',
+  ] as const;
+  const allowed = new Set<string>([...identity, 'id', 'skills', 'apps', 'mcpServers', 'interface']);
   for (const key of Object.keys(codex)) assert.ok(allowed.has(key), 'Unsupported Codex field: ' + key);
   for (const key of identity) assert.deepEqual(codex[key], manifest[key], 'Inconsistent manifest ' + key);
   assert.equal(codex.skills, './skills/');
@@ -55,7 +70,7 @@ export async function validateManifests(root) {
   try {
     mcp = await readJson(join(root, 'mcp.json'));
   } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
   }
   if (mcp !== undefined) {
     validatePortable(mcp, 'mcp');
@@ -73,12 +88,12 @@ export async function validateManifests(root) {
     );
     // Repository runtime contract supplements schema syntax with real paths.
     assert.deepEqual(Object.keys(mcp.mcpServers), ['artifact-task-memory']);
-    const server = mcp.mcpServers['artifact-task-memory'];
+    const server = mcp.mcpServers['artifact-task-memory']!;
     assert.equal(server.type, 'stdio');
     assert.equal(server.command, 'node');
     assert.deepEqual(server.args, ['${PLUGIN_ROOT}/mcp/task-memory.cjs']);
     assert.deepEqual(server.env, { ARTIFACT_WORKFLOW_DATA_DIR: '${PLUGIN_DATA}/task-memory' });
-    await packagePath(root, server.args[0].slice('${PLUGIN_ROOT}/'.length));
+    await packagePath(root, server.args[0]!.slice('${PLUGIN_ROOT}/'.length));
     if (server.cwd) {
       assert.ok(!server.cwd.startsWith('${PLUGIN_DATA}'), 'Repository MCP must not require a pre-existing data cwd');
       await packagePath(root, server.cwd.replace(/^\$\{PLUGIN_ROOT\}\/?/, './'), true);
@@ -90,7 +105,7 @@ export async function validateManifests(root) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  assert.equal(process.argv.length, 2, 'Usage: node scripts/validate-manifests.mjs');
+  assert.equal(process.argv.length, 2, 'Usage: node scripts/validate-manifests.ts');
   for (const name of ['artifact-workflow', 'expert-escalation']) {
     await validateManifests(join(repository, 'plugins', name));
     console.log('Validated portable and Codex configuration: ' + name);

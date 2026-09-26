@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync, execSync, type SpawnSyncOptions } from 'node:child_process';
 import { copyFile, mkdir, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
-import { createPlan, executePlan, parseArguments } from '../../scripts/run-tests.mjs';
-import { selectTests } from '../../scripts/select-tests.mjs';
+import { createPlan, executePlan, parseArguments, type Execute } from '../../scripts/run-tests.ts';
+import { selectTests } from '../../scripts/select-tests.ts';
 import {
   assertMcpTestRegistry,
   environmentMatrix,
@@ -12,8 +12,8 @@ import {
   targetsFor,
   tests,
   validateTargets,
-} from '../../scripts/test-targets.mjs';
-import { files, repository, temporaryDirectory } from '../lib/plugin.mjs';
+} from '../../scripts/test-targets.ts';
+import { files, repository, temporaryDirectory } from '../lib/plugin.ts';
 
 await test('RUN-U01: CLI supports default, comma-separated and JSON targets without accepting typos', () => {
   assert.deepEqual(parseArguments(['unit']), { layer: 'unit', targets: suites, dryRun: false });
@@ -46,9 +46,9 @@ await test('RUN-U02: layer filters keep component unit tests and all selected E2
   assert.deepEqual(targetsFor('e2e', suites), ['mcp', 'workflow', 'escalation', 'integration']);
   const unit = createPlan('unit', ['workflow', 'escalation']);
   assert.equal(unit.commands.length, 1);
-  assert.deepEqual(unit.commands[0].args, ['--test', 'test/workflow/unit.test.mjs', 'test/escalation/unit.test.mjs']);
+  assert.deepEqual(unit.commands[0]!.args, ['--test', 'test/workflow/unit.test.ts', 'test/escalation/unit.test.ts']);
   const e2e = createPlan('e2e', ['workflow', 'integration']);
-  assert.deepEqual(e2e.commands[0].args, ['--test', 'test/workflow/e2e.test.mjs', 'test/integration/*.test.mjs']);
+  assert.deepEqual(e2e.commands[0]!.args, ['--test', 'test/workflow/e2e.test.ts', 'test/integration/*.test.ts']);
   assert.throws(() => createPlan('e2e', ['infrastructure']), /No e2e tests/);
   assert.throws(() => createPlan('unknown', ['mcp']), /Unknown test layer/);
   assert.throws(() => targetsFor('unknown', suites));
@@ -66,9 +66,9 @@ await test('RUN-U03: MCP unit and E2E registries cover every existing test exact
     const plan = createPlan(layer, ['mcp']);
     assert.deepEqual(
       plan.commands.slice(0, 3).map(({ args }) => args),
-      [['scripts/build.mjs', '--check'], ['scripts/clean-test.mjs'], ['node_modules/typescript/bin/tsc']],
+      [['scripts/build.ts', '--check'], ['scripts/clean-test.ts'], ['node_modules/typescript/bin/tsc']],
     );
-    const executed = plan.commands[3].args.slice(1);
+    const executed = plan.commands[3]!.args.slice(1);
     assert.equal(executed.includes('.test-build/test/mcp.test.js'), layer === 'e2e');
     assert.equal(executed.includes('.test-build/test/store.test.js'), layer === 'unit');
   }
@@ -95,8 +95,8 @@ await test('RUN-U04: extra environments execute MCP only; Skill changes keep a s
 
 await test('RUN-U05: subprocesses use Node directly and propagate failure without running later tests', () => {
   const plan = createPlan('all', ['mcp']);
-  const calls = [];
-  const execute = (command, args, options) => {
+  const calls: { command: string; args: string[]; options: SpawnSyncOptions }[] = [];
+  const execute: Execute = (command, args, options) => {
     calls.push({ command, args, options });
     return { status: 0 };
   };
@@ -120,8 +120,8 @@ await test('RUN-U05: subprocesses use Node directly and propagate failure withou
 });
 
 await test('RUN-U06: runner CLI exposes its exact plan and refuses empty or invalid requests', () => {
-  const invoke = (...args) =>
-    execFileSync(process.execPath, [join(repository, 'scripts/run-tests.mjs'), ...args], {
+  const invoke = (...args: string[]) =>
+    execFileSync(process.execPath, [join(repository, 'scripts/run-tests.ts'), ...args], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -171,7 +171,7 @@ await test('RUN-U07: MCP preflight rejects unregistered, duplicate and missing f
 await test('RUN-U08: MCP-only CI fails before preparation when a new test is unregistered', async (t) => {
   const root = await temporaryDirectory(t);
   await mkdir(join(root, 'scripts'));
-  for (const file of ['run-tests.mjs', 'test-targets.mjs'])
+  for (const file of ['run-tests.ts', 'test-targets.ts'])
     await copyFile(join(repository, 'scripts', file), join(root, 'scripts', file));
   const directory = join(root, 'plugins/artifact-workflow/test');
   await mkdir(directory, { recursive: true });
@@ -179,8 +179,8 @@ await test('RUN-U08: MCP-only CI fails before preparation when a new test is unr
     await mkdir(dirname(join(directory, file)), { recursive: true });
     await writeFile(join(directory, file), '');
   }
-  const invoke = (...args) =>
-    execFileSync(process.execPath, [join(root, 'scripts/run-tests.mjs'), ...args], {
+  const invoke = (...args: string[]) =>
+    execFileSync(process.execPath, [join(root, 'scripts/run-tests.ts'), ...args], {
       cwd: root,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -194,6 +194,14 @@ await test('RUN-U08: MCP-only CI fails before preparation when a new test is unr
     assert.throws(
       () => invoke(layer, '--targets-json', JSON.stringify(selected)),
       (error) => {
+        assert.ok(
+          error instanceof Error &&
+            'status' in error &&
+            'stderr' in error &&
+            typeof error.stderr === 'string' &&
+            'stdout' in error &&
+            typeof error.stdout === 'string',
+        );
         assert.equal(error.status, 1);
         assert.match(error.stderr, /Unregistered MCP tests: unregistered\.test\.ts/);
         assert.doesNotMatch(error.stdout, /\[MCP/);
