@@ -43,6 +43,7 @@ await test('PKG-U03: contributor documentation and Plugin README local links res
   for (const path of [
     'README.md',
     'docs/testing.md',
+    'docs/distribution.md',
     'plugins/artifact-workflow/README.md',
     'plugins/expert-escalation/README.md',
   ])

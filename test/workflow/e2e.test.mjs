@@ -10,6 +10,7 @@ await test('WF-E01: isolated package discovers its Skill, roles and complete doc
   assert.deepEqual([...plugin.skills.keys()], ['artifact-workflow']);
   assert.deepEqual([...plugin.agents.keys()].sort(), ['artifact-reviewer', 'artifact-worker']);
   assertReadOnly(plugin.agents.get('artifact-reviewer'));
+  await localLinks(plugin.root, 'README.md');
   assert.ok(!(await readdir(plugin.root)).includes('node_modules'));
   const skill = plugin.skills.get('artifact-workflow');
   const reachable = await walkReferences(skill.root);

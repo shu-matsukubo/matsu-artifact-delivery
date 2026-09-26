@@ -29,10 +29,13 @@ Plugin のリリースバージョンと対象規格は、各 Plugin の `plugin
 
 ## Codex での利用方法
 
-リポジトリのルートで、マーケットプレイスを登録します。
+リポジトリのルートで配布用マーケットプレイスを生成し、登録します。`dist/` にはREADME・Skill・Agent定義・MCP実行ファイルなど実行に必要なファイルだけが入り、開発依存やビルド残骸は含めません。
 
 ```sh
-codex plugin marketplace add .
+npm ci --ignore-scripts
+npm --prefix plugins/artifact-workflow ci
+npm run package
+codex plugin marketplace add ./dist
 ```
 
 Codex アプリを再起動し、Plugin 一覧でこのリポジトリのマーケットプレイスを選び、利用する Plugin をインストールしてください。インストール後は新しいタスクで利用します。
@@ -41,7 +44,7 @@ Codex アプリを再起動し、Plugin 一覧でこのリポジトリのマー�
 
 `expert-escalation` の明示呼び出し・返却契約・役割登録は [Plugin README](plugins/expert-escalation/README.md)を参照してください。単独では明示依頼ごとに利用でき、Plugin 自体に累計の回数制限はありません。Workflow と組み合わせる場合は、親が呼び過ぎを制御します。`artifact-workflow` の上限とフォールバックは[呼び出し元の方針](plugins/artifact-workflow/skills/artifact-workflow/references/escalation.md)で管理します。
 
-カタログは [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json)、Plugin 本体は `plugins/` に配置しています。カタログ内の `source.path` はリポジトリのルートを基準とする相対パスです。
+カタログの正本は [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json)、開発用のPlugin本体は `plugins/` に配置しています。配布時は `npm run package` が同じカタログと配布対象ファイルを `dist/` に生成します。生成後の `source.path` は `dist/` を基準に解決されます。ローカルインストールとリリースにはこの配布物を使ってください。すでにリポジトリ直下を登録している場合の切り替え、cachebuster・正式版・再インストールの手順は[配布と更新](docs/distribution.md)を参照してください。
 
 Codex 向けの配布と設定は、OpenAI 公式の [Plugin パッケージの説明](https://developers.openai.com/plugins/build/plugins)と[Skill の説明](https://learn.chatgpt.com/docs/build-skills)を参照してください。
 

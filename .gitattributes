@@ -1,3 +1,6 @@
+# Use LF for text by default, including extensionless files and dotfiles.
+* text=auto eol=lf
+
 .gitattributes text eol=lf
 .gitignore text eol=lf
 LICENSE text eol=lf

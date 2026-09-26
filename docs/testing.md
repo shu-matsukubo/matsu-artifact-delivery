@@ -60,6 +60,22 @@ npm --prefix plugins/artifact-workflow run format:check
 | `npm run test:mcp`                                     | MCP の単体・E2E                                        |
 | `npm run test:mcp:unit` / `test:mcp:e2e`               | 上記を個別実行                                         |
 
+## 配布・manifest検証
+
+`npm run check:manifests` で固定した公式plugin/MCP schemaと互換manifestの整合性を確認する。`npm run package` が生成した `dist/` をローカルインストールとリリースに共用する。Codex CLIが利用可能な環境では `npm run test:install` で同じ配布物を一時ホームへインストールし、キャッシュの全ファイルと内容、リンク、不要ディレクトリ不在、NodeだけでのMCP起動を検証する。詳細は[配布と更新](distribution.md)を参照。
+
+追加の回帰試験は [distribution.test.mjs](../test/infrastructure/distribution.test.mjs) に集約する。
+
+| ID      | 観点                                                               |
+| ------- | ------------------------------------------------------------------ |
+| MAN-U01 | 共通manifestの追加禁止項目・未対応schema・不正な入れ子             |
+| MAN-U02 | MCPのtransport・追加項目・予約環境変数・schemaバージョン           |
+| MAN-U03 | Codex互換設定の不一致・パス逸脱・bundle欠落                        |
+| PKG-U05 | 開発依存・ビルド残骸の有無によらない配布内容一致と全Markdownの参照 |
+| PKG-U06 | 生成marketplaceのカタログ一致・再生成時の残骸除去                  |
+| PKG-U07 | 配布元と出力先のリンク拒否・外部ディレクトリの保全                 |
+| VER-U01 | 両Pluginの正本同期・正しいcachebusterの取り込み・不正な版の拒否    |
+
 ## CI の選択
 
 [Actions 定義](../.github/workflows/artifact-workflow-ci.yml)は全 PR と `main` push で差分を分類する。`workflow_dispatch` は差分にかかわらず全試験を実行する。PR では base と head の merge-base からの差分、push では before と after の差分を使う。
@@ -106,6 +122,8 @@ npm run ci:select -- --all
 
 自然言語部分の試験データは [Workflow 契約一覧](../test/workflow/contracts.json)と [Escalation 契約一覧](../test/escalation/contracts.json)。安定 ID・観点名・対象ファイル・必要な契約文を持ち、実行結果にも ID を表示する。構造試験は全 Skill の Markdown と全 Agent 定義に契約項目があることを要求する。新しい実装形式を Skill 配下へ追加するときも、対応する単体試験を追加する。各部品の必須指示・返却項目・フォールバック方針は単体で保証する。構成 E2E では、配布後の到達性と複数部品にまたがる契約の整合を確認する。
 
+`WF-U20` は隔離コピーでhelper出力のfixtureを正本へ取り込み、実際の `WF-U18` を子プロセスで実行する。通常版・開発版・prereleaseと不一致の負例を検証し、CIにPythonやplugin-creatorの配置を要求しない。
+
 | ID                       | 観点                                                                                                           | 実装                                                                                        |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | WF-U01 / WF-U02          | manifest 整合、Skill / Agent 検出、呼び出し policy、read-only 設定、参照ファイルとアンカー、契約の網羅         | [Workflow unit](../test/workflow/unit.test.mjs)、[共通検証](../test/lib/contract-suite.mjs) |
@@ -116,7 +134,8 @@ npm run ci:select -- --all
 | WF-U11 / WF-U12          | 親のタスク・全体検証、引き渡しと完了、後日の修正                                                               | Workflow 契約一覧                                                                           |
 | WF-U13 / WF-U14          | MCP の親限定更新・保存失敗、任意相談の発見・失敗・回数・フォールバック                                         | Workflow 契約一覧                                                                           |
 | WF-U15 / WF-U16 / WF-U17 | 計画テンプレート、Worker / Reviewer の責務・入出力・再委任禁止                                                 | Workflow 契約一覧                                                                           |
-| WF-U18                   | package metadata と MCP 正本・互換設定・配布先の整合                                                           | Workflow unit                                                                               |
+| WF-U18                   | package / lockfileの版、MCP正本・互換設定・配布先の整合                                                        | Workflow unit                                                                               |
+| WF-U20                   | cachebuster取り込み後のWF-U18、正式版・基底版・suffix・lockfile不一致の拒否                                    | Workflow unit                                                                               |
 | EX-U01 / EX-U02          | manifest、Skill 発見 policy、両相談役の read-only・承認禁止・子起動禁止、参照・契約網羅                        | [Escalation unit](../test/escalation/unit.test.mjs)、共通検証                               |
 | EX-U03 / EX-U04          | 親の明示依頼、単発起動、回数・枠管理、失敗時の返却                                                             | Escalation 契約一覧                                                                         |
 | EX-U05 / EX-U06 / EX-U07 | 入出力契約・実行状態、相談例の非自動性、結果テンプレート                                                       | Escalation 契約一覧                                                                         |

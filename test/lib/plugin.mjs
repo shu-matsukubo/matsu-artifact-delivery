@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cp, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +7,8 @@ import { marked } from 'marked';
 import GithubSlugger from 'github-slugger';
 import { parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
+import { packagePlugin } from '../../scripts/package-plugins.mjs';
+import { validateManifests } from '../../scripts/validate-manifests.mjs';
 
 export const repository = fileURLToPath(new URL('../../', import.meta.url));
 export const pluginRoot = (name) => join(repository, 'plugins', name);
@@ -51,8 +53,7 @@ export function frontmatter(source) {
 }
 
 export async function loadPlugin(root) {
-  const manifest = await json(join(root, 'plugin.json'));
-  const codex = await json(join(root, '.codex-plugin/plugin.json'));
+  const { manifest, codex } = await validateManifests(root);
   assert.equal(manifest.name, basename(root));
   assert.match(manifest.name, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);
   for (const key of ['name', 'version', 'description', 'author', 'license']) {
@@ -141,23 +142,10 @@ export async function temporaryDirectory(t) {
   return root;
 }
 
-// Stage runtime inputs only. Deliberately exclude repository config, tests and node_modules.
+// Exercise the same package boundary used by npm run package, including README.
 export async function stagePlugin(t, name) {
   const root = join(await temporaryDirectory(t), name);
-  for (const path of ['plugin.json', '.codex-plugin', 'LICENSE', 'skills', 'com.openai']) {
-    await cp(join(pluginRoot(name), path), join(root, path), { recursive: true });
-  }
-  if (name === 'artifact-workflow') {
-    for (const path of [
-      'mcp.json',
-      '.mcp.json',
-      'mcp/task-memory.cjs',
-      'mcp/task-memory.cjs.LEGAL.txt',
-      'mcp/THIRD_PARTY_LICENSES.txt',
-    ]) {
-      await cp(join(pluginRoot(name), path), join(root, path), { recursive: true });
-    }
-  }
+  await packagePlugin(pluginRoot(name), root);
   return loadPlugin(root);
 }
 
