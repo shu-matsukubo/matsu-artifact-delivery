@@ -1,6 +1,27 @@
 # 配布と更新
 
-配布物はリポジトリルートの `npm run package` で生成する `dist/` を正本とする。ローカルのインストール試験とリリースには同じ配布物を使う。開発用の `plugins/` を直接インストールすると、Git管理外の開発依存もコピーされ得る。
+## 配布方針
+
+Plugin の正本は Git で管理する `plugins/<plugin-name>/` とルートの `.agents/plugins/marketplace.json` である。`dist/` は `npm run package` が作る一時的な確認用ステージング出力であり、正本でも公開先でもない。生成し直せるためコミットせず、GitHub Release や別のバイナリ保管先も設けない。
+
+`artifact-workflow` の MCP は `mcp/src/` をソースとし、Node.js/npm やネットワーク接続なしに実行できる bundle `mcp/task-memory.cjs` を Plugin に同梱する。bundle とライセンス通知は配布時に必要な実行ファイルなので Git で管理し、MCP ソース変更時にビルド・試験して一緒にコミットする。`npm run package` は Plugin ごとに必要なファイルだけを `dist/` に集め、公開候補やインストール試験の内容を確認するために使う。
+
+配布経路は目的で分ける。
+
+- **開発・小規模な Git 配布:** リポジトリの marketplace を Codex に追加する。利用者は clone、npm install、`dist/` 生成をしない。MCP の実行 bundle はリポジトリに同梱済みである。
+- **OpenAI の公開 Plugins Directory:** Platform の提出ポータルで Plugin ごとに提出し、審査後に公開する。公開後の利用者は Directory で検索して Install する。GitHub Release は不要。
+
+Agent Plugins 仕様は `plugin.json`、`skills/`、任意の `mcp.json` などパッケージの構造とメタデータを定めるもので、公開レジストリや配布ホスティングを提供するものではない。[仕様](https://agent-plugins.org/specification)と[公式の Plugin packaging guide](https://developers.openai.com/plugins/build/plugins)を参照。
+
+### 公開 Directory に提出する場合
+
+公開提出は GitHub 上の marketplace 追加とは別の手続きである。[Plugin submission portal](https://developers.openai.com/plugins/deploy/submission)に Plugin のパッケージ、掲載情報、スタータープロンプト、正例・負例の試験、提供地域などを提出する。OpenAI の審査に通った後、発行者がポータルから公開すると ChatGPT と Codex 共通の Plugins Directory に載る。提出しただけでは公開されない。掲載済みの Plugin 更新も新しい版の提出・審査・公開が必要。
+
+このリポジトリの `artifact-workflow` はローカル stdio MCP を同梱する。現行の公開手順では MCP を含む Plugin は安定した公開 HTTPS endpoint を提出する必要があり、ローカル MCP のままでは通常の公開提出要件を満たさない。公開したい場合は、まずローカル MCP サポートについて OpenAI に問い合わせるか、リモート MCP として運用する設計・ホスティングを別途判断する。MCP 機能を外した skills-only 版を検討する場合は、Skill が単独で正しく動作することを確認して別パッケージとして提出する。**この条件が解決するまでは公開 Directory に掲載済みとは案内しない。**
+
+公開候補は `npm run package` で `dist/plugins/<plugin-name>/` に生成し、Plugin 単位でポータルへアップロードする候補としてレビューする。これを長期保管したり Git にコミットしたりする必要はない。手動公開を選ぶ段階でだけポータル用のアーカイブを作ればよく、リリース資産を自動生成・ホストする CI は追加しない。
+
+公開前の版は root `plugin.json` で管理し、互換 manifest や Workflow の package/lockfile に同期する。公開された版とソースを対応付けるため、Git のタグは任意で付けてもよいが、配布に必須ではない。バージョンの更新方法は「正式版の確定」を参照。
 
 ## 配布物の生成
 
@@ -10,25 +31,34 @@ npm --prefix plugins/artifact-workflow ci
 npm run package
 ```
 
-manifest検証・互換設定の同期確認・MCPの生成物一致確認に成功すると、専用出力先 `dist/` を作り直す。出力先に手作業のファイルは置かない。正本を変更した後、互換設定だけなら `npm run sync:manifests`、MCPソースも変えた場合は `npm --prefix plugins/artifact-workflow run build` で生成物を更新してから実行する。
+manifest検証・互換設定の同期確認・MCPの生成物一致確認に成功すると、専用出力先 `dist/` を作り直す。出力先に手作業のファイルは置かない。root manifest を変更した後、互換設定だけなら `npm run sync:manifests`、MCPソースも変えた場合は `npm --prefix plugins/artifact-workflow run build` で同梱 bundle を更新し、Git で管理するファイルとして差分を確認してから実行する。
 
 [配布処理](../scripts/package-plugins.ts)がファイル一覧を管理する。README、LICENSE、共通・互換manifest、Skill一式、Custom Agent定義、WorkflowのMCP設定とbundle・依存ライセンスを含む。開発用のpackage/lockfile、ソース、試験、スクリプト、`node_modules`、`.build`、`.test-build` は含めない。同梱ディレクトリ内のシンボリックリンクも拒否する。
 
 `.agents/plugins/marketplace.json` は内容を変えず `dist/.agents/plugins/marketplace.json` にコピーする。`./plugins/<name>` は配布ルート `dist/` 基準の相対パスとなる。生成処理と構成E2Eは同じ配布処理を使い、READMEを含むローカルリンク・アンカーも配布物内で検証する。
 
-## ローカルへの登録と再インストール
+## 開発 marketplace からのインストール
 
-[公式のローカルmarketplace手順](https://developers.openai.com/plugins/build/plugins)に従い、ソースをCLIで登録する。
+[公式の marketplace 手順](https://developers.openai.com/plugins/build/plugins)に従い、リポジトリルートの marketplace を Codex に登録する。開発者は MCP bundle を更新したあと、次のコマンドでステージング出力を作り、試験する。
+
+```sh
+npm ci --ignore-scripts
+npm --prefix plugins/artifact-workflow ci
+npm run package
+npm run test:install
+```
+
+marketplace の登録は一度だけでよい。
 
 ```sh
 codex plugin marketplace list
-codex plugin marketplace add ./dist
+codex plugin marketplace add .
 codex plugin list --marketplace matsu-artifact-delivery
 codex plugin add artifact-workflow@matsu-artifact-delivery
 codex plugin add expert-escalation@matsu-artifact-delivery
 ```
 
-必要なPluginだけインストールする。既に同名marketplaceがリポジトリ直下や別の場所を指す場合は、一覧で既存の場所を確認したうえで `codex plugin marketplace remove matsu-artifact-delivery`、`codex plugin marketplace add ./dist` の順に登録し直す。設定ファイルやカタログを手編集して切り替えない。同名のGit配布などを使っている場合も、ローカル反復試験へ切り替える意図を確認してから行う。
+必要な Plugin だけインストールする。既に同名 marketplace が別の場所を指す場合は、一覧で場所を確認し、切り替えるときだけ `codex plugin marketplace remove matsu-artifact-delivery` を実行してから正しいソースを追加する。開発 marketplace は `plugins/` を直接参照するため、`dist/` の生成はインストール条件ではない。
 
 アプリとCLIで見える一覧が異なる場合は、アプリが選択しているmarketplaceとインストール元も確認する。配布物の再生成だけではインストール済みキャッシュは更新されない。再インストール後、アプリで有効化とCustom Agent登録を確認し、**新しいタスク**で試す。既存の実行中タスクへ更新が反映される前提にしない。
 

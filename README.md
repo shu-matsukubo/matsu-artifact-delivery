@@ -11,16 +11,15 @@
 
 ## Codex で使う
 
-Node.js と npm を用意し、リポジトリのルートで配布物を生成してローカル marketplace に登録します。
+公開 Plugins Directory への掲載前は、開発用 marketplace から試せます。リポジトリのルートで次を実行し、Codex アプリで `matsu-artifact-delivery` から必要な Plugin をインストールしてください。
 
 ```sh
-npm ci --ignore-scripts
-npm --prefix plugins/artifact-workflow ci
-npm run package
-codex plugin marketplace add ./dist
+codex plugin marketplace add .
 ```
 
-Codex アプリを再起動し、marketplace から必要な Plugin をインストールしてください。導入要件と機能の詳細は各 Plugin の README を参照してください。配布物の更新は[配布と更新](docs/distribution.md)を参照してください。
+MCP サーバーを変更した開発者は、先に生成済み bundle を更新してください。通常の利用者は `dist/` の生成や npm の実行を必要としません。
+
+公開版は OpenAI の審査・公開後に Plugins Directory から検索してインストールできます。公開状況とローカル MCP サーバーの配布条件を含む手順は[配布と更新](docs/distribution.md)を参照してください。導入要件と機能の詳細は各 Plugin の README を参照してください。
 
 ## 開発資料
 
