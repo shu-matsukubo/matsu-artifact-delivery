@@ -1,7 +1,16 @@
-# 実装言語と検証
+# 開発の基本方針
 
-人間・AIが保守する実装、テスト、補助スクリプトはすべて TypeScript（`.ts`）で書く。新規ファイルごとに JavaScript と TypeScript を選ばない。Node.js 22.19.0 以降でスクリプトとルートのテストを直接実行するため、型を消去するだけで実行できる構文を使う。
+- `README.md` は利用者向け、`AGENTS.md` は開発の入口、`docs/` は必要時に参照する開発者向け詳細資料とする。
+- 文書・実装ともに簡潔に保ち、責務を広げず、説明や機能を重複させない。
+- Plugin の構造・実装は [Agent Plugins](https://agent-plugins.org/) と [Agent Skills](https://agentskills.io/) の共通規格を基準にする。
+- 人間・AIが保守する実装、テスト、補助スクリプトは TypeScript（`.ts`）を基本とする。ソース、Skills、Agent、MCP は責務を分ける。
+- 正本と生成物を分離し、生成物を手編集しない。
 
-ビルド・ツールが生成する JavaScript / CJS は許可する。生成物を手編集せず、TypeScript のソースと生成手順を変更する。Git 管理する JavaScript 生成物は `scripts/check-typescript.ts` の明示的な許可一覧で管理し、生成元との一致を検証する。依存と未追跡のビルド出力は Git の除外設定に従う。
+## 必要に応じて読む資料
 
-共通基盤の変更ではルートの `npm run check`、`npm run lint`、`npm run format:check`、`npm test` を実行する。MCP に関わる変更では `plugins/artifact-workflow` の `check`、`lint`、`format:check` も実行する。手順と対象一覧は [試験と差分 CI](docs/testing.md) を参照する。
+- 変更・レビュー方針: [製造・レビュー観点](docs/manufacturing-review.md)
+- 試験を選ぶ判断基準: [テスト・検証観点](docs/testing-review.md)
+- 試験コマンド、CI 対象、契約 ID: [試験と差分 CI](docs/testing.md)
+- 配布、更新、リリース: [配布と更新](docs/distribution.md)
+
+共通基盤の変更では、ルートの `npm run check`、`npm run lint`、`npm run format:check`、`npm test` を実行する。MCP に関わる変更では `plugins/artifact-workflow` の `check`、`lint`、`format:check` も実行する。
