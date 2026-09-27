@@ -167,6 +167,14 @@ config_file = "C:/Users/<username>/.codex/plugins/cache/matsu-artifact-delivery/
 
 `<username>` と `<installed-version>` は実際の CODEX_HOME と Plugin キャッシュのバージョンに置き換えます。キャッシュの場所は[公式の Plugin package 説明](https://developers.openai.com/plugins/build/plugins)を参照してください。
 
+Plugin を新しい版へ更新したら、marketplace を更新してインストール済みファイルを反映します。
+
+```sh
+codex plugin marketplace upgrade matsu-artifact-delivery
+```
+
+更新後、`<CODEX_HOME>/plugins/cache/matsu-artifact-delivery/artifact-workflow/` にある新しい版のディレクトリ名を確認し、上記2つの `config_file` をその版のパスへ変更します。古い版のパスを残すと、Custom Agent 定義を読み込めません。設定を保存したら Codex を再起動し、新しいタスクで確認してください。
+
 旧配置 `agents/artifact-worker.toml` を参照している場合は、上記の配置へ `config_file` を更新してください。
 
 Plugin のインストールだけでは、この参照設定は追加されません。登録後は新しいタスクで利用してください。複数人で実行する場合も同じ `artifact-worker` の役割定義を使います。本フローのタスク分解・計画提示・承認・計画変更・タスクと全体の完了判定・完成品の提示と引き渡しは親が担当し、これらの工程そのものは委任しません。`artifact-worker` は承認済みの担当範囲内で生成・修正・セルフレビューを行います。`artifact-reviewer` は作業者の成果物を独立レビューして親へ返し、生成・修正や別の担当への直接依頼は行いません。

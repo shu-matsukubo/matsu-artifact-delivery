@@ -73,6 +73,14 @@ config_file = "C:/Users/<username>/.codex/plugins/cache/matsu-artifact-delivery/
 
 `<username>` と `<installed-version>` は実際の CODEX_HOME と Plugin キャッシュのバージョンに置き換えます。キャッシュの場所は[公式の Plugin package 説明](https://developers.openai.com/plugins/build/plugins)を参照してください。
 
+Plugin を新しい版へ更新したら、marketplace を更新してインストール済みファイルを反映します。
+
+```sh
+codex plugin marketplace upgrade matsu-artifact-delivery
+```
+
+更新後、`<CODEX_HOME>/plugins/cache/matsu-artifact-delivery/expert-escalation/` にある新しい版のディレクトリ名を確認し、上記2つの `config_file` をその版のパスへ変更します。古い版のパスを残すと、Custom Agent 定義を読み込めません。設定を保存したら Codex を再起動し、新しいタスクで確認してください。
+
 本リポジトリは既存設定と同じ `agents.<name>.config_file` による登録を使います。利用する Codex が独立 TOML の自動検出を使う場合は、[Custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents)に従って同じ定義を利用先の `.codex/agents/` または `~/.codex/agents/` に配置します。同名の役割を両方の方式で重複登録しないでください。
 
 ## 実行上の境界
