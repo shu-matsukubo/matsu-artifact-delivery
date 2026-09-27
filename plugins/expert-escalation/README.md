@@ -50,14 +50,14 @@ MCP、外部 API、中央ログ、専用のリスクスコアは追加してい�
 
 ## Codex への登録
 
-ソースリポジトリのルートで配布用マーケットプレイスを生成し、登録します。更新時も同じ配布物を使います。詳細は[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md)を参照してください。
+公開 Plugins Directory にはまだ掲載していません。掲載までは GitHub marketplace から利用できます。Codex がリポジトリを取得するため、手動 clone は不要です。
 
 ```sh
-npm ci --ignore-scripts
-npm --prefix plugins/artifact-workflow ci
-npm run package
-codex plugin marketplace add ./dist
+codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery
+codex plugin add expert-escalation@matsu-artifact-delivery
 ```
+
+利用者は npm の実行や `dist/` の生成を必要としません。開発時のビルド・パッケージ検証は[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md)を参照してください。
 
 Codex アプリでこのマーケットプレイスの `expert-escalation` をインストールし、次の役割登録を確認したうえで新しいタスクを開始します。Plugin のインストールだけでは Custom Agent の参照設定は追加されません。
 
@@ -65,11 +65,13 @@ Codex アプリでこのマーケットプレイスの `expert-escalation` を�
 
 ```toml
 [agents.escalation-advisor]
-config_file = "C:/path/to/matsu-artifact-delivery/plugins/expert-escalation/com.openai/agents/escalation-advisor.toml"
+config_file = "C:/Users/<username>/.codex/plugins/cache/matsu-artifact-delivery/expert-escalation/<installed-version>/com.openai/agents/escalation-advisor.toml"
 
 [agents.escalation-deep-advisor]
-config_file = "C:/path/to/matsu-artifact-delivery/plugins/expert-escalation/com.openai/agents/escalation-deep-advisor.toml"
+config_file = "C:/Users/<username>/.codex/plugins/cache/matsu-artifact-delivery/expert-escalation/<installed-version>/com.openai/agents/escalation-deep-advisor.toml"
 ```
+
+`<username>` と `<installed-version>` は実際の CODEX_HOME と Plugin キャッシュのバージョンに置き換えます。キャッシュの場所は[公式の Plugin package 説明](https://developers.openai.com/plugins/build/plugins)を参照してください。
 
 本リポジトリは既存設定と同じ `agents.<name>.config_file` による登録を使います。利用する Codex が独立 TOML の自動検出を使う場合は、[Custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents)に従って同じ定義を利用先の `.codex/agents/` または `~/.codex/agents/` に配置します。同名の役割を両方の方式で重複登録しないでください。
 

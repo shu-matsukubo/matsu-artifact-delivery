@@ -11,15 +11,18 @@
 
 ## Codex で使う
 
-公開 Plugins Directory への掲載前は、開発用 marketplace から試せます。リポジトリのルートで次を実行し、Codex アプリで `matsu-artifact-delivery` から必要な Plugin をインストールしてください。
+公開 Plugins Directory にはまだ掲載していません。掲載までは GitHub marketplace から利用できます。Codex がリポジトリを取得するため、利用者が自分で clone する必要はありません。
 
 ```sh
-codex plugin marketplace add .
+codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery
+codex plugin add artifact-workflow@matsu-artifact-delivery
+# または
+codex plugin add expert-escalation@matsu-artifact-delivery
 ```
 
-MCP サーバーを変更した開発者は、先に生成済み bundle を更新してください。通常の利用者は `dist/` の生成や npm の実行を必要としません。
+`artifact-workflow` の MCP 起動には Node.js 22.19 以降が必要です。利用者は npm の実行や `dist/` の生成を必要としません。MCP サーバーを変更する開発者向けのビルド・試験手順は[配布と更新](docs/distribution.md)を参照してください。
 
-公開版は OpenAI の審査・公開後に Plugins Directory から検索してインストールできます。公開状況とローカル MCP サーバーの配布条件を含む手順は[配布と更新](docs/distribution.md)を参照してください。導入要件と機能の詳細は各 Plugin の README を参照してください。
+OpenAI の審査・公開後は Plugins Directory から検索してインストールできるようになります。公開条件と各 Plugin の機能詳細は[配布と更新](docs/distribution.md)および各 Plugin の README を参照してください。
 
 ## 開発資料
 

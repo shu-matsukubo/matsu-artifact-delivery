@@ -4,11 +4,11 @@
 
 Plugin の正本は Git で管理する `plugins/<plugin-name>/` とルートの `.agents/plugins/marketplace.json` である。`dist/` は `npm run package` が作る一時的な確認用ステージング出力であり、正本でも公開先でもない。生成し直せるためコミットせず、GitHub Release や別のバイナリ保管先も設けない。
 
-`artifact-workflow` の MCP は `mcp/src/` をソースとし、Node.js/npm やネットワーク接続なしに実行できる bundle `mcp/task-memory.cjs` を Plugin に同梱する。bundle とライセンス通知は配布時に必要な実行ファイルなので Git で管理し、MCP ソース変更時にビルド・試験して一緒にコミットする。`npm run package` は Plugin ごとに必要なファイルだけを `dist/` に集め、公開候補やインストール試験の内容を確認するために使う。
+`artifact-workflow` の MCP は `mcp/src/` をソースとし、依存をまとめた bundle `mcp/task-memory.cjs` を Plugin に同梱する。実行には PATH 上の Node.js 22.19 以降が必要だが、npm やネットワーク接続は不要である。bundle とライセンス通知は配布時に必要な実行ファイルなので Git で管理し、MCP ソース変更時にビルド・試験して一緒にコミットする。`npm run package` は Plugin ごとに必要なファイルだけを `dist/` に集め、公開候補やインストール試験の内容を確認するために使う。
 
 配布経路は目的で分ける。
 
-- **開発・小規模な Git 配布:** リポジトリの marketplace を Codex に追加する。利用者は clone、npm install、`dist/` 生成をしない。MCP の実行 bundle はリポジトリに同梱済みである。
+- **開発・小規模な Git 配布:** `codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery` で GitHub marketplace を追加する。Codex がリポジトリを取得するため、利用者の手動 clone、npm install、`dist/` 生成は不要。MCP の実行 bundle はリポジトリに同梱済みである。
 - **OpenAI の公開 Plugins Directory:** Platform の提出ポータルで Plugin ごとに提出し、審査後に公開する。公開後の利用者は Directory で検索して Install する。GitHub Release は不要。
 
 Agent Plugins 仕様は `plugin.json`、`skills/`、任意の `mcp.json` などパッケージの構造とメタデータを定めるもので、公開レジストリや配布ホスティングを提供するものではない。[仕様](https://agent-plugins.org/specification)と[公式の Plugin packaging guide](https://developers.openai.com/plugins/build/plugins)を参照。
@@ -37,9 +37,9 @@ manifest検証・互換設定の同期確認・MCPの生成物一致確認に成
 
 `.agents/plugins/marketplace.json` は内容を変えず `dist/.agents/plugins/marketplace.json` にコピーする。`./plugins/<name>` は配布ルート `dist/` 基準の相対パスとなる。生成処理と構成E2Eは同じ配布処理を使い、READMEを含むローカルリンク・アンカーも配布物内で検証する。
 
-## 開発 marketplace からのインストール
+## 開発時のパッケージ検証とインストール
 
-[公式の marketplace 手順](https://developers.openai.com/plugins/build/plugins)に従い、リポジトリルートの marketplace を Codex に登録する。開発者は MCP bundle を更新したあと、次のコマンドでステージング出力を作り、試験する。
+[公式の marketplace 手順](https://developers.openai.com/plugins/build/plugins)に従う。開発者は MCP bundle を更新したあと、次のコマンドでステージング出力を作り、試験する。
 
 ```sh
 npm ci --ignore-scripts
@@ -48,17 +48,17 @@ npm run package
 npm run test:install
 ```
 
-marketplace の登録は一度だけでよい。
+開発中の working tree を直接 marketplace に登録すると、`node_modules` などの開発用ファイルまでインストールされる可能性がある。ステージング出力は除外対象を取り除くので、開発時のインストール確認には `dist/` を使う。marketplace の登録は一度だけでよい。
 
 ```sh
 codex plugin marketplace list
-codex plugin marketplace add .
+codex plugin marketplace add ./dist
 codex plugin list --marketplace matsu-artifact-delivery
 codex plugin add artifact-workflow@matsu-artifact-delivery
 codex plugin add expert-escalation@matsu-artifact-delivery
 ```
 
-必要な Plugin だけインストールする。既に同名 marketplace が別の場所を指す場合は、一覧で場所を確認し、切り替えるときだけ `codex plugin marketplace remove matsu-artifact-delivery` を実行してから正しいソースを追加する。開発 marketplace は `plugins/` を直接参照するため、`dist/` の生成はインストール条件ではない。
+必要な Plugin だけインストールする。既に同名 marketplace が別の場所を指す場合は、一覧で場所を確認し、切り替えるときだけ `codex plugin marketplace remove matsu-artifact-delivery` を実行してから正しいソースを追加する。GitHub marketplace からの利用者向け導入では手動 clone や `dist/` 生成は不要だが、作業中のソースを試すときは上記の通り `dist/` を使う。
 
 アプリとCLIで見える一覧が異なる場合は、アプリが選択しているmarketplaceとインストール元も確認する。配布物の再生成だけではインストール済みキャッシュは更新されない。再インストール後、アプリで有効化とCustom Agent登録を確認し、**新しいタスク**で試す。既存の実行中タスクへ更新が反映される前提にしない。
 
