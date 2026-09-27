@@ -151,7 +151,7 @@ npm run ci:select -- --all
 | WF-U18                   | package / lockfileの版、MCP正本・互換設定・配布先の整合                                                        | Workflow unit                                                                             |
 | WF-U20                   | cachebuster取り込み後のWF-U18、正式版・基底版・suffix・lockfile不一致の拒否                                    | Workflow unit                                                                             |
 | WF-U21                   | 生成の共通原理、承認済み計画との整合、レビュー工程との責務分離                                                 | Workflow 契約一覧                                                                         |
-| WF-U22 / WF-U23          | 生成拡張の選定、コードの既存変更時の失敗再開条件・親への返却順、新規実装とテストの順序                         | Workflow 契約一覧                                                                         |
+| WF-U22 / WF-U23          | 生成拡張の選定、コード変更時のテスト失敗の分類・再開条件、セルフレビュー後の返却順                             | Workflow 契約一覧                                                                         |
 | EX-U01 / EX-U02          | manifest、Skill 発見 policy、両相談役の read-only・承認禁止・子起動禁止、参照・契約網羅                        | [Escalation unit](../test/escalation/unit.test.ts)、共通検証                              |
 | EX-U03 / EX-U04          | 親の明示依頼、単発起動、回数・枠管理、失敗時の返却                                                             | Escalation 契約一覧                                                                       |
 | EX-U05 / EX-U06 / EX-U07 | 入出力契約・実行状態、相談例の非自動性、結果テンプレート                                                       | Escalation 契約一覧                                                                       |
