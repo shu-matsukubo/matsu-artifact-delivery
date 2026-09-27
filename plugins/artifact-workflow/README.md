@@ -136,7 +136,14 @@ npm test
 
 ## Codex での使い方
 
-インストール元は、ソースリポジトリの `npm run package` で生成する `dist/` を使います。初回登録・更新・cachebusterの手順は[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md)を参照してください。
+公開 Plugins Directory にはまだ掲載していません。掲載までは GitHub marketplace から利用できます。Codex がリポジトリを取得するため、手動 clone は不要です。
+
+```sh
+codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery
+codex plugin add artifact-workflow@matsu-artifact-delivery
+```
+
+同梱 MCP の起動には PATH 上の Node.js 22.19 以降が必要です。npm や `dist/` の生成は不要です。開発時のビルド・パッケージ検証は[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md)を参照してください。
 
 Plugin のインストールにより、共通構造の `skills/` から Skill を検出できるようになります。ワークフローの実行には、次の Custom Agent の登録も必要です。このリポジトリでは [.codex/config.toml](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/.codex/config.toml) に登録済みで、別の作業場所では利用先に参照設定を追加してください。役割を利用できない場合、ワークフローは生成を開始せず登録に必要な対応を案内します。
 
@@ -152,11 +159,21 @@ Agent Plugins の共通コンポーネントは Skill と MCP で、Custom Agent
 
 ```toml
 [agents.artifact-worker]
-config_file = "C:/path/to/matsu-artifact-delivery/plugins/artifact-workflow/com.openai/agents/artifact-worker.toml"
+config_file = "C:/Users/<username>/.codex/plugins/cache/matsu-artifact-delivery/artifact-workflow/<installed-version>/com.openai/agents/artifact-worker.toml"
 
 [agents.artifact-reviewer]
-config_file = "C:/path/to/matsu-artifact-delivery/plugins/artifact-workflow/com.openai/agents/artifact-reviewer.toml"
+config_file = "C:/Users/<username>/.codex/plugins/cache/matsu-artifact-delivery/artifact-workflow/<installed-version>/com.openai/agents/artifact-reviewer.toml"
 ```
+
+`<username>` と `<installed-version>` は実際の CODEX_HOME と Plugin キャッシュのバージョンに置き換えます。キャッシュの場所は[公式の Plugin package 説明](https://developers.openai.com/plugins/build/plugins)を参照してください。
+
+Plugin を新しい版へ更新したら、marketplace を更新してインストール済みファイルを反映します。
+
+```sh
+codex plugin marketplace upgrade matsu-artifact-delivery
+```
+
+更新後、`<CODEX_HOME>/plugins/cache/matsu-artifact-delivery/artifact-workflow/` にある新しい版のディレクトリ名を確認し、上記2つの `config_file` をその版のパスへ変更します。古い版のパスを残すと、Custom Agent 定義を読み込めません。設定を保存したら Codex を再起動し、新しいタスクで確認してください。
 
 旧配置 `agents/artifact-worker.toml` を参照している場合は、上記の配置へ `config_file` を更新してください。
 
