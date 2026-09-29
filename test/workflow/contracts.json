@@ -7,10 +7,10 @@
       "通常の成果物作成依頼だけでは適用しない",
       "最低1人、同時に最大3人",
       "独立レビューは生成担当と別の",
-      "両役割の利用可否",
       "同じ計画への承認を得ている場合は、再度の承認を求めない",
       "通常の作成依頼や無応答を、計画への承認や省略の指示とみなさない",
-      "が利用できない場合は生成を開始せず"
+      "標準 subagent を起動できること",
+      "標準 subagent を起動できない場合は生成を開始せず"
     ],
     "ordered": [
       "1. **タスク分解**",
@@ -225,7 +225,7 @@
   {
     "id": "WF-U16",
     "title": "Worker の担当境界・再委任禁止・返却内容",
-    "file": "com.openai/agents/artifact-worker.toml",
+    "file": "skills/artifact-workflow/assets/subagent-roles.md",
     "contains": [
       "作業を再委任したりしない",
       "他の担当の変更を上書き・取り消ししない",
@@ -241,7 +241,7 @@
   {
     "id": "WF-U17",
     "title": "Reviewer の入力・権限・再委任禁止・相談の親返却",
-    "file": "com.openai/agents/artifact-reviewer.toml",
+    "file": "skills/artifact-workflow/assets/subagent-roles.md",
     "contains": [
       "子ワーカーから直接依頼された場合はレビューを始めず",
       "同じ成果物の生成・修正を担当した実行なら独立レビューを引き受けず",

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { cp, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -14,10 +14,14 @@ await test(
   'distribution checks detect stale and missing files without overwriting them',
   { timeout: 60_000 },
   async (t) => {
-    const directory = await temporaryDirectory(t);
+    const directory = await mkdtemp(join(root, '.test-build', 'artifact-build-fixture-'));
+    t.after(() => rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
     for (const path of [
       'scripts',
-      'mcp',
+      'mcp/src',
+      'mcp/task-memory.cjs',
+      'mcp/task-memory.cjs.LEGAL.txt',
+      'mcp/THIRD_PARTY_LICENSES.txt',
       '.codex-plugin',
       'package.json',
       'tsconfig.json',

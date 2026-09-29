@@ -32,8 +32,8 @@ await registerContracts(
     name: 'artifact-workflow',
     prefix: 'WF',
     implicit: false,
-    agents: ['artifact-worker', 'artifact-reviewer'],
-    readOnly: ['artifact-reviewer'],
+    agents: [],
+    readOnly: [],
   },
   new URL('./contracts.json', import.meta.url),
 );
@@ -61,10 +61,26 @@ await test('WF-U18: MCP manifests and package metadata resolve to the shipped ru
   assert.deepEqual(Object.keys(portable.mcpServers), ['artifact-task-memory']);
   const server = portable.mcpServers['artifact-task-memory']!;
   assert.equal(server.type, 'stdio');
-  assert.equal(server.command, 'node');
-  assert.deepEqual(server.args, ['${PLUGIN_ROOT}/mcp/task-memory.cjs']);
+  assert.equal(server.command, 'powershell.exe');
+  assert.deepEqual(server.args, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '${PLUGIN_ROOT}/mcp/start.ps1']);
   assert.deepEqual(server.env, { ARTIFACT_WORKFLOW_DATA_DIR: '${PLUGIN_DATA}/task-memory' });
-  assert.ok((await stat(inside(root, server.args[0]!.replace('${PLUGIN_ROOT}/', '')))).isFile());
+  assert.ok((await stat(inside(root, server.args.at(-1)!.replace('${PLUGIN_ROOT}/', '')))).isFile());
+  const nodeRuntime = await json<{
+    version: string;
+    platform: string;
+    archive: string;
+    source: string;
+    license: string;
+  }>(join(root, 'mcp/node-runtime.json'));
+  assert.deepEqual(nodeRuntime, {
+    version: '22.23.2',
+    platform: 'win32-x64',
+    archive: 'node-win-x64.zip',
+    source: 'https://nodejs.org/dist/v22.23.2/win-x64/node.exe',
+    license: 'NODE_RUNTIME_LICENSES.txt',
+  });
+  for (const path of ['mcp/start.ps1', `mcp/${nodeRuntime.archive}`, `mcp/${nodeRuntime.license}`])
+    assert.ok((await stat(join(root, path))).isFile(), `Missing bundled Windows runtime file: ${path}`);
 });
 
 await test('WF-U19: the optional consultation unit contract rejects missing installation and fallback safeguards', async () => {

@@ -136,7 +136,7 @@ await test('RUN-U06: runner CLI exposes its exact plan and refuses empty or inva
       cwd: repository,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 10000,
+      timeout: 30000,
     });
     assert.deepEqual(JSON.parse(output).batches, [{ layer, targets: ['mcp', 'workflow'] }]);
   }

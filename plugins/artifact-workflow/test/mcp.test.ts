@@ -11,13 +11,53 @@ import { sessionSchema } from '../mcp/src/schema.js';
 import { plan, planAtSnapshotSize, temporaryDirectory } from './fixtures.js';
 
 const bundledServer = fileURLToPath(new URL('../../mcp/task-memory.cjs', import.meta.url));
+const windowsLauncher = fileURLToPath(new URL('../../mcp/start.ps1', import.meta.url));
 
 async function connect(directory: string, entry = bundledServer) {
+  const inheritedEnvironment = getDefaultEnvironment();
+  if (process.platform === 'win32') delete inheritedEnvironment.PATHEXT;
+  const command = process.platform === 'win32' ? 'powershell.exe' : process.execPath;
+  const args =
+    process.platform === 'win32'
+      ? [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          windowsLauncher,
+          ...(entry === bundledServer ? [] : ['-Entry', entry]),
+        ]
+      : [entry];
+  const environment = {
+    ...process.env,
+    ...inheritedEnvironment,
+    ARTIFACT_WORKFLOW_DATA_DIR: join(directory, 'data'),
+    ...(process.platform === 'win32'
+      ? {
+          ARTIFACT_WORKFLOW_RUNTIME_DIR: join(directory, 'runtime'),
+          PATH: (process.env.PATH ?? '')
+            .split(';')
+            .filter(
+              (path) =>
+                path
+                  .replaceAll('/', '\\')
+                  .replace(/[\\]+$/, '')
+                  .toLowerCase() !==
+                process.execPath
+                  .slice(0, -'node.exe'.length)
+                  .replace(/[\\]+$/, '')
+                  .toLowerCase(),
+            )
+            .join(';'),
+        }
+      : {}),
+  };
+  if (process.platform === 'win32') Reflect.deleteProperty(environment, 'PATHEXT');
   const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [entry],
+    command,
+    args,
     cwd: directory,
-    env: { ...getDefaultEnvironment(), ARTIFACT_WORKFLOW_DATA_DIR: join(directory, 'data') },
+    env: environment,
     stderr: 'pipe',
   });
   let stderr = '';
@@ -85,7 +125,11 @@ await test(
       snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'parent' } })).plan,
       null,
     );
-    assert.deepEqual((await readdir(directory)).sort(), ['data', 'standalone.cjs']);
+    assert.deepEqual((await readdir(directory)).sort(), [
+      'data',
+      ...(process.platform === 'win32' ? ['runtime'] : []),
+      'standalone.cjs',
+    ]);
   },
 );
 

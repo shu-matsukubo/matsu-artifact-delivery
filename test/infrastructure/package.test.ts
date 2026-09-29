@@ -27,7 +27,7 @@ await test('PKG-U01: marketplace discovers every package with matching metadata 
   }
 });
 
-await test('PKG-U02: repository Agent registrations match every shipped role', async () => {
+await test('PKG-U02: Worker roles are templates and only Escalation roles require registration', async () => {
   const config = parseToml(await read(join(repository, '.codex/config.toml'))) as {
     agents: Record<string, { config_file: string }>;
   };
@@ -35,6 +35,10 @@ await test('PKG-U02: repository Agent registrations match every shipped role', a
   const shipped = [];
   for (const entry of catalog.plugins) {
     const plugin = await loadPlugin(inside(repository, entry.source.path));
+    if (entry.name === 'artifact-workflow') {
+      assert.deepEqual([...plugin.agents.keys()], []);
+      continue;
+    }
     for (const [name, agent] of plugin.agents) {
       shipped.push(name);
       const path = inside(repository, join('.codex', config.agents[name]!.config_file));

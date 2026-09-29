@@ -4,11 +4,11 @@
 
 Plugin の正本は Git で管理する `plugins/<plugin-name>/` とルートの `.agents/plugins/marketplace.json` である。`dist/` は `npm run package` が作る一時的な確認用ステージング出力であり、正本でも公開先でもない。生成し直せるためコミットせず、GitHub Release や別のバイナリ保管先も設けない。
 
-`artifact-workflow` の MCP は `mcp/src/` をソースとし、依存をまとめた bundle `mcp/task-memory.cjs` を Plugin に同梱する。実行には PATH 上の Node.js 22.19 以降が必要だが、npm やネットワーク接続は不要である。bundle とライセンス通知は配布時に必要な実行ファイルなので Git で管理し、MCP ソース変更時にビルド・試験して一緒にコミットする。`npm run package` は Plugin ごとに必要なファイルだけを `dist/` に集め、公開候補やインストール試験の内容を確認するために使う。
+`artifact-workflow` の MCP は `mcp/src/` をソースとし、依存をまとめた bundle と Windows x64 向け Node.js 22 runtime の圧縮ファイルを Plugin に同梱する。初回起動時に PowerShell ランチャーが runtime をユーザーデータ領域へ展開するため、利用者側の Node.js、npm、ネットワーク接続は不要である。bundle・runtime・ライセンス通知は配布に必要な生成物なので Git で管理し、更新時は試験して一緒にコミットする。`npm run package` は Plugin ごとに必要なファイルだけを `dist/` に集め、公開候補やインストール試験の内容を確認するために使う。
 
 配布経路は目的で分ける。
 
-- **開発・小規模な Git 配布:** `codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery` で GitHub marketplace を追加する。Codex がリポジトリを取得するため、利用者の手動 clone、npm install、`dist/` 生成は不要。MCP の実行 bundle はリポジトリに同梱済みである。
+- **開発・小規模な Git 配布:** `codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery` で GitHub marketplace を追加する。Codex がリポジトリを取得するため、利用者の手動 clone、npm install、`dist/` 生成は不要。MCP bundle と Windows x64 runtime はリポジトリに同梱済みである。
 - **OpenAI の公開 Plugins Directory:** Platform の提出ポータルで Plugin ごとに提出し、審査後に公開する。公開後の利用者は Directory で検索して Install する。GitHub Release は不要。
 
 Agent Plugins 仕様は `plugin.json`、`skills/`、任意の `mcp.json` などパッケージの構造とメタデータを定めるもので、公開レジストリや配布ホスティングを提供するものではない。[仕様](https://agent-plugins.org/specification)と[公式の Plugin packaging guide](https://developers.openai.com/plugins/build/plugins)を参照。
@@ -33,7 +33,7 @@ npm run package
 
 manifest検証・互換設定の同期確認・MCPの生成物一致確認に成功すると、専用出力先 `dist/` を作り直す。出力先に手作業のファイルは置かない。root manifest を変更した後、互換設定だけなら `npm run sync:manifests`、MCPソースも変えた場合は `npm --prefix plugins/artifact-workflow run build` で同梱 bundle を更新し、Git で管理するファイルとして差分を確認してから実行する。
 
-[配布処理](../scripts/package-plugins.ts)がファイル一覧を管理する。README、LICENSE、共通・互換manifest、Skill一式、Custom Agent定義、WorkflowのMCP設定とbundle・依存ライセンスを含む。開発用のpackage/lockfile、ソース、試験、スクリプト、`node_modules`、`.build`、`.test-build` は含めない。同梱ディレクトリ内のシンボリックリンクも拒否する。
+[配布処理](../scripts/package-plugins.ts)がファイル一覧を管理する。README、LICENSE、共通・互換manifest、Skill一式、Workflowの役割テンプレート、MCP設定・bundle・Windows runtime・依存ライセンスを含む。開発用のpackage/lockfile、ソース、試験、スクリプト、`node_modules`、`.build`、`.test-build` は含めない。同梱ディレクトリ内のシンボリックリンクも拒否する。
 
 `.agents/plugins/marketplace.json` は内容を変えず `dist/.agents/plugins/marketplace.json` にコピーする。`./plugins/<name>` は配布ルート `dist/` 基準の相対パスとなる。生成処理と構成E2Eは同じ配布処理を使い、READMEを含むローカルリンク・アンカーも配布物内で検証する。
 
@@ -60,7 +60,7 @@ codex plugin add expert-escalation@matsu-artifact-delivery
 
 必要な Plugin だけインストールする。既に同名 marketplace が別の場所を指す場合は、一覧で場所を確認し、切り替えるときだけ `codex plugin marketplace remove matsu-artifact-delivery` を実行してから正しいソースを追加する。GitHub marketplace からの利用者向け導入では手動 clone や `dist/` 生成は不要だが、作業中のソースを試すときは上記の通り `dist/` を使う。
 
-アプリとCLIで見える一覧が異なる場合は、アプリが選択しているmarketplaceとインストール元も確認する。配布物の再生成だけではインストール済みキャッシュは更新されない。再インストール後、アプリで有効化とCustom Agent登録を確認し、**新しいタスク**で試す。既存の実行中タスクへ更新が反映される前提にしない。
+アプリとCLIで見える一覧が異なる場合は、アプリが選択しているmarketplaceとインストール元も確認する。配布物の再生成だけではインストール済みキャッシュは更新されない。再インストール後、アプリでPluginが有効であることを確認し、**新しいタスク**で試す。既存の実行中タスクへ更新が反映される前提にしない。
 
 ## 開発時のcachebuster
 
@@ -100,4 +100,4 @@ npm run test:install
 
 Codex互換manifestは共通schemaへ混ぜず、専用の整合性・パス検査とplugin-creatorの検証器で検証する。正本との同一性、MCPの実ファイルとパス包含、Node起動の契約はJSON Schema以外でも検査する。
 
-`npm run test:install` はCodex CLIがPATHにある環境で実行する追加のリリース前試験。既に生成した `dist/` を空の一時Codexホームへインストールし、実キャッシュの全ファイル・内容・ローカルリンク・不要ディレクトリ不在と、NodeだけでのMCP起動を検証する。子プロセスだけに一時 `CODEX_HOME` を渡し、実ユーザーの登録・インストール・保存済み計画は変更しない。通常CIにはCodex CLIを要求せず、共有配布処理と構成・MCP E2Eを実行する。
+`npm run test:install` はCodex CLIがPATHにある環境で実行する追加のリリース前試験。既に生成した `dist/` を空の一時Codexホームへインストールし、実キャッシュの全ファイル・内容・ローカルリンク・不要ディレクトリ不在と、Windows x64 では同梱ランチャー経由のMCP起動を検証する。子プロセスだけに一時 `CODEX_HOME` を渡し、実ユーザーの登録・インストール・保存済み計画は変更しない。通常CIにはCodex CLIを要求せず、共有配布処理と構成・MCP E2Eを実行する。

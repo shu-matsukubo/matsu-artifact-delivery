@@ -82,7 +82,13 @@ export async function loadPlugin(root: string) {
   }
   assert.ok(skills.size, 'No skills discovered');
   const agents = new Map<string, Agent>();
-  for (const path of await files(join(root, 'com.openai/agents'))) {
+  let agentPaths: string[] = [];
+  try {
+    agentPaths = await files(join(root, 'com.openai/agents'));
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+  }
+  for (const path of agentPaths) {
     assert.ok(path.endsWith('.toml'), `Unexpected agent file: ${path}`);
     const agent = parseToml(await read(join(root, 'com.openai/agents', path))) as unknown as Agent;
     assert.equal(agent.name, basename(path, '.toml'));

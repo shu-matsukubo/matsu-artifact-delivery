@@ -66,7 +66,7 @@ npm --prefix plugins/artifact-workflow run format:check
 
 ## 配布・manifest検証
 
-`npm run check:manifests` で固定した公式plugin/MCP schemaと互換manifestの整合性を確認する。`npm run package` が生成した `dist/` をローカルインストールとリリースに共用する。Codex CLIが利用可能な環境では `npm run test:install` で同じ配布物を一時ホームへインストールし、キャッシュの全ファイルと内容、リンク、不要ディレクトリ不在、NodeだけでのMCP起動を検証する。詳細は[配布と更新](distribution.md)を参照。
+`npm run check:manifests` で固定した公式plugin/MCP schemaと互換manifestの整合性を確認する。`npm run package` が生成した `dist/` をローカルインストールとリリースに共用する。Codex CLIが利用可能な環境では `npm run test:install` で同じ配布物を一時ホームへインストールし、キャッシュの全ファイルと内容、リンク、不要ディレクトリ不在、同梱 runtime を使った Windows x64 での MCP 起動を検証する。詳細は[配布と更新](distribution.md)を参照。
 
 追加の回帰試験は [distribution.test.ts](../test/infrastructure/distribution.test.ts) に集約する。
 
@@ -124,7 +124,7 @@ npm run ci:select -- --all
 
 ## 単体試験の観点
 
-自然言語部分の試験データは [Workflow 契約一覧](../test/workflow/contracts.json)と [Escalation 契約一覧](../test/escalation/contracts.json)。安定 ID・観点名・対象ファイル・必要な契約文を持ち、実行結果にも ID を表示する。構造試験は全 Skill の Markdown と全 Agent 定義に契約項目があることを要求する。新しい実装形式を Skill 配下へ追加するときも、対応する単体試験を追加する。各部品の必須指示・返却項目・フォールバック方針は単体で保証する。構成 E2E では、配布後の到達性と複数部品にまたがる契約の整合を確認する。
+自然言語部分の試験データは [Workflow 契約一覧](../test/workflow/contracts.json)と [Escalation 契約一覧](../test/escalation/contracts.json)。安定 ID・観点名・対象ファイル・必要な契約文を持ち、実行結果にも ID を表示する。構造試験は全 Skill の Markdown と配布される役割定義に契約項目があることを要求する。新しい実装形式を Skill 配下へ追加するときも、対応する単体試験を追加する。各部品の必須指示・返却項目・フォールバック方針は単体で保証する。構成 E2E では、配布後の到達性と複数部品にまたがる契約の整合を確認する。
 
 `WF-U20` は隔離コピーでhelper出力のfixtureを正本へ取り込み、実際の `WF-U18` を子プロセスで実行する。通常版・開発版・prereleaseと不一致の負例を検証し、CIにPythonやplugin-creatorの配置を要求しない。
 
@@ -153,7 +153,7 @@ npm run ci:select -- --all
 | TS-U01〜TS-U03           | 保守対象の JS 拒否、生成物の例外、未ステージ・追跡済みファイル、依存不要の CLI                                 | [TypeScript 方針試験](../test/infrastructure/typescript.test.ts)                          |
 | RUN-U01〜RUN-U08         | 引数、層別実行、MCP 登録の網羅性・欠落・重複・入れ子、MCP 限定 CLI の登録漏れ拒否、環境選択、失敗伝搬、dry-run | [実行コマンドの単体試験](../test/infrastructure/runner.test.ts)                           |
 | HAR-U01〜HAR-U08         | YAML / TOML / Markdown、相対パス、参照循環・切断、metadata 不整合、権限制約、契約欠落・順序変更を拒否          | [検証器の単体試験](../test/infrastructure/harness.test.ts)                                |
-| PKG-U01〜PKG-U04         | marketplace、全 Agent 登録、README の参照、試験 ID とガイドの対応                                              | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
+| PKG-U01〜PKG-U04         | marketplace、subagent 役割と Escalation Agent 登録、README の参照、試験 ID とガイドの対応                      | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 
 ### 既存 MCP の対応表
 
@@ -173,7 +173,7 @@ npm run ci:select -- --all
 
 ## 構成 E2E の観点と限界
 
-配布時に必要な manifest・Skill・参照資料・Agent 定義・MCP bundle だけを OS の一時ディレクトリへ配置する。元リポジトリの Agent 登録、テスト、`node_modules` に依存せず、そこから metadata を解析して参照グラフをたどる。実 Codex のインストール処理やモデル出力は再現しない。
+配布時に必要な manifest・Skill・参照資料・subagent 役割テンプレート・MCP bundle・Windows runtime だけを OS の一時ディレクトリへ配置する。元リポジトリの Agent 登録、テスト、`node_modules` に依存せず、そこから metadata を解析して参照グラフをたどる。実 Codex のインストール処理やモデル出力は再現しない。
 
 | ID                | シナリオ                                                                                    | 実装                                                 |
 | ----------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
