@@ -153,6 +153,23 @@ await test(
 );
 
 await test(
+  'replaces a damaged cached Windows node.exe before launching MCP',
+  { skip: process.platform !== 'win32', timeout: 30_000 },
+  async (t) => {
+    const cleanup: Array<() => Promise<void>> = [];
+    const directory = await temporaryDirectory(t, cleanup);
+    const archive = await readFile(fileURLToPath(new URL('../../mcp/node-win-x64.zip', import.meta.url)));
+    const runtime = createHash('sha256').update(archive).digest('hex');
+    const cachedNode = join(directory, 'runtime', runtime, 'node.exe');
+    await mkdir(join(directory, 'runtime', runtime), { recursive: true });
+    await writeFile(cachedNode, 'truncated executable');
+    const client = await connect(directory);
+    cleanup.push(() => client.close());
+    assert.ok((await client.listTools()).tools.length > 0);
+  },
+);
+
+await test(
   'a boundary-sized plan saved through the shipped MCP bundle can complete after restart',
   { timeout: 30_000 },
   async (t) => {

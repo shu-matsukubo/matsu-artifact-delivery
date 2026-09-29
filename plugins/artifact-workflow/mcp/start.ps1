@@ -7,6 +7,12 @@ if (-not [Environment]::Is64BitProcess) {
 }
 
 $archive = Join-Path $PSScriptRoot 'node-win-x64.zip'
+$metadataPath = Join-Path $PSScriptRoot 'node-runtime.json'
+$runtimeMetadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+$expectedNodeHash = [string] $runtimeMetadata.sourceSha256
+if ($expectedNodeHash -notmatch '^[a-fA-F0-9]{64}$') {
+    throw 'The bundled Node.js runtime metadata has an invalid sourceSha256.'
+}
 $sha256 = [System.Security.Cryptography.SHA256]::Create()
 $archiveStream = [System.IO.File]::OpenRead($archive)
 try {
@@ -24,22 +30,39 @@ $node = Join-Path $runtime 'node.exe'
 $runtimeMutex = New-Object System.Threading.Mutex($false, "Local\artifact-workflow-runtime-$hash")
 $ownsRuntimeMutex = $false
 
+function Test-NodeExecutable([string] $Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    $fileStream = [System.IO.File]::OpenRead($Path)
+    $fileHash = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $actualHash = [System.BitConverter]::ToString($fileHash.ComputeHash($fileStream)).Replace('-', '')
+    } finally {
+        $fileStream.Dispose()
+        $fileHash.Dispose()
+    }
+    return $actualHash.Equals($expectedNodeHash, [StringComparison]::OrdinalIgnoreCase)
+}
+
 try {
     try { $ownsRuntimeMutex = $runtimeMutex.WaitOne() } catch [System.Threading.AbandonedMutexException] {
         $ownsRuntimeMutex = $true
     }
-    if (-not (Test-Path -LiteralPath $node -PathType Leaf)) {
+    if (-not (Test-NodeExecutable $node)) {
         New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
         $temporary = Join-Path $runtimeRoot "$hash-$PID-$([guid]::NewGuid().ToString('N'))"
         $stale = Join-Path $runtimeRoot "$hash-invalid-$PID-$([guid]::NewGuid().ToString('N'))"
         try {
             [System.Reflection.Assembly]::LoadWithPartialName('System.IO.Compression.FileSystem') | Out-Null
             [System.IO.Compression.ZipFile]::ExtractToDirectory($archive, $temporary)
-            if (-not (Test-Path -LiteralPath (Join-Path $temporary 'node.exe') -PathType Leaf)) {
-                throw 'The bundled Node.js runtime archive does not contain node.exe.'
+            if (-not (Test-NodeExecutable (Join-Path $temporary 'node.exe'))) {
+                throw 'The bundled Node.js runtime archive does not contain the expected node.exe.'
             }
-            if (Test-Path -LiteralPath $runtime -PathType Container) {
-                [System.IO.Directory]::Move($runtime, $stale)
+            if (Test-Path -LiteralPath $runtime) {
+                if (Test-Path -LiteralPath $runtime -PathType Container) {
+                    [System.IO.Directory]::Move($runtime, $stale)
+                } else {
+                    [System.IO.File]::Move($runtime, $stale)
+                }
             }
             [System.IO.Directory]::Move($temporary, $runtime)
         } finally {

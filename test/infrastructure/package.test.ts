@@ -27,7 +27,7 @@ await test('PKG-U01: marketplace discovers every package with matching metadata 
   }
 });
 
-await test('PKG-U02: Worker roles are templates and only Escalation roles require registration', async () => {
+await test('PKG-U02: the read-only Workflow reviewer and Escalation roles match their registrations', async () => {
   const config = parseToml(await read(join(repository, '.codex/config.toml'))) as {
     agents: Record<string, { config_file: string }>;
   };
@@ -36,8 +36,7 @@ await test('PKG-U02: Worker roles are templates and only Escalation roles requir
   for (const entry of catalog.plugins) {
     const plugin = await loadPlugin(inside(repository, entry.source.path));
     if (entry.name === 'artifact-workflow') {
-      assert.deepEqual([...plugin.agents.keys()], []);
-      continue;
+      assert.deepEqual([...plugin.agents.keys()], ['artifact-reviewer']);
     }
     for (const [name, agent] of plugin.agents) {
       shipped.push(name);

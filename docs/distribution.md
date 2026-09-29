@@ -35,7 +35,7 @@ npm run package
 
 manifest検証・互換設定の同期確認・MCPの生成物一致確認に成功すると、専用出力先 `dist/` を作り直す。出力先に手作業のファイルは置かない。root manifest を変更した後、互換設定だけなら `npm run sync:manifests`、MCPソースも変えた場合は `npm --prefix plugins/artifact-workflow run build` で同梱 bundle を更新し、Git で管理するファイルとして差分を確認してから実行する。
 
-[配布処理](../scripts/package-plugins.ts)がファイル一覧を管理する。README、LICENSE、共通・互換manifest、Skill一式、Workflowの役割テンプレート、MCP設定・bundle・Windows runtime・依存ライセンスを含む。開発用のpackage/lockfile、ソース、試験、スクリプト、`node_modules`、`.build`、`.test-build` は含めない。同梱ディレクトリ内のシンボリックリンクも拒否する。
+[配布処理](../scripts/package-plugins.ts)がファイル一覧を管理する。README、LICENSE、共通・互換manifest、Skill一式、Workflowの役割テンプレートと読み取り専用 Reviewer Agent、MCP設定・bundle・Windows runtime・依存ライセンスを含む。開発用のpackage/lockfile、ソース、試験、スクリプト、`node_modules`、`.build`、`.test-build` は含めない。同梱ディレクトリ内のシンボリックリンクも拒否する。
 
 `.agents/plugins/marketplace.json` は内容を変えず `dist/.agents/plugins/marketplace.json` にコピーする。`./plugins/<name>` は配布ルート `dist/` 基準の相対パスとなる。生成処理と構成E2Eは同じ配布処理を使い、READMEを含むローカルリンク・アンカーも配布物内で検証する。
 

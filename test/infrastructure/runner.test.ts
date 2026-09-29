@@ -65,10 +65,15 @@ await test('RUN-U03: MCP unit and E2E registries cover every existing test exact
   for (const layer of ['unit', 'e2e']) {
     const plan = createPlan(layer, ['mcp']);
     assert.deepEqual(
-      plan.commands.slice(0, 3).map(({ args }) => args),
-      [['scripts/build.ts', '--check'], ['scripts/clean-test.ts'], ['node_modules/typescript/bin/tsc']],
+      plan.commands.slice(0, 4).map(({ args }) => args),
+      [
+        ['scripts/build.ts', '--check'],
+        ['scripts/node-runtime.ts', '--verify'],
+        ['scripts/clean-test.ts'],
+        ['node_modules/typescript/bin/tsc'],
+      ],
     );
-    const executed = plan.commands[3]!.args.slice(1);
+    const executed = plan.commands[4]!.args.slice(1);
     assert.equal(executed.includes('.test-build/test/mcp.test.js'), layer === 'e2e');
     assert.equal(executed.includes('.test-build/test/store.test.js'), layer === 'unit');
   }

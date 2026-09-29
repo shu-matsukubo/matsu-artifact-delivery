@@ -17,6 +17,7 @@ const runtime = [
   'mcp/node-win-x64.zip',
   'mcp/node-runtime.json',
   'mcp/NODE_RUNTIME_LICENSES.txt',
+  'com.openai/agents/artifact-reviewer.toml',
 ];
 const excluded = new Set(['node_modules', '.build', '.test-build', '.git']);
 
