@@ -47,7 +47,7 @@ await test('PKG-U02: the read-only Workflow reviewer and Escalation roles match 
   assert.deepEqual(Object.keys(config.agents).sort(), shipped.sort());
 });
 
-await test('PKG-U03: contributor documentation and Plugin README local links resolve', async () => {
+await test('PKG-U03: Plugin installation documents reviewer registration and resolves local links', async () => {
   for (const path of [
     'README.md',
     'docs/testing.md',
@@ -56,6 +56,12 @@ await test('PKG-U03: contributor documentation and Plugin README local links res
     'plugins/expert-escalation/README.md',
   ])
     await localLinks(repository, path);
+
+  const workflowReadme = await read(join(repository, 'plugins/artifact-workflow/README.md'));
+  assert.ok(workflowReadme.includes('[agents.artifact-reviewer]'));
+  assert.ok(workflowReadme.includes('artifact-workflow/<installed-version>/com.openai/agents/artifact-reviewer.toml'));
+  assert.ok(workflowReadme.includes('codex plugin marketplace upgrade matsu-artifact-delivery'));
+  assert.ok(workflowReadme.includes('Codex を再起動'));
 });
 
 await test('PKG-U04: all contract IDs and runnable suites appear in the test inventory', async () => {
