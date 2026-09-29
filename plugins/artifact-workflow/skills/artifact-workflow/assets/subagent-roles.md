@@ -5,7 +5,7 @@ The parent creates standard subagents with the spawn_agent tool. Keep both role 
 | Role | Model | Reasoning effort | Sandbox |
 | --- | --- | --- | --- |
 | `artifact-worker` | `gpt-6-luna` | `medium` | inherited |
-| `artifact-reviewer` | `gpt-6-sol` | `high` | read-only instructions; tools depend on host |
+| `artifact-reviewer` | `gpt-6-sol` | `high` | host-enforced read-only sandbox and no approval prompts; the prompt alone is not a security boundary |
 
 Use the listed model and reasoning effort when the host supports them. The worker must not be given review-only restrictions. The reviewer prompt forbids any edits regardless of tool availability.
 

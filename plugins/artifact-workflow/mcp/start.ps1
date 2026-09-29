@@ -21,27 +21,39 @@ if ([string]::IsNullOrWhiteSpace($runtimeRoot)) {
 }
 $runtime = Join-Path $runtimeRoot $hash
 $node = Join-Path $runtime 'node.exe'
+$runtimeMutex = New-Object System.Threading.Mutex($false, "Local\artifact-workflow-runtime-$hash")
+$ownsRuntimeMutex = $false
 
-if (-not (Test-Path -LiteralPath $node -PathType Leaf)) {
-    New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
-    $temporary = Join-Path $runtimeRoot "$hash-$PID-$([guid]::NewGuid().ToString('N'))"
-    try {
-        [System.Reflection.Assembly]::LoadWithPartialName('System.IO.Compression.FileSystem') | Out-Null
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($archive, $temporary)
-        if (-not (Test-Path -LiteralPath (Join-Path $temporary 'node.exe') -PathType Leaf)) {
-            throw 'The bundled Node.js runtime archive does not contain node.exe.'
-        }
+try {
+    try { $ownsRuntimeMutex = $runtimeMutex.WaitOne() } catch [System.Threading.AbandonedMutexException] {
+        $ownsRuntimeMutex = $true
+    }
+    if (-not (Test-Path -LiteralPath $node -PathType Leaf)) {
+        New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
+        $temporary = Join-Path $runtimeRoot "$hash-$PID-$([guid]::NewGuid().ToString('N'))"
+        $stale = Join-Path $runtimeRoot "$hash-invalid-$PID-$([guid]::NewGuid().ToString('N'))"
         try {
+            [System.Reflection.Assembly]::LoadWithPartialName('System.IO.Compression.FileSystem') | Out-Null
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($archive, $temporary)
+            if (-not (Test-Path -LiteralPath (Join-Path $temporary 'node.exe') -PathType Leaf)) {
+                throw 'The bundled Node.js runtime archive does not contain node.exe.'
+            }
+            if (Test-Path -LiteralPath $runtime -PathType Container) {
+                [System.IO.Directory]::Move($runtime, $stale)
+            }
             [System.IO.Directory]::Move($temporary, $runtime)
-        } catch {
-            # Multiple Plugin processes may extract the same runtime at once.
-            if (-not (Test-Path -LiteralPath $node -PathType Leaf)) { throw }
-        }
-    } finally {
-        if (Test-Path -LiteralPath $temporary) {
-            Remove-Item -LiteralPath $temporary -Recurse -Force
+        } finally {
+            if (Test-Path -LiteralPath $temporary) {
+                Remove-Item -LiteralPath $temporary -Recurse -Force
+            }
+            if (Test-Path -LiteralPath $stale) {
+                Remove-Item -LiteralPath $stale -Recurse -Force
+            }
         }
     }
+} finally {
+    if ($ownsRuntimeMutex) { $runtimeMutex.ReleaseMutex() }
+    $runtimeMutex.Dispose()
 }
 
 if ([string]::IsNullOrWhiteSpace($Entry)) {

@@ -6,6 +6,8 @@ Plugin の正本は Git で管理する `plugins/<plugin-name>/` とルートの
 
 `artifact-workflow` の MCP は `mcp/src/` をソースとし、依存をまとめた bundle と Windows x64 向け Node.js 22 runtime の圧縮ファイルを Plugin に同梱する。初回起動時に PowerShell ランチャーが runtime をユーザーデータ領域へ展開するため、利用者側の Node.js、npm、ネットワーク接続は不要である。bundle・runtime・ライセンス通知は配布に必要な生成物なので Git で管理し、更新時は試験して一緒にコミットする。`npm run package` は Plugin ごとに必要なファイルだけを `dist/` に集め、公開候補やインストール試験の内容を確認するために使う。
 
+同梱 Node.js の更新は `npm --prefix plugins/artifact-workflow run runtime:update -- <version>` で行う。スクリプトは Node.js 公式 `SHASUMS256.txt` と照合して Windows x64 の `node.exe` を取得し、ZIP、バイナリ、ライセンスを生成してチェックサムを記録する。`npm --prefix plugins/artifact-workflow run runtime:verify` は配布前に ZIP 内のバイナリと記録済み公式チェックサム、ライセンスの一致を検証し、`npm run package` と MCP のテストでも自動実行される。更新では Node.js の公式配布元と同じ版の LICENSE を使う。
+
 配布経路は目的で分ける。
 
 - **開発・小規模な Git 配布:** `codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery` で GitHub marketplace を追加する。Codex がリポジトリを取得するため、利用者の手動 clone、npm install、`dist/` 生成は不要。MCP bundle と Windows x64 runtime はリポジトリに同梱済みである。

@@ -69,15 +69,25 @@ await test('WF-U18: MCP manifests and package metadata resolve to the shipped ru
     version: string;
     platform: string;
     archive: string;
+    archiveSha256: string;
     source: string;
+    sourceSha256: string;
+    checksums: string;
     license: string;
+    licenseSource: string;
+    licenseSha256: string;
   }>(join(root, 'mcp/node-runtime.json'));
   assert.deepEqual(nodeRuntime, {
     version: '22.23.2',
     platform: 'win32-x64',
     archive: 'node-win-x64.zip',
+    archiveSha256: 'dcce5e49aed07c620fef0122daeeb435a8bd5157a82f0aa0b4b621eadaac5f78',
     source: 'https://nodejs.org/dist/v22.23.2/win-x64/node.exe',
+    sourceSha256: '0d0f5e39f9f3d9587bc19f73eab3c2c9c4903fd02d6dbf9c853dd81b3d95fad4',
+    checksums: 'https://nodejs.org/dist/v22.23.2/SHASUMS256.txt',
     license: 'NODE_RUNTIME_LICENSES.txt',
+    licenseSource: 'https://raw.githubusercontent.com/nodejs/node/v22.23.2/LICENSE',
+    licenseSha256: 'c738ae413cf561f174e34f6961f8ca458aae2369a73640dda6234c629b98bcc4',
   });
   for (const path of ['mcp/start.ps1', `mcp/${nodeRuntime.archive}`, `mcp/${nodeRuntime.license}`])
     assert.ok((await stat(join(root, path))).isFile(), `Missing bundled Windows runtime file: ${path}`);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { copyFile, readdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -130,6 +130,25 @@ await test(
       ...(process.platform === 'win32' ? ['runtime'] : []),
       'standalone.cjs',
     ]);
+  },
+);
+
+await test(
+  'repairs an incomplete cached Windows runtime before launching MCP',
+  { skip: process.platform !== 'win32', timeout: 30_000 },
+  async (t) => {
+    const cleanup: Array<() => Promise<void>> = [];
+    const directory = await temporaryDirectory(t, cleanup);
+    const archive = await readFile(fileURLToPath(new URL('../../mcp/node-win-x64.zip', import.meta.url)));
+    const runtime = createHash('sha256').update(archive).digest('hex');
+    await mkdir(join(directory, 'runtime', runtime), { recursive: true });
+    const [repaired, concurrent] = await Promise.all([connect(directory), connect(directory)]);
+    cleanup.push(
+      () => repaired.close(),
+      () => concurrent.close(),
+    );
+    assert.ok((await repaired.listTools()).tools.length > 0);
+    assert.ok((await concurrent.listTools()).tools.length > 0);
   },
 );
 
