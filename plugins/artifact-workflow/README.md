@@ -2,7 +2,7 @@
 
 成果物を作る作業を計画し、承認後に生成・セルフレビュー・独立レビュー・検証を行う Plugin です。完成品と検証結果を提示し、必要な引き渡し情報を親へ返します。
 
-Codex で Plugin をインストールした後、`artifact-workflow` の利用を指定すれば開始できます。生成担当は役割テンプレートを使い、独立レビュー担当は読み取り専用 sandbox を強制する `artifact-reviewer` Custom Agent を使います。このリポジトリでは `.codex/config.toml` に登録済みです。他の作業環境では、同梱の `com.openai/agents/artifact-reviewer.toml` を Custom Agent として登録してください。Node.js の事前導入は不要です。初期対応環境は Windows x64 です。
+`artifact-reviewer` Custom Agent を登録してから、`artifact-workflow` の利用を指定できます。生成担当は役割テンプレートを使い、独立レビュー担当は読み取り専用 sandbox を強制する Agent を使います。このリポジトリでは `.codex/config.toml` に登録済みです。他の作業環境では、同梱の `com.openai/agents/artifact-reviewer.toml` を以下の手順で登録してください。Node.js の事前導入は不要です。初期対応環境は Windows x64 です。
 
 ## インストール
 
@@ -11,7 +11,24 @@ codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery
 codex plugin add artifact-workflow@matsu-artifact-delivery
 ```
 
-インストール後、新しいタスクで作りたい成果物とともに `artifact-workflow` の利用を指定してください。親が計画を提示し、承認後に作業を進めます。
+### Reviewer Agent の登録
+
+Plugin のインストールだけでは Custom Agent は登録されません。インストール後、`<CODEX_HOME>/plugins/cache/matsu-artifact-delivery/artifact-workflow/` にあるインストール済みバージョンを確認し、プロジェクトの `.codex/config.toml` または個人設定の `<CODEX_HOME>/config.toml` に次を追加します。`<CODEX_HOME>` と `<installed-version>` は実際のパスに置き換えてください。
+
+```toml
+[agents.artifact-reviewer]
+config_file = "C:/Users/<username>/.codex/plugins/cache/matsu-artifact-delivery/artifact-workflow/<installed-version>/com.openai/agents/artifact-reviewer.toml"
+```
+
+設定後に Codex を再起動し、新しいタスクで `artifact-workflow` の利用を指定してください。親が計画を提示し、承認後に作業を進めます。
+
+Plugin を更新したときは marketplace を更新してインストール済みファイルを反映し、設定のバージョンパスも新しいディレクトリへ変更します。
+
+```sh
+codex plugin marketplace upgrade matsu-artifact-delivery
+```
+
+パスを更新してから Codex を再起動してください。古いバージョンのパスを残すと Agent 定義を読み込めません。
 
 ## Workflow の構成
 
