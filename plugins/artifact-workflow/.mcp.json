@@ -2,9 +2,13 @@
   "mcpServers": {
     "artifact-task-memory": {
       "type": "stdio",
-      "command": "node",
+      "command": "powershell.exe",
       "args": [
-        "${PLUGIN_ROOT}/mcp/task-memory.cjs"
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${PLUGIN_ROOT}/mcp/start.ps1"
       ],
       "env": {
         "ARTIFACT_WORKFLOW_DATA_DIR": "${PLUGIN_DATA}/task-memory"

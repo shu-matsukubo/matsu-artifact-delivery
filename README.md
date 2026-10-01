@@ -20,7 +20,7 @@ codex plugin add artifact-workflow@matsu-artifact-delivery
 codex plugin add expert-escalation@matsu-artifact-delivery
 ```
 
-`artifact-workflow` の MCP 起動には Node.js 22.19 以降が必要です。利用者は npm の実行や `dist/` の生成を必要としません。MCP サーバーを変更する開発者向けのビルド・試験手順は[配布と更新](docs/distribution.md)を参照してください。
+`artifact-workflow` は Windows x64 向け MCP runtime を同梱し、Node.js の事前導入や利用者による設定なしで起動します。開発者向けのビルド・試験手順は[配布と更新](docs/distribution.md)を参照してください。
 
 OpenAI の審査・公開後は Plugins Directory から検索してインストールできるようになります。公開条件と各 Plugin の機能詳細は[配布と更新](docs/distribution.md)および各 Plugin の README を参照してください。
 

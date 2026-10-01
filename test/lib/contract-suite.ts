@@ -24,7 +24,7 @@ export async function registerContracts(
 ) {
   const root = pluginRoot(name);
   const cases = await json<FileContract[]>(casesUrl);
-  await test(`${prefix}-U01: Plugin / Skill / Agent metadata and permissions`, async () => {
+  await test(`${prefix}-U01: Plugin / Skill / role metadata and permissions`, async () => {
     const plugin = await loadPlugin(root);
     assert.equal(await read(join(root, 'LICENSE')), await read(join(repository, 'LICENSE')));
     await localLinks(repository, `plugins/${name}/README.md`);
@@ -38,9 +38,14 @@ export async function registerContracts(
       assert.doesNotMatch(skill.body, /\bgpt-\d/, 'Models belong in Agent configuration');
     }
   });
-  await test(`${prefix}-U02: every Skill document and Agent has a contract; all local links resolve`, async () => {
+  await test(`${prefix}-U02: every Skill and role document has a contract; all local links resolve`, async () => {
     const skillFiles = (await files(join(root, 'skills'))).map((path) => `skills/${path}`);
-    const roleFiles = (await files(join(root, 'com.openai/agents'))).map((path) => `com.openai/agents/${path}`);
+    let roleFiles: string[] = [];
+    try {
+      roleFiles = (await files(join(root, 'com.openai/agents'))).map((path) => `com.openai/agents/${path}`);
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+    }
     for (const path of skillFiles)
       assert.ok(
         path.endsWith('.md') || path.endsWith('/agents/openai.yaml'),

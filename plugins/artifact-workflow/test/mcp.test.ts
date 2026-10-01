@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { copyFile, readdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -11,13 +11,53 @@ import { sessionSchema } from '../mcp/src/schema.js';
 import { plan, planAtSnapshotSize, temporaryDirectory } from './fixtures.js';
 
 const bundledServer = fileURLToPath(new URL('../../mcp/task-memory.cjs', import.meta.url));
+const windowsLauncher = fileURLToPath(new URL('../../mcp/start.ps1', import.meta.url));
 
 async function connect(directory: string, entry = bundledServer) {
+  const inheritedEnvironment = getDefaultEnvironment();
+  if (process.platform === 'win32') delete inheritedEnvironment.PATHEXT;
+  const command = process.platform === 'win32' ? 'powershell.exe' : process.execPath;
+  const args =
+    process.platform === 'win32'
+      ? [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          windowsLauncher,
+          ...(entry === bundledServer ? [] : ['-Entry', entry]),
+        ]
+      : [entry];
+  const environment = {
+    ...process.env,
+    ...inheritedEnvironment,
+    ARTIFACT_WORKFLOW_DATA_DIR: join(directory, 'data'),
+    ...(process.platform === 'win32'
+      ? {
+          ARTIFACT_WORKFLOW_RUNTIME_DIR: join(directory, 'runtime'),
+          PATH: (process.env.PATH ?? '')
+            .split(';')
+            .filter(
+              (path) =>
+                path
+                  .replaceAll('/', '\\')
+                  .replace(/[\\]+$/, '')
+                  .toLowerCase() !==
+                process.execPath
+                  .slice(0, -'node.exe'.length)
+                  .replace(/[\\]+$/, '')
+                  .toLowerCase(),
+            )
+            .join(';'),
+        }
+      : {}),
+  };
+  if (process.platform === 'win32') Reflect.deleteProperty(environment, 'PATHEXT');
   const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [entry],
+    command,
+    args,
     cwd: directory,
-    env: { ...getDefaultEnvironment(), ARTIFACT_WORKFLOW_DATA_DIR: join(directory, 'data') },
+    env: environment,
     stderr: 'pipe',
   });
   let stderr = '';
@@ -85,7 +125,47 @@ await test(
       snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'parent' } })).plan,
       null,
     );
-    assert.deepEqual((await readdir(directory)).sort(), ['data', 'standalone.cjs']);
+    assert.deepEqual((await readdir(directory)).sort(), [
+      'data',
+      ...(process.platform === 'win32' ? ['runtime'] : []),
+      'standalone.cjs',
+    ]);
+  },
+);
+
+await test(
+  'repairs an incomplete cached Windows runtime before launching MCP',
+  { skip: process.platform !== 'win32', timeout: 30_000 },
+  async (t) => {
+    const cleanup: Array<() => Promise<void>> = [];
+    const directory = await temporaryDirectory(t, cleanup);
+    const archive = await readFile(fileURLToPath(new URL('../../mcp/node-win-x64.zip', import.meta.url)));
+    const runtime = createHash('sha256').update(archive).digest('hex');
+    await mkdir(join(directory, 'runtime', runtime), { recursive: true });
+    const [repaired, concurrent] = await Promise.all([connect(directory), connect(directory)]);
+    cleanup.push(
+      () => repaired.close(),
+      () => concurrent.close(),
+    );
+    assert.ok((await repaired.listTools()).tools.length > 0);
+    assert.ok((await concurrent.listTools()).tools.length > 0);
+  },
+);
+
+await test(
+  'replaces a damaged cached Windows node.exe before launching MCP',
+  { skip: process.platform !== 'win32', timeout: 30_000 },
+  async (t) => {
+    const cleanup: Array<() => Promise<void>> = [];
+    const directory = await temporaryDirectory(t, cleanup);
+    const archive = await readFile(fileURLToPath(new URL('../../mcp/node-win-x64.zip', import.meta.url)));
+    const runtime = createHash('sha256').update(archive).digest('hex');
+    const cachedNode = join(directory, 'runtime', runtime, 'node.exe');
+    await mkdir(join(directory, 'runtime', runtime), { recursive: true });
+    await writeFile(cachedNode, 'truncated executable');
+    const client = await connect(directory);
+    cleanup.push(() => client.close());
+    assert.ok((await client.listTools()).tools.length > 0);
   },
 );
 

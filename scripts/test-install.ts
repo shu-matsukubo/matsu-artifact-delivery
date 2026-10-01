@@ -65,39 +65,47 @@ try {
       bytes,
     };
     if (entry.name === 'artifact-workflow') {
-      for (const configName of ['mcp.json', '.mcp.json']) {
-        const config = (await json<McpManifest>(join(installed, configName))).mcpServers['artifact-task-memory']!;
-        const data = join(temporary, '日本語 data', configName);
-        const expand = (value: string) =>
-          value.replace(/\$\{(PLUGIN_ROOT|PLUGIN_DATA)\}/g, (_, key) => (key === 'PLUGIN_ROOT' ? installed : data));
-        const client = new Client({ name: 'distribution-check', version: '1.0.0' });
-        try {
-          await client.connect(
-            new StdioClientTransport({
-              command: config.command,
-              args: config.args.map(expand),
-              cwd: temporary,
-              env: {
-                ...getDefaultEnvironment(),
-                ...Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, expand(value)])),
-              },
-              stderr: 'pipe',
-            }),
-          );
-          assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name).sort(), [
-            'complete_session',
-            'get_plan',
-            'reset_session',
-            'save_plan',
-          ]);
-          const response = await client.callTool({ name: 'get_plan', arguments: { sessionId: 'distribution-check' } });
-          assert.notEqual(response.isError, true);
-          assert.deepEqual(response.structuredContent, { session: null });
-        } finally {
-          await client.close();
+      if (process.platform === 'win32')
+        for (const configName of ['mcp.json', '.mcp.json']) {
+          const config = (await json<McpManifest>(join(installed, configName))).mcpServers['artifact-task-memory']!;
+          const data = join(temporary, '日本語 data', configName);
+          const expand = (value: string) =>
+            value.replace(/\$\{(PLUGIN_ROOT|PLUGIN_DATA)\}/g, (_, key) => (key === 'PLUGIN_ROOT' ? installed : data));
+          const client = new Client({ name: 'distribution-check', version: '1.0.0' });
+          try {
+            await client.connect(
+              new StdioClientTransport({
+                command: config.command,
+                args: config.args.map(expand),
+                cwd: temporary,
+                env: {
+                  ...getDefaultEnvironment(),
+                  ARTIFACT_WORKFLOW_RUNTIME_DIR: join(temporary, 'runtime'),
+                  ...Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, expand(value)])),
+                },
+                stderr: 'pipe',
+              }),
+            );
+            assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name).sort(), [
+              'complete_session',
+              'get_plan',
+              'reset_session',
+              'save_plan',
+            ]);
+            const response = await client.callTool({
+              name: 'get_plan',
+              arguments: { sessionId: 'distribution-check' },
+            });
+            assert.notEqual(response.isError, true);
+            assert.deepEqual(response.structuredContent, { session: null });
+          } finally {
+            await client.close();
+          }
         }
-      }
-      result.mcp = 'both portable and compatibility configs started using Node alone';
+      result.mcp =
+        process.platform === 'win32'
+          ? 'both portable and compatibility configs started using the bundled Windows runtime'
+          : 'bundled Windows runtime and launcher files verified; startup is exercised on Windows';
     }
     summary.push(result);
   }
@@ -107,5 +115,19 @@ try {
   // mkdtemp owns this exact tree; never target an existing user Codex home.
   assert.equal(resolve(temporary), join(tmpdir(), temporary.split(/[\\/]/).at(-1)!));
   assert.ok(temporary.split(/[\\/]/).at(-1)!.startsWith('matsu-plugin-install-'));
+  if (process.platform === 'win32')
+    for (const hash of await readdir(join(temporary, 'runtime')).catch(() => [])) {
+      const runtimeNode = join(temporary, 'runtime', hash, 'node.exe');
+      const quotedNode = "'" + runtimeNode.replaceAll("'", "''") + "'";
+      await execute(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-Command',
+          `Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq ${quotedNode} } | Stop-Process -Force`,
+        ],
+        { encoding: 'utf8', windowsHide: true },
+      );
+    }
   await rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

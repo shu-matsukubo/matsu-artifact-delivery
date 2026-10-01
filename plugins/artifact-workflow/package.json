@@ -1,6 +1,6 @@
 {
   "name": "artifact-workflow",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -10,7 +10,9 @@
   "scripts": {
     "build": "npm run check && node scripts/build.ts",
     "check": "tsc --noEmit && tsc -p tsconfig.scripts.json",
-    "check:dist": "node scripts/build.ts --check",
+    "check:dist": "node scripts/build.ts --check && node scripts/node-runtime.ts --verify",
+    "runtime:verify": "node scripts/node-runtime.ts --verify",
+    "runtime:update": "node scripts/node-runtime.ts --update",
     "clean:test": "node scripts/clean-test.ts",
     "lint": "oxlint --type-aware --deny-warnings mcp/src test scripts",
     "format": "prettier --write \"mcp/src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" .oxlintrc.json package.json tsconfig.json tsconfig.scripts.json .prettierrc.json \"../../.github/workflows/artifact-workflow-ci.yml\"",

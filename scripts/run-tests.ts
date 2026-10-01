@@ -58,6 +58,7 @@ export function createPlan(layer: string, targets: readonly string[]): TestPlan 
     // Verify the committed distribution before running it; never rebuild it here.
     commands.push(
       { label: 'MCP distribution', cwd: mcpRoot, args: ['scripts/build.ts', '--check'] },
+      { label: 'MCP runtime provenance', cwd: mcpRoot, args: ['scripts/node-runtime.ts', '--verify'] },
       { label: 'MCP clean test output', cwd: mcpRoot, args: ['scripts/clean-test.ts'] },
       { label: 'MCP compile tests', cwd: mcpRoot, args: ['node_modules/typescript/bin/tsc'] },
     );

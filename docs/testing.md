@@ -48,7 +48,7 @@ npm --prefix plugins/artifact-workflow run format:check
 | `integration`    | なし                                                   | Workflow と任意の Escalation の連携契約 |
 | `infrastructure` | 差分判定、実行コマンド、集約チェック、共通検証器・構成 | なし                                    |
 
-連携 E2E も同じ E2E ジョブに含める。MCP を選んだ場合は、どちらの層でも最初に `test/` 配下の全 `.test.ts`（サブディレクトリを含む）が対象一覧へ一度だけ登録されていることを検査する。未登録・重複登録・登録先ファイルの欠落があれば、対象名と理由を出して失敗する。MCP だけの差分 CI や `--dry-run` でもこの検査を行い、`infrastructure` の選択には依存しない。その後、配布物の一致確認・古いテスト出力の削除・TypeScript コンパイルを行ってから該当層の試験を起動する。`npm test` ではこの準備を一度だけ行う。
+連携 E2E も同じ E2E ジョブに含める。MCP を選んだ場合は、どちらの層でも最初に `test/` 配下の全 `.test.ts`（サブディレクトリを含む）が対象一覧へ一度だけ登録されていることを検査する。未登録・重複登録・登録先ファイルの欠落があれば、対象名と理由を出して失敗する。MCP だけの差分 CI や `--dry-run` でもこの検査を行い、`infrastructure` の選択には依存しない。その後、配布物と同梱 Node.js runtime の provenance 検証・古いテスト出力の削除・TypeScript コンパイルを行ってから該当層の試験を起動する。`npm test` ではこの準備を一度だけ行う。
 
 既存のコンポーネント別コマンドも利用できる。
 
@@ -66,7 +66,7 @@ npm --prefix plugins/artifact-workflow run format:check
 
 ## 配布・manifest検証
 
-`npm run check:manifests` で固定した公式plugin/MCP schemaと互換manifestの整合性を確認する。`npm run package` が生成した `dist/` をローカルインストールとリリースに共用する。Codex CLIが利用可能な環境では `npm run test:install` で同じ配布物を一時ホームへインストールし、キャッシュの全ファイルと内容、リンク、不要ディレクトリ不在、NodeだけでのMCP起動を検証する。詳細は[配布と更新](distribution.md)を参照。
+`npm run check:manifests` で固定した公式plugin/MCP schemaと互換manifestの整合性を確認する。`npm run package` が生成した `dist/` をローカルインストールとリリースに共用する。Codex CLIが利用可能な環境では `npm run test:install` で同じ配布物を一時ホームへインストールし、キャッシュの全ファイルと内容、リンク、不要ディレクトリ不在、同梱 runtime を使った Windows x64 での MCP 起動を検証する。詳細は[配布と更新](distribution.md)を参照。
 
 追加の回帰試験は [distribution.test.ts](../test/infrastructure/distribution.test.ts) に集約する。
 
@@ -124,7 +124,7 @@ npm run ci:select -- --all
 
 ## 単体試験の観点
 
-自然言語部分の試験データは [Workflow 契約一覧](../test/workflow/contracts.json)と [Escalation 契約一覧](../test/escalation/contracts.json)。安定 ID・観点名・対象ファイル・必要な契約文を持ち、実行結果にも ID を表示する。構造試験は全 Skill の Markdown と全 Agent 定義に契約項目があることを要求する。新しい実装形式を Skill 配下へ追加するときも、対応する単体試験を追加する。各部品の必須指示・返却項目・フォールバック方針は単体で保証する。構成 E2E では、配布後の到達性と複数部品にまたがる契約の整合を確認する。
+自然言語部分の試験データは [Workflow 契約一覧](../test/workflow/contracts.json)と [Escalation 契約一覧](../test/escalation/contracts.json)。安定 ID・観点名・対象ファイル・必要な契約文を持ち、実行結果にも ID を表示する。構造試験は全 Skill の Markdown と配布される役割定義に契約項目があることを要求する。新しい実装形式を Skill 配下へ追加するときも、対応する単体試験を追加する。各部品の必須指示・返却項目・フォールバック方針は単体で保証する。構成 E2E では、配布後の到達性と複数部品にまたがる契約の整合を確認する。
 
 `WF-U20` は隔離コピーでhelper出力のfixtureを正本へ取り込み、実際の `WF-U18` を子プロセスで実行する。通常版・開発版・prereleaseと不一致の負例を検証し、CIにPythonやplugin-creatorの配置を要求しない。
 
@@ -142,6 +142,7 @@ npm run ci:select -- --all
 | WF-U20                   | cachebuster取り込み後のWF-U18、正式版・基底版・suffix・lockfile不一致の拒否                                    | Workflow unit                                                                             |
 | WF-U21                   | 生成の共通原理、承認済み計画との整合、レビュー工程との責務分離                                                 | Workflow 契約一覧                                                                         |
 | WF-U22 / WF-U23          | 生成拡張の選定、コード変更前後のテスト失敗の分類・再開条件、セルフレビュー後の返却順                           | Workflow 契約一覧                                                                         |
+| WF-U24                   | Reviewer Custom Agent の read-only sandbox・approval 禁止設定                                                  | Workflow 契約一覧                                                                         |
 | EX-U01 / EX-U02          | manifest、Skill 発見 policy、両相談役の read-only・承認禁止・子起動禁止、参照・契約網羅                        | [Escalation unit](../test/escalation/unit.test.ts)、共通検証                              |
 | EX-U03 / EX-U04          | 親の明示依頼、単発起動、回数・枠管理、失敗時の返却                                                             | Escalation 契約一覧                                                                       |
 | EX-U05 / EX-U06 / EX-U07 | 入出力契約・実行状態、相談例の非自動性、結果テンプレート                                                       | Escalation 契約一覧                                                                       |
@@ -153,7 +154,7 @@ npm run ci:select -- --all
 | TS-U01〜TS-U03           | 保守対象の JS 拒否、生成物の例外、未ステージ・追跡済みファイル、依存不要の CLI                                 | [TypeScript 方針試験](../test/infrastructure/typescript.test.ts)                          |
 | RUN-U01〜RUN-U08         | 引数、層別実行、MCP 登録の網羅性・欠落・重複・入れ子、MCP 限定 CLI の登録漏れ拒否、環境選択、失敗伝搬、dry-run | [実行コマンドの単体試験](../test/infrastructure/runner.test.ts)                           |
 | HAR-U01〜HAR-U08         | YAML / TOML / Markdown、相対パス、参照循環・切断、metadata 不整合、権限制約、契約欠落・順序変更を拒否          | [検証器の単体試験](../test/infrastructure/harness.test.ts)                                |
-| PKG-U01〜PKG-U04         | marketplace、全 Agent 登録、README の参照、試験 ID とガイドの対応                                              | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
+| PKG-U01〜PKG-U04         | marketplace、Reviewer / Escalation Agent 登録、README の参照、試験 ID とガイドの対応                           | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 
 ### 既存 MCP の対応表
 
@@ -173,7 +174,7 @@ npm run ci:select -- --all
 
 ## 構成 E2E の観点と限界
 
-配布時に必要な manifest・Skill・参照資料・Agent 定義・MCP bundle だけを OS の一時ディレクトリへ配置する。元リポジトリの Agent 登録、テスト、`node_modules` に依存せず、そこから metadata を解析して参照グラフをたどる。実 Codex のインストール処理やモデル出力は再現しない。
+配布時に必要な manifest・Skill・参照資料・subagent 役割テンプレート・MCP bundle・Windows runtime だけを OS の一時ディレクトリへ配置する。元リポジトリの Agent 登録、テスト、`node_modules` に依存せず、そこから metadata を解析して参照グラフをたどる。実 Codex のインストール処理やモデル出力は再現しない。
 
 | ID                | シナリオ                                                                                    | 実装                                                 |
 | ----------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------- |

@@ -6,13 +6,18 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Marketplace, PluginManifest } from './manifest-types.ts';
 
 export const repository = fileURLToPath(new URL('../', import.meta.url));
-const common = ['plugin.json', '.codex-plugin/plugin.json', 'README.md', 'LICENSE', 'skills', 'com.openai/agents'];
+const common = ['plugin.json', '.codex-plugin/plugin.json', 'README.md', 'LICENSE', 'skills'];
 const runtime = [
   'mcp.json',
   '.mcp.json',
   'mcp/task-memory.cjs',
   'mcp/task-memory.cjs.LEGAL.txt',
   'mcp/THIRD_PARTY_LICENSES.txt',
+  'mcp/start.ps1',
+  'mcp/node-win-x64.zip',
+  'mcp/node-runtime.json',
+  'mcp/NODE_RUNTIME_LICENSES.txt',
+  'com.openai/agents/artifact-reviewer.toml',
 ];
 const excluded = new Set(['node_modules', '.build', '.test-build', '.git']);
 
@@ -36,7 +41,9 @@ export async function packageFiles(source: string): Promise<string[]> {
     }
   }
   // Check parent directories too; a symlink at mcp/ must not bypass containment.
-  for (const path of [...common, ...(manifest.name === 'artifact-workflow' ? runtime : [])]) {
+  const pluginFiles =
+    manifest.name === 'artifact-workflow' ? [...common, ...runtime] : [...common, 'com.openai/agents'];
+  for (const path of pluginFiles) {
     const parts = path.split('/');
     for (let count = 1; count < parts.length; count++) {
       const parent = parts.slice(0, count).join('/');

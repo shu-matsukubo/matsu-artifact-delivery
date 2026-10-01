@@ -27,7 +27,7 @@ await test('PKG-U01: marketplace discovers every package with matching metadata 
   }
 });
 
-await test('PKG-U02: repository Agent registrations match every shipped role', async () => {
+await test('PKG-U02: the read-only Workflow reviewer and Escalation roles match their registrations', async () => {
   const config = parseToml(await read(join(repository, '.codex/config.toml'))) as {
     agents: Record<string, { config_file: string }>;
   };
@@ -35,6 +35,9 @@ await test('PKG-U02: repository Agent registrations match every shipped role', a
   const shipped = [];
   for (const entry of catalog.plugins) {
     const plugin = await loadPlugin(inside(repository, entry.source.path));
+    if (entry.name === 'artifact-workflow') {
+      assert.deepEqual([...plugin.agents.keys()], ['artifact-reviewer']);
+    }
     for (const [name, agent] of plugin.agents) {
       shipped.push(name);
       const path = inside(repository, join('.codex', config.agents[name]!.config_file));
@@ -44,7 +47,7 @@ await test('PKG-U02: repository Agent registrations match every shipped role', a
   assert.deepEqual(Object.keys(config.agents).sort(), shipped.sort());
 });
 
-await test('PKG-U03: contributor documentation and Plugin README local links resolve', async () => {
+await test('PKG-U03: Plugin installation documents reviewer registration and resolves local links', async () => {
   for (const path of [
     'README.md',
     'docs/testing.md',
@@ -53,6 +56,12 @@ await test('PKG-U03: contributor documentation and Plugin README local links res
     'plugins/expert-escalation/README.md',
   ])
     await localLinks(repository, path);
+
+  const workflowReadme = await read(join(repository, 'plugins/artifact-workflow/README.md'));
+  assert.ok(workflowReadme.includes('[agents.artifact-reviewer]'));
+  assert.ok(workflowReadme.includes('artifact-workflow/<installed-version>/com.openai/agents/artifact-reviewer.toml'));
+  assert.ok(workflowReadme.includes('codex plugin marketplace upgrade matsu-artifact-delivery'));
+  assert.ok(workflowReadme.includes('Codex を再起動'));
 });
 
 await test('PKG-U04: all contract IDs and runnable suites appear in the test inventory', async () => {

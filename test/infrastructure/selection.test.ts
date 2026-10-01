@@ -14,7 +14,7 @@ const cases: [string, string[]][] = [
   ['plugins/artifact-workflow/skills/artifact-workflow/SKILL.md', workflow],
   ['plugins/artifact-workflow/skills/artifact-workflow/references/self-review.md', workflow],
   ['plugins/artifact-workflow/skills/artifact-workflow/agents/openai.yaml', workflow],
-  ['plugins/artifact-workflow/com.openai/agents/artifact-reviewer.toml', workflow],
+  ['plugins/artifact-workflow/skills/artifact-workflow/assets/subagent-roles.md', workflow],
   ['test/workflow/contracts.json', workflow],
   ['test/workflow/e2e.test.ts', workflow],
   ['plugins/artifact-workflow/mcp/src/server.ts', ['mcp']],

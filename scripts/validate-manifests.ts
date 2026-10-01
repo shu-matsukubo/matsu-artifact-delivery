@@ -90,10 +90,24 @@ export async function validateManifests(root: string) {
     assert.deepEqual(Object.keys(mcp.mcpServers), ['artifact-task-memory']);
     const server = mcp.mcpServers['artifact-task-memory']!;
     assert.equal(server.type, 'stdio');
-    assert.equal(server.command, 'node');
-    assert.deepEqual(server.args, ['${PLUGIN_ROOT}/mcp/task-memory.cjs']);
+    assert.equal(server.command, 'powershell.exe');
+    assert.deepEqual(server.args, [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      '${PLUGIN_ROOT}/mcp/start.ps1',
+    ]);
     assert.deepEqual(server.env, { ARTIFACT_WORKFLOW_DATA_DIR: '${PLUGIN_DATA}/task-memory' });
-    await packagePath(root, server.args[0]!.slice('${PLUGIN_ROOT}/'.length));
+    await packagePath(root, server.args.at(-1)!.slice('${PLUGIN_ROOT}/'.length));
+    for (const runtimeFile of [
+      'mcp/task-memory.cjs',
+      'mcp/node-win-x64.zip',
+      'mcp/node-runtime.json',
+      'mcp/NODE_RUNTIME_LICENSES.txt',
+      'mcp/start.ps1',
+    ])
+      await packagePath(root, runtimeFile);
     if (server.cwd) {
       assert.ok(!server.cwd.startsWith('${PLUGIN_DATA}'), 'Repository MCP must not require a pre-existing data cwd');
       await packagePath(root, server.cwd.replace(/^\$\{PLUGIN_ROOT\}\/?/, './'), true);

@@ -1,194 +1,56 @@
 # artifact-workflow
 
-デリバリーを支援するプラグイン集のうち、成果物生成フローを担当する Plugin です。作業タスク計画へのユーザー承認、生成・セルフレビュー・独立レビュー、タスクと全体の検証を行い、完成品と検証結果の提示・引き渡しで終了します。[Agent Plugins](https://agent-plugins.org/) の共通構造で Skill を配布し、Codex 向けに Custom Agent の定義を同梱しています。
+成果物を作る作業を計画し、承認後に生成・セルフレビュー・独立レビュー・検証を行う Plugin です。完成品と検証結果を提示し、必要な引き渡し情報を親へ返します。
 
-コード、ドキュメント、プレゼン資料、調査レポートなど、作るものと完了条件を合意してから作業したい場面で利用できます。特定の開発工程・言語・フレームワーク・成果物形式には依存せず、他の Plugin や Skill、外部サービスなしで単独利用できます。実行に必要な Codex 側の登録は後述します。
+`artifact-reviewer` Custom Agent を登録してから、`artifact-workflow` の利用を指定できます。生成担当は役割テンプレートを使い、独立レビュー担当は読み取り専用 sandbox を強制する Agent を使います。このリポジトリでは `.codex/config.toml` に登録済みです。他の作業環境では、同梱の `com.openai/agents/artifact-reviewer.toml` を以下の手順で登録してください。Node.js の事前導入は不要です。初期対応環境は Windows x64 です。
 
-更新・公開・提出などの後続処理には、依頼に応じた手段を組み合わせます。生成フローとの接点は完成品・検証結果・必要な引き渡し情報とし、後続処理の実行方法・検証・成功条件は担当側に委ねます。特定の Plugin・Skill・外部サービスの操作手順を生成フローに組み込まず、疎結合に保ちます。
-
-## 共通部分と Codex 固有部分
-
-共通化できる内容は [Agent Plugins Specification](https://agent-plugins.org/specification) と [Agent Skills Specification](https://agentskills.io/specification) を優先します。今後の機能追加でも、共通規格で表現できる内容は共通側へ置き、client 固有の設定は分離します。
-
-| 場所 | 区分と責務 |
-| --- | --- |
-| [plugin.json](plugin.json) | 共通の識別情報・メタデータの正本。`$schema` で対象規格、`version` で Plugin のリリースバージョンを管理する。 |
-| [skills/artifact-workflow/SKILL.md](skills/artifact-workflow/SKILL.md) | Agent Skills 形式の定義。`skills/` の直下から検出される。ワークフローと承認ルールの正本で、`compatibility` に実行環境の要件を記載する。 |
-| `skills/artifact-workflow/references/` | Skill 固有のタスク分解・生成・セルフレビュー・独立レビュー・特化観点・検証・完成品の引き渡しとフロー終了の方針。 |
-| [skills/artifact-workflow/assets/task-plan-template.md](skills/artifact-workflow/assets/task-plan-template.md) | Skill 固有の日本語のタスク計画テンプレート。 |
-| [com.openai/agents/artifact-worker.toml](com.openai/agents/artifact-worker.toml) | Codex 固有の Custom Agent 定義。役割・生成とセルフレビューの指示・モデル・推論強度を管理する。 |
-| [com.openai/agents/artifact-reviewer.toml](com.openai/agents/artifact-reviewer.toml) | Codex 固有の読み取り専用の独立レビュワー。役割・モデル・推論強度を管理する。 |
-| [skills/artifact-workflow/agents/openai.yaml](skills/artifact-workflow/agents/openai.yaml) | Codex 互換用の表示情報と明示呼び出しの設定。共通規格の必須ファイルではない。 |
-| [リポジトリのAgent登録例](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/.codex/config.toml) | このリポジトリで Custom Agent を登録する Codex 固有の参照設定。Plugin パッケージの外側にある。 |
-
-合意済みの要求・制約・タスク計画をJSONで一時保持する `artifact-task-memory` MCP を同梱しています。[mcp.json](mcp.json) が共通設定、[mcp/src/（ソースリポジトリ）](https://github.com/shu-matsukubo/matsu-artifact-delivery/tree/main/plugins/artifact-workflow/mcp/src) がTypeScript実装、[mcp/task-memory.cjs](mcp/task-memory.cjs) が依存を同梱した実行ファイルです。公式 [MCP TypeScript SDK](https://ts.sdk.modelcontextprotocol.io/v2/) を使い、stdioで接続します。
-
-共通形式での検出・読み込みと、ワークフローを実行できることは区別します。現行の実行には Codex のマルチエージェント機能と登録済みの `artifact-worker` と `artifact-reviewer` が必要です。他の compatible client へ移植する際は、その client での役割定義・委任方法を別途確認します。全 client での同一動作は保証対象に含めません。
-
-### 合意済み計画のMCP
-
-実行にはPATH上の **Node.js 22.19以降**が必要です。配布物にSDKなどの依存を含めているため、利用時の `npm install` やビルドは不要です。クライアントが `mcp.json` を読み込み、`PLUGIN_ROOT` と書き込み可能な `PLUGIN_DATA` を提供してMCPを起動します。
-
-動作確認済みのローカル環境は以下のとおりです。
-
-| 項目 | 確認済み環境 |
-| --- | --- |
-| OS | Windows |
-| Node.js | 22.23.2 |
-| MCPクライアント | 公式 TypeScript SDK `@modelcontextprotocol/client` 2.0.0 によるstdioテストクライアント |
-
-OSごとのMCP検証は下記のCIで行います。ソースリポジトリの `npm run test:install` では、配布物を隔離したCodex CLI環境へインストールし、キャッシュ内容とMCP起動を検証します。実モデルによる生成・承認・レビューを含む受け入れ試験は別途行います。
-
-- 新しい生成フローの開始時に `reset_session` で同じセッションの以前の内容をすべて初期化し、同じ保存先の完了記録済みセッションを削除する。未完了の別セッションは保持する。
-- 合意後に `save_plan` で要求・要件・制約・タスク・完了条件・入力参照・引き渡し情報・承認根拠をJSONへ保存する。
-- 以後は `get_plan` で保存済み計画を参照する。合意した計画の更新は、最新の版を指定して計画全体を書き戻す。
-- 全タスク・全体検証・完成品の提示または引き渡しが終わったら、親が `complete_session` で完了を記録する。完了済み計画への通常の保存は拒否する。
-- MCP再接続や会話の短縮では初期化しない。同じセッションIDと保存場所があれば、会話全体を再解釈せずに計画を読み戻せる。
-
-4ツールすべてが、成功時の `structuredContent` の形式を `outputSchema` として公開します。`reset_session` は `{ session, cleanup }`、他の3ツールは `{ session }` を返し、`get_plan` のみ未初期化・削除済みの場合に `session: null` を返します。`cleanup` は削除件数 `deleted` と、見送ったファイル名・理由コードの配列 `skipped: [{ file, code }]` です。同じJSONをテキストでも返します。ツール実行エラーは `isError: true` とテキストで返し、成功時のスキーマの対象外とします。
-
-保存先はリポジトリ外の `PLUGIN_DATA/task-memory/` です。セッションIDごとに1ファイルとし、履歴・DB・進捗の自動管理・別チャットからの復元機能は設けません。完了時は保存を残し、次の新しいフロー開始時に完了済みデータを削除します。削除はセッション単位のロック内で最新状態を確認して行い、ロック中・破損などで見送ったファイルは `cleanup.skipped` に理由を返します。完了記録のない旧形式や中断中のデータは保持します。後日の修正は、旧計画の有無によらず現在の成果物を確認し、新しい修正タスクの計画から始めます。詳細なJSON形式、初期化の境界、競合時の扱いは[タスク計画の一時保持](skills/artifact-workflow/references/task-memory.md)を参照してください。
-
-開発時はソースリポジトリのPlugin rootで以下を実行します。GitHub Actionsでも同じ検証を行います。
-
-```sh
-npm ci
-npm run check
-npm run lint
-npm run format:check
-npm test
-```
-
-- `npm run check` はTypeScriptの型検査です。
-- `npm run lint` はOxlintの型情報を使い、未処理Promise・Promiseの誤用・未使用コードなどを検査します。TypeScript 7に対応する `oxlint-tsgolint` を併用します。
-- `npm run format:check` はPrettierでMCPソース・テスト・ビルドスクリプト・開発設定・CI設定の書式を検査します。`npm run format` で整形できます。
-- `npm test` は最初に `npm run check:dist` で配布物と再生成結果の完全一致を確認します。配布物の更新・欠落があれば失敗し、既存ファイルを上書きしません。その後、`.test-build` を削除し、現在のソースだけをコンパイルしてテストします。
-- ソースや正本設定を変更したら `npm run build` で配布物を更新してください。型検査に成功してから、MCP実行ファイル・ライセンス通知・[依存ライセンス](mcp/THIRD_PARTY_LICENSES.txt)・Codex互換設定を生成します。生成ファイルも変更と一緒にコミットし、直接編集しないでください。
-
-[GitHub ActionsのCI](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/.github/workflows/artifact-workflow-ci.yml)はPR・`main` へのpushで変更範囲を判定し、MCPに影響する場合だけWindows・Linux・macOS × Node.js 22.19.0・24で検証します。skillsやAgent定義だけの変更ではWorkflowの単体・構成E2Eと連携E2Eを実行します。手動実行は全試験が対象です。試験ID・差分判定・全試験の実行方法は[試験ガイド](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/testing.md)を参照してください。ビルドによって更新漏れを隠さないよう、チェックアウトした配布物をそのまま検証・起動します。
-
-テストではOSの一時ディレクトリを使い、セッションの分離、更新競合、不正データの拒否、完了済みデータの削除、未完了・旧形式の保護、後日の修正タスク、実MCP通信、Node.jsだけでの起動と再接続後の読み戻しを確認します。1 MiBの上限は完了日時の増加分を含めて保存時に判定し、上限ちょうどの完了済みデータと1 byte超過の拒否を検証します。書き込み・`sync`・`rename` にI/Oエラーを注入するテストでは、旧データの保持、一時ファイルとロックの解放、再試行の成功を確認します。型エラーによる配布ビルドの停止と配布物の保持、配布物5種類の欠落・改変、ソースだけを変更した際の更新漏れ、削除済みテストのコンパイル残骸の掃除も隔離環境で検証します。
-
-### MCPソースの責務
-
-状態遷移は現在の状態と検証済み計画、更新用の時刻・revisionを受け取る関数とし、ファイル操作を伴わずに検証します。読み取り・revision検証・書き込みは、呼び出し元の `PlanStore` が同じセッションロック内で実行します。
-
-| ファイル | 担当する責務 |
-| --- | --- |
-| `mcp/src/store.ts` | 状態遷移と保存の接続、ロック内の処理順序 |
-| `mcp/src/session.ts` | 初期化・計画の全置換・完了の条件と次の状態 |
-| `mcp/src/schema.ts`、`task-dependencies.ts` | 入力・保存形式のスキーマと、ID重複・未定義の依存先・循環の検証 |
-| `mcp/src/snapshot.ts` | 保存JSONの解析・生成、完了日時を含む容量制限 |
-| `mcp/src/snapshot-files.ts` | ファイル名、読み取り、ロック、一時ファイルからの置換 |
-| `mcp/src/cleanup.ts` | 完了済みセッションの選定・再確認・削除、回収失敗の集約 |
-| `mcp/src/repository.ts`、`errors.ts` | 保存先に依存しない4操作と、独自エラーコードの契約 |
-| `mcp/src/server.ts`、`config.ts`、`index.ts` | MCP応答と操作案内、保存先設定の解決、起動時の依存組み立て |
-
-保存の失敗は例外として伝播し、回収の失敗は `cleanup.skipped` に記録して続行します。OS由来のエラーコードは独自コードと分けて扱います。保存層には失敗理由を置き、`get_plan` などの操作案内はMCP応答で補います。
-
-テストも各責務に対応するファイルへ分けています。状態遷移・依存関係・スキーマ・保存形式はディスクを使わずに確認し、`server.test.ts` は小さな代替保存実装とインメモリMCP通信で応答契約を確認します。`store.test.ts` は保存処理全体の連携、`snapshot-files.test.ts` はI/O障害とロック、`cleanup.test.ts` は回収と失敗時の続行を検証します。配布物を別プロセスで起動する `mcp.test.ts` と配布物検証の `build.test.ts` も継続します。
-
-
-### Codex 互換設定
-
-共通形式の `plugin.json` と `mcp.json` を正本とし、`plugin-creator` の検証と旧形式の読み込みに対応するため `.codex-plugin/plugin.json` と `.mcp.json` をビルド時に生成します。現行のポータブル形式ではルートの共通設定が優先されます。これは[OpenAI公式のパッケージ仕様](https://developers.openai.com/plugins/build/plugins)に基づく互換設定で、マーケットプレイスの別エントリや別サーバーは追加しません。
-
-[Agent Plugins の client extensions](https://agent-plugins.org/plugin-authors/client-extensions) に合わせ、Custom Agent の TOML は Plugin root の `com.openai/` 配下へ置きます。固有の manifest データが必要になった場合は `extensions.com.openai` を使います。
-
-一方、Skill の `agents/openai.yaml` は、OpenAI 公式の [Optional metadata](https://learn.chatgpt.com/docs/build-skills#optional-metadata) に従う読み込み位置を維持します。表示情報と `allow_implicit_invocation: false` を保持するための、Agent Plugins の拡張ディレクトリ規約に対する互換性上の例外です。Agent Skills は Skill 内の追加ファイルを許容しますが、この YAML の設定と動作は Codex 固有であり、共通規格では定義されていません。
-
-## 基本フロー
-
-1. 新しい生成フローの開始時に親のセッションの保持内容を初期化し、同じ保存先の完了記録済みセッションを削除する。依頼全体から今回の生成範囲を定め、成果物そのものを作成・変更する作業をタスクへ分解する。
-2. 各タスクの目的・成果物・完了条件と、タスク外の品質確認・今回の全体の完了条件・完成品の提示と引き渡し情報を含む計画をユーザーへ提示する。
-3. 原則としてユーザーの承認を得て、合意済み計画をMCPへ保存してから生成へ進む。
-4. 親がMCPから取得した承認済みの計画と依存関係から `artifact-worker` の担当を決め、成果物の生成を委任する。
-5. 各担当の `artifact-worker` が生成した成果物そのものをセルフレビューし、必要な修正後に成果物とレビュー結果を親へ返す。
-6. 親が特化観点を0〜3個選び、生成担当と別の `artifact-reviewer` 1人へ独立レビューを依頼する。親が指摘を受け取り、必要な修正・セルフレビュー・影響部分の再レビューを管理する。
-7. 親がタスクIDごとに独立レビュー後の実物を確認し、承認された完了条件を満たしたタスクを完了とする。
-8. 今回の生成計画の全作業タスク完了後、親が成果物を今回の全体の完了条件と照合して、成果物完成を確認する。組み合わせた状態も独立レビューの対象に含める。
-9. 親が完成品とレビュー・検証結果を提示するか、後続処理へ必要な情報を引き継ぎ、`complete_session` で完了を記録して生成フローを終了する。依頼された後続処理は、親が選択した手段の手順で続行する。
-
-委任人数や並列実行、担当範囲の判断は[生成の方針](skills/artifact-workflow/references/generation.md)を参照してください。
-
-`T1`、`T2` などのタスクIDは、計画から生成・セルフレビュー・独立レビュー・検証まで同じタスクを追跡するために使います。検証で条件を満たさない場合は、親が同じタスクIDで `artifact-worker` に修正と必要なセルフレビューを依頼し、影響部分の独立再レビューを経て実物を再検証します。
-
-### 共通原則と独立レビュー
-
-セルフレビューは、[成果物レビューの原理原則](skills/artifact-workflow/references/review-principles.md)に沿って作成者が実物を短く確認し、問題を修正する工程です。原則の定義を共通資料にまとめ、長いチェック表の記入は求めません。親による完了条件の検証は別に行います。
-
-独立レビューでは、作業者と別の `artifact-reviewer` 1人が同じ5原則すべてと、親が選んだ0〜3個の特化観点を読み取り専用で確認します。共通原則は3個の上限に含めず、観点ごとにエージェントを増やしません。特化観点が該当しなくても共通原則による独立レビューを行います。
-
-初期の特化観点は[セキュリティ](skills/artifact-workflow/references/review-perspectives/security.md)のみです。[一覧と追加方法](skills/artifact-workflow/references/review-perspectives/index.md)に従い、コードやプレゼン資料などの観点を資料単位で拡張できます。
-
-すべての呼び出し・観点選択・指摘の採否・修正と再レビュー・相談へのエスカレーションは親が管理します。レビュワーは作業者の成果物を編集せず、指摘と相談依頼を親へ返します。セルフレビューと親の完了判定は継続します。入力・返却契約・利用不能時の扱いは[独立レビューの方針](skills/artifact-workflow/references/independent-review.md)、作業者の責務は[セルフレビューの方針](skills/artifact-workflow/references/self-review.md)を参照してください。
-
-### タスク分解で守る二つの境界
-
-- **Task は成果物を作る作業単位**です。セルフレビュー、独立レビュー、動作検証、完了条件の確認、全体検証はタスクを処理するフローとして実施し、独立した作業タスクにしません。
-- **後続処理は本 Plugin の責務外**です。Delivery は完成品と必要な情報を提示・引き渡して生成フローを終える境界です。後続処理の実行・検証・成功条件は、今回の計画や完了判定に含めません。本 Plugin の委任・承認・検証ルールも、後続処理には適用しません。
-
-デリバリー手段の例として Sites による公開があります。利用する手段は依頼に応じて選び、本 Plugin の必須依存にはしません。
-
-後続処理の結果を使って別の成果物を作る場合は、その結果を得た後に別の生成として扱います。後で行う依頼と必要な入力は引き渡し情報に残し、今回の生成計画を結果待ちにしません。
-
-本 Plugin の完了と、依頼全体の完了は別々に判断します。親は既存の指示と承認範囲を引き継いで後続の依頼を続行し、本 Plugin の完了だけで依頼全体を完了扱いにしません。詳細は[タスク分解の方針](skills/artifact-workflow/references/task-planning.md)と[引き渡しとフロー終了の方針](skills/artifact-workflow/references/delivery.md)を参照してください。
-
-## Codex での使い方
-
-公開 Plugins Directory にはまだ掲載していません。掲載までは GitHub marketplace から利用できます。Codex がリポジトリを取得するため、手動 clone は不要です。
+## インストール
 
 ```sh
 codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery
 codex plugin add artifact-workflow@matsu-artifact-delivery
 ```
 
-同梱 MCP の起動には PATH 上の Node.js 22.19 以降が必要です。npm や `dist/` の生成は不要です。開発時のビルド・パッケージ検証は[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md)を参照してください。
+### Reviewer Agent の登録
 
-Plugin のインストールにより、共通構造の `skills/` から Skill を検出できるようになります。ワークフローの実行には、次の Custom Agent の登録も必要です。このリポジトリでは [.codex/config.toml](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/.codex/config.toml) に登録済みで、別の作業場所では利用先に参照設定を追加してください。役割を利用できない場合、ワークフローは生成を開始せず登録に必要な対応を案内します。
-
-登録後の新しいタスクで、作りたい成果物とともに `artifact-workflow` の利用を指定してください。提示されたタスク計画を確認し、承認またはタスクIDを指定した修正依頼を返します。
-
-## Custom Agent の設定と登録
-
-親には現在のチャットで選択したモデルをそのまま使用します。生成担当のモデル名と推論強度は [artifact-worker.toml](com.openai/agents/artifact-worker.toml)、独立レビュワーの設定は [artifact-reviewer.toml](com.openai/agents/artifact-reviewer.toml) の `model` と `model_reasoning_effort` だけで管理し、差し替え時も Skill の変更は不要です。
-
-Agent Plugins の共通コンポーネントは Skill と MCP で、Custom Agent の登録方法は定義されていません。同梱した TOML は Codex の設定 `agents.<name>.config_file` で参照します。`com.openai/agents/` は本リポジトリで固有ファイルを整理する配置であり、このディレクトリから Custom Agent が自動登録されるわけではありません。
-
-このリポジトリでは [リポジトリのAgent登録例](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/.codex/config.toml) に参照を登録しています。別のプロジェクトで利用する場合は、そのプロジェクトの `.codex/config.toml`（個人共通なら `~/.codex/config.toml`）に以下を追加し、パスを同梱 TOML の実際の絶対パスへ置き換えてください。相対パスの場合は、この設定を記載する `config.toml` の場所が基準です。
+Plugin のインストールだけでは Custom Agent は登録されません。インストール後、`<CODEX_HOME>/plugins/cache/matsu-artifact-delivery/artifact-workflow/` にあるインストール済みバージョンを確認し、プロジェクトの `.codex/config.toml` または個人設定の `<CODEX_HOME>/config.toml` に次を追加します。`<CODEX_HOME>` と `<installed-version>` は実際のパスに置き換えてください。
 
 ```toml
-[agents.artifact-worker]
-config_file = "C:/Users/<username>/.codex/plugins/cache/matsu-artifact-delivery/artifact-workflow/<installed-version>/com.openai/agents/artifact-worker.toml"
-
 [agents.artifact-reviewer]
 config_file = "C:/Users/<username>/.codex/plugins/cache/matsu-artifact-delivery/artifact-workflow/<installed-version>/com.openai/agents/artifact-reviewer.toml"
 ```
 
-`<username>` と `<installed-version>` は実際の CODEX_HOME と Plugin キャッシュのバージョンに置き換えます。キャッシュの場所は[公式の Plugin package 説明](https://developers.openai.com/plugins/build/plugins)を参照してください。
+設定後に Codex を再起動し、新しいタスクで `artifact-workflow` の利用を指定してください。親が計画を提示し、承認後に作業を進めます。
 
-Plugin を新しい版へ更新したら、marketplace を更新してインストール済みファイルを反映します。
+Plugin を更新したときは marketplace を更新してインストール済みファイルを反映し、設定のバージョンパスも新しいディレクトリへ変更します。
 
 ```sh
 codex plugin marketplace upgrade matsu-artifact-delivery
 ```
 
-更新後、`<CODEX_HOME>/plugins/cache/matsu-artifact-delivery/artifact-workflow/` にある新しい版のディレクトリ名を確認し、上記2つの `config_file` をその版のパスへ変更します。古い版のパスを残すと、Custom Agent 定義を読み込めません。設定を保存したら Codex を再起動し、新しいタスクで確認してください。
+パスを更新してから Codex を再起動してください。古いバージョンのパスを残すと Agent 定義を読み込めません。
 
-旧配置 `agents/artifact-worker.toml` を参照している場合は、上記の配置へ `config_file` を更新してください。
+## Workflow の構成
 
-Plugin のインストールだけでは、この参照設定は追加されません。登録後は新しいタスクで利用してください。複数人で実行する場合も同じ `artifact-worker` の役割定義を使います。本フローのタスク分解・計画提示・承認・計画変更・タスクと全体の完了判定・完成品の提示と引き渡しは親が担当し、これらの工程そのものは委任しません。`artifact-worker` は承認済みの担当範囲内で生成・修正・セルフレビューを行います。`artifact-reviewer` は作業者の成果物を独立レビューして親へ返し、生成・修正や別の担当への直接依頼は行いません。
+| 場所 | 責務 |
+| --- | --- |
+| [SKILL.md](skills/artifact-workflow/SKILL.md) | 計画、承認、生成、レビュー、検証、引き渡しの正本 |
+| [task-plan-template.md](skills/artifact-workflow/assets/task-plan-template.md) | ユーザーに提示するタスク計画 |
+| [subagent-roles.md](skills/artifact-workflow/assets/subagent-roles.md) | worker / reviewer の指示、モデル、推論強度 |
+| [artifact-reviewer.toml](com.openai/agents/artifact-reviewer.toml) | `read-only` sandbox と承認要求なしを強制する Codex reviewer 設定 |
+| [mcp.json](mcp.json) | `artifact-task-memory` MCP の起動設定 |
+| [MCP source](https://github.com/shu-matsukubo/matsu-artifact-delivery/tree/main/plugins/artifact-workflow/mcp/src) | MCP の保守用 TypeScript 実装 |
 
-親が任意の相談を検討するときは、[任意の相談の方針](skills/artifact-workflow/references/escalation.md)に従い、現在のタスクで利用可能な Skill 一覧から相談 Skill の本文を読んで明示的に依頼します。`expert-escalation` は通常のモデル向け一覧へ公開する設定のため、本 Workflow だけを指定した新規タスクでも発見できます。発見のための Python や Codex CLI の追加起動は不要です。候補なし・無効・読み込み不能なら相談を見送り、通常フローへ戻ります。子ワーカーとレビュワーは親識別子を添えて相談依頼と再開情報を親へ返し、直接起動しません。自律相談の最大3回、相談用の実行枠、利用不能・上限到達時の継続判断は、本 Workflow の親が管理します。相談 Plugin 自体にはこの上限を持たせません。
+生成とセルフレビューには標準 subagent を使い、独立レビューには別の読み取り専用 `artifact-reviewer` を使います。役割と推奨モデル設定は Plugin 内の `subagent-roles.md` にまとめ、Custom Agent 設定は読み取り専用権限を適用します。親が全 subagent の実行を管理します。
 
-相談役を生成ワーカー・独立レビュワーとは別に管理し、client の実行枠が共通なら相談用に1枠を予約します。既存の担当が全枠を使っている場合は、成果物と再開情報を回収し、枠の解放を確認してから交代します。相談不能や上限到達だけで全体を止めず、親が自力での継続・該当作業だけの停止・全体停止を判断します。特定の相談 Plugin やモデルを必須依存にせず、通常のセルフレビュー・独立レビューと親の検証・完了判定を維持します。
+MCP の依存 bundle、Windows x64 Node.js runtime、初回起動時に runtime をユーザーデータ領域へ展開するランチャーを同梱します。ネットワーク接続、npm、利用者によるビルドは不要です。計画データは Plugin の外にある `PLUGIN_DATA/task-memory/` に保存されます。
 
-設定方法は、OpenAI 公式の [Custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents) と [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference) を参照してください。
+他の compatible client への移植では、その client の subagent 委任方法を別途確認してください。全 client で同一の委任動作は保証しません。
+
+## 開発と配布
+
+MCP の型検査・試験・配布物の生成方法は[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md)を参照してください。共通基盤に影響する変更ではルートの品質チェックと試験も実行します。
 
 ## ライセンス
 
-本 Plugin のソースコード・設定・ドキュメントは [MIT License](LICENSE) で公開しています。
-
-Copyright (c) 2026 松久保 愁
-
-再配布時は、著作権表示とライセンス本文を記載した同梱の `LICENSE` を含めてください。
+本 Plugin のソースコード・設定・ドキュメントは [MIT License](LICENSE) で公開しています。再配布時は同梱の `LICENSE` と `mcp/NODE_RUNTIME_LICENSES.txt`、`mcp/THIRD_PARTY_LICENSES.txt` を含めてください。
