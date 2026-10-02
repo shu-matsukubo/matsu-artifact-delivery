@@ -109,9 +109,6 @@
     "id": "EX-U09",
     "title": "相談役のモデルを Sol 6.1 に固定",
     "file": "com.openai/agents/escalation-advisor.toml",
-    "contains": [
-      "model = \"gpt-6.1-sol\"",
-      "model_reasoning_effort = \"max\""
-    ]
+    "contains": ["model = \"gpt-6.1-sol\"", "model_reasoning_effort = \"max\""]
   }
 ]

@@ -143,12 +143,12 @@ npm run ci:select -- --all
 | WF-U21                   | 生成の共通原理、承認済み計画との整合、レビュー工程との責務分離                                                 | Workflow 契約一覧                                                                         |
 | WF-U22 / WF-U23          | 生成拡張の選定、コード変更前後のテスト失敗の分類・再開条件、セルフレビュー後の返却順                           | Workflow 契約一覧                                                                         |
 | WF-U24                   | Reviewer Custom Agent の read-only sandbox・approval 禁止設定                                                  | Workflow 契約一覧                                                                         |
-| EX-U01 / EX-U02          | manifest、Skill 発見 policy、相談役の read-only・承認禁止・子起動禁止、参照・契約網羅                        | [Escalation unit](../test/escalation/unit.test.ts)、共通検証                              |
+| EX-U01 / EX-U02          | manifest、Skill 発見 policy、相談役の read-only・承認禁止・子起動禁止、参照・契約網羅                          | [Escalation unit](../test/escalation/unit.test.ts)、共通検証                              |
 | EX-U03 / EX-U04          | 親の明示依頼、単発起動、回数・枠管理、失敗時の返却                                                             | Escalation 契約一覧                                                                       |
 | EX-U05 / EX-U06 / EX-U07 | 入出力契約・実行状態、相談例の非自動性、結果テンプレート                                                       | Escalation 契約一覧                                                                       |
-| EX-U08 / EX-U09 / EX-U10 | 相談役の責務と禁止事項、Sol 6.1 への固定、Workflow / MCP への必須依存なし                                     | Escalation 契約一覧、Escalation unit                                                      |
+| EX-U08 / EX-U09 / EX-U10 | 相談役の責務と禁止事項、Sol 6.1 への固定、Workflow / MCP への必須依存なし                                      | Escalation 契約一覧、Escalation unit                                                      |
 | WF-U19                   | 導入・環境変更を要求しない指示とフォールバックの欠落を、Workflow 単体契約で検出                                | Workflow unit                                                                             |
-| EX-U11                   | 相談役の返却指示から親識別子などの必須項目だけを削除しても、単体契約で検出                                   | Escalation unit                                                                           |
+| EX-U11                   | 相談役の返却指示から親識別子などの必須項目だけを削除しても、単体契約で検出                                     | Escalation unit                                                                           |
 | CI-U01〜CI-U08           | パス対応、未知・共通変更、和集合、イベント不正、merge-base、rename・削除、300 件超・Unicode、CLI 出力          | [差分判定試験](../test/infrastructure/selection.test.ts)                                  |
 | CI-U09〜CI-U11           | 必須 job の集約判定、CLI 終了コード、CI の条件式が選ぶ対象・環境・依存と失敗／取消時の挙動                     | [CI 試験](../test/infrastructure/ci.test.ts)                                              |
 | TS-U01〜TS-U03           | 保守対象の JS 拒否、生成物の例外、未ステージ・追跡済みファイル、依存不要の CLI                                 | [TypeScript 方針試験](../test/infrastructure/typescript.test.ts)                          |
