@@ -143,12 +143,12 @@ npm run ci:select -- --all
 | WF-U21                   | 生成の共通原理、承認済み計画との整合、レビュー工程との責務分離                                                 | Workflow 契約一覧                                                                         |
 | WF-U22 / WF-U23          | 生成拡張の選定、コード変更前後のテスト失敗の分類・再開条件、セルフレビュー後の返却順                           | Workflow 契約一覧                                                                         |
 | WF-U24                   | Reviewer Custom Agent の read-only sandbox・approval 禁止設定                                                  | Workflow 契約一覧                                                                         |
-| EX-U01 / EX-U02          | manifest、Skill 発見 policy、両相談役の read-only・承認禁止・子起動禁止、参照・契約網羅                        | [Escalation unit](../test/escalation/unit.test.ts)、共通検証                              |
+| EX-U01 / EX-U02          | manifest、Skill 発見 policy、相談役の read-only・承認禁止・子起動禁止、参照・契約網羅                        | [Escalation unit](../test/escalation/unit.test.ts)、共通検証                              |
 | EX-U03 / EX-U04          | 親の明示依頼、単発起動、回数・枠管理、失敗時の返却                                                             | Escalation 契約一覧                                                                       |
 | EX-U05 / EX-U06 / EX-U07 | 入出力契約・実行状態、相談例の非自動性、結果テンプレート                                                       | Escalation 契約一覧                                                                       |
-| EX-U08 / EX-U09 / EX-U10 | 両相談役の責務と禁止事項、Workflow / MCP への必須依存なし                                                      | Escalation 契約一覧、Escalation unit                                                      |
+| EX-U08 / EX-U09 / EX-U10 | 相談役の責務と禁止事項、Sol 6.1 への固定、Workflow / MCP への必須依存なし                                     | Escalation 契約一覧、Escalation unit                                                      |
 | WF-U19                   | 導入・環境変更を要求しない指示とフォールバックの欠落を、Workflow 単体契約で検出                                | Workflow unit                                                                             |
-| EX-U11                   | 両相談役の返却指示から親識別子などの必須項目だけを削除しても、単体契約で検出                                   | Escalation unit                                                                           |
+| EX-U11                   | 相談役の返却指示から親識別子などの必須項目だけを削除しても、単体契約で検出                                   | Escalation unit                                                                           |
 | CI-U01〜CI-U08           | パス対応、未知・共通変更、和集合、イベント不正、merge-base、rename・削除、300 件超・Unicode、CLI 出力          | [差分判定試験](../test/infrastructure/selection.test.ts)                                  |
 | CI-U09〜CI-U11           | 必須 job の集約判定、CLI 終了コード、CI の条件式が選ぶ対象・環境・依存と失敗／取消時の挙動                     | [CI 試験](../test/infrastructure/ci.test.ts)                                              |
 | TS-U01〜TS-U03           | 保守対象の JS 拒否、生成物の例外、未ステージ・追跡済みファイル、依存不要の CLI                                 | [TypeScript 方針試験](../test/infrastructure/typescript.test.ts)                          |
@@ -181,7 +181,7 @@ npm run ci:select -- --all
 | WF-E01 / WF-E02   | 単体パッケージの発見、9 工程、Self Review → Independent Review → 親の検証・引き渡しへの参照 | [Workflow E2E](../test/workflow/e2e.test.ts)         |
 | WF-E03            | 特化観点なし／security ありの双方で共通 5 原則と返却契約が参照できる                        | Workflow E2E                                         |
 | WF-E04            | Escalation 未導入の単独配布で、任意相談の参照先へ到達できる                                 | Workflow E2E                                         |
-| EX-E01 / EX-E02   | Escalation 単独配布、両相談役とテンプレートの識別子・状態整合                               | [Escalation E2E](../test/escalation/e2e.test.ts)     |
+| EX-E01 / EX-E02   | Escalation 単独配布、唯一の相談役とテンプレートの識別子・状態整合                           | [Escalation E2E](../test/escalation/e2e.test.ts)     |
 | INT-E01 / INT-E02 | 任意相談先の発見と入出力の一致、Reviewer → Parent → Advisor → Worker / Reviewer の責務整合  | [連携 E2E](../test/integration/consultation.test.ts) |
 
 参照切れ・権限退行の負例は検証器の単体試験 `HAR-U04` / `HAR-U06` に集約する。従来の `WF-E05` / `EX-E03` は廃止し、ID を再利用しない。
@@ -194,7 +194,7 @@ npm run ci:select -- --all
 2. security が必要な設定成果物：親が選ぶ 1 観点でレビューし、指摘を親が元タスクの Worker へ戻し、変更版を再レビューする。
 3. Reviewer から相談依頼：子が直接相談役を起動せず、親が利用判断し、実装は Worker、再レビューは Reviewer に戻る。
 4. Escalation の未導入・無効・曖昧・読み込み不能・起動失敗：未取得の助言を成功とせず、影響する作業だけを親が判断する。
-5. 両相談役：入力不足、人間判断が必要なケース、タイムアウトで実行状態が不明なケースを正しく返す。
+5. 相談役：入力不足、人間判断が必要なケース、タイムアウトで実行状態が不明なケースを正しく返す。
 
 ## 追加・変更の手順
 
