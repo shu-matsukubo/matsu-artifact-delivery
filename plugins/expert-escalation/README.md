@@ -13,10 +13,9 @@
 | 原理原則、起動主体、呼び出し元との責務境界 | [principles.md](skills/expert-escalation/references/principles.md) |
 | 相談役の役割・入力・返却項目 | [advisor-contract.md](skills/expert-escalation/references/advisor-contract.md) |
 | 相談結果と親の対応判断のテンプレート | [escalation-result-template.md](skills/expert-escalation/assets/escalation-result-template.md) |
-| 通常の相談役（初期設定は Sol） | [escalation-advisor.toml](com.openai/agents/escalation-advisor.toml) |
-| 難所を再検討する相談役（初期設定は Astra） | [escalation-deep-advisor.toml](com.openai/agents/escalation-deep-advisor.toml) |
+| 唯一の相談役（Sol 6.1） | [escalation-advisor.toml](com.openai/agents/escalation-advisor.toml) |
 
-両方とも単体モデルの最大推論を使い、具体的なモデル名・推論強度は TOML の `model` と `model_reasoning_effort` で管理します。変更は役割定義に閉じ、呼び出し元の Workflow や Skill にモデル選択を埋め込みません。役割の使い分けは[相談役の契約](skills/expert-escalation/references/advisor-contract.md)を参照してください。
+相談役を Sol 6.1 に固定し、推論強度は TOML の `model_reasoning_effort` で管理します。相談役の使い分けを判断する必要はありません。モデル名・推論強度は役割定義で管理し、呼び出し元の Workflow や Skill に埋め込みません。
 
 OpenAI の [Max / Ultra の説明](https://learn.chatgpt.com/docs/models#know-when-to-use-max-or-ultra)に従い、初期設定は単体の推論を最大にする `max` としています。`ultra` は自動再委任を含む実行モードです。相談役には再委任させず、`agents.enabled = false` も設定しています。
 
@@ -66,9 +65,6 @@ Codex アプリでこのマーケットプレイスの `expert-escalation` を�
 ```toml
 [agents.escalation-advisor]
 config_file = "C:/Users/<username>/.codex/plugins/cache/matsu-artifact-delivery/expert-escalation/<installed-version>/com.openai/agents/escalation-advisor.toml"
-
-[agents.escalation-deep-advisor]
-config_file = "C:/Users/<username>/.codex/plugins/cache/matsu-artifact-delivery/expert-escalation/<installed-version>/com.openai/agents/escalation-deep-advisor.toml"
 ```
 
 `<username>` と `<installed-version>` は実際の CODEX_HOME と Plugin キャッシュのバージョンに置き換えます。キャッシュの場所は[公式の Plugin package 説明](https://developers.openai.com/plugins/build/plugins)を参照してください。
@@ -79,7 +75,7 @@ Plugin を新しい版へ更新したら、marketplace を更新してインス�
 codex plugin marketplace upgrade matsu-artifact-delivery
 ```
 
-更新後、`<CODEX_HOME>/plugins/cache/matsu-artifact-delivery/expert-escalation/` にある新しい版のディレクトリ名を確認し、上記2つの `config_file` をその版のパスへ変更します。古い版のパスを残すと、Custom Agent 定義を読み込めません。設定を保存したら Codex を再起動し、新しいタスクで確認してください。
+更新後、`<CODEX_HOME>/plugins/cache/matsu-artifact-delivery/expert-escalation/` にある新しい版のディレクトリ名を確認し、上記の `config_file` をその版のパスへ変更します。旧版を使っていた場合は、同じ設定ファイルから `[agents.escalation-deep-advisor]` の登録ブロックも削除してください。独立 TOML で登録していた場合は、`.codex/agents/` または `~/.codex/agents/` にある `escalation-deep-advisor.toml` を削除します。古い版のパスや相談役の登録を残すと、存在しない Custom Agent 定義を読み込もうとします。設定を保存したら Codex を再起動し、新しいタスクで確認してください。
 
 本リポジトリは既存設定と同じ `agents.<name>.config_file` による登録を使います。利用する Codex が独立 TOML の自動検出を使う場合は、[Custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents)に従って同じ定義を利用先の `.codex/agents/` または `~/.codex/agents/` に配置します。同名の役割を両方の方式で重複登録しないでください。
 

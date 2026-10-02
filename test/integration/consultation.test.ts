@@ -30,7 +30,7 @@ await test('INT-E01: installed optional Skill is discoverable and its return con
   assert.ok(consultation.body.includes('累計の回数上限・リセット・自動再相談を持たない'));
 });
 
-await test('INT-E02: reviewer findings return through Parent to advisors, then back to the correct roles', async (t) => {
+await test('INT-E02: reviewer findings return through Parent to the advisor, then back to the correct roles', async (t) => {
   const workflow = await stagePlugin(t, 'artifact-workflow');
   const escalation = await stagePlugin(t, 'expert-escalation');
   const roles = await read(join(workflow.skills.get('artifact-workflow')!.root, 'assets/subagent-roles.md'));

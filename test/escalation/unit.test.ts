@@ -11,8 +11,8 @@ await registerContracts(
     name: 'expert-escalation',
     prefix: 'EX',
     implicit: true,
-    agents: ['escalation-advisor', 'escalation-deep-advisor'],
-    readOnly: ['escalation-advisor', 'escalation-deep-advisor'],
+    agents: ['escalation-advisor'],
+    readOnly: ['escalation-advisor'],
   },
   new URL('./contracts.json', import.meta.url),
 );
@@ -24,9 +24,9 @@ await test('EX-U10: Escalation has no mandatory Workflow or MCP dependency', asy
   assert.equal(codex.apps, undefined);
 });
 
-await test('EX-U11: each advisor unit contract rejects removal of a required return field', async () => {
+await test('EX-U11: advisor unit contract rejects removal of a required return field', async () => {
   const cases = await json<FileContract[]>(new URL('./contracts.json', import.meta.url));
-  for (const id of ['EX-U08', 'EX-U09']) {
+  for (const id of ['EX-U08']) {
     const contract = cases.find((item) => item.id === id);
     assert.ok(contract, `Missing contract: ${id}`);
     const source = await read(join(pluginRoot('expert-escalation'), contract.file));
