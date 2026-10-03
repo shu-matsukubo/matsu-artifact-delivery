@@ -11,7 +11,7 @@
 
 ## Codex で使う
 
-公開 Plugins Directory にはまだ掲載していません。掲載までは GitHub marketplace から利用できます。Codex がリポジトリを取得するため、利用者が自分で clone する必要はありません。
+GitHub marketplace からインストールできます。Codex がリポジトリを取得します。
 
 ```sh
 codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery
@@ -20,9 +20,7 @@ codex plugin add artifact-workflow@matsu-artifact-delivery
 codex plugin add expert-escalation@matsu-artifact-delivery
 ```
 
-`artifact-workflow` は Windows x64 向け MCP runtime を同梱し、Node.js の事前導入や利用者による設定なしで起動します。開発者向けのビルド・試験手順は[配布と更新](docs/distribution.md)を参照してください。
-
-OpenAI の審査・公開後は Plugins Directory から検索してインストールできるようになります。公開条件と各 Plugin の機能詳細は[配布と更新](docs/distribution.md)および各 Plugin の README を参照してください。
+`artifact-workflow` は Windows x64 向け MCP runtime を同梱しています。開発者向けのビルド・試験手順と公開 Plugins Directory への提出条件は[配布と更新](docs/distribution.md)を参照してください。
 
 ## 開発資料
 

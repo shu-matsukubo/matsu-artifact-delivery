@@ -4,14 +4,14 @@
 
 Plugin の正本は Git で管理する `plugins/<plugin-name>/` とルートの `.agents/plugins/marketplace.json` である。`dist/` は `npm run package` が作る一時的な確認用ステージング出力であり、正本でも公開先でもない。生成し直せるためコミットせず、GitHub Release や別のバイナリ保管先も設けない。
 
-`artifact-workflow` の MCP は `mcp/src/` をソースとし、依存をまとめた bundle と Windows x64 向け Node.js 22 runtime の圧縮ファイルを Plugin に同梱する。初回起動時に PowerShell ランチャーが runtime をユーザーデータ領域へ展開するため、利用者側の Node.js、npm、ネットワーク接続は不要である。bundle・runtime・ライセンス通知は配布に必要な生成物なので Git で管理し、更新時は試験して一緒にコミットする。`npm run package` は Plugin ごとに必要なファイルだけを `dist/` に集め、公開候補やインストール試験の内容を確認するために使う。
+`artifact-workflow` の MCP は `mcp/src/` をソースとし、依存をまとめた bundle と Windows x64 向け Node.js 22 runtime の圧縮ファイルを Plugin に同梱する。初回起動時に PowerShell ランチャーが runtime をユーザーデータ領域へ展開し、同梱 bundle を実行する。bundle・runtime・ライセンス通知は配布に必要な生成物なので Git で管理し、更新時は試験して一緒にコミットする。`npm run package` は Plugin ごとに必要なファイルだけを `dist/` に集め、公開候補やインストール試験の内容を確認するために使う。
 
 同梱 Node.js の更新は `npm --prefix plugins/artifact-workflow run runtime:update -- <version>` で行う。スクリプトは Node.js 公式 `SHASUMS256.txt` と照合して Windows x64 の `node.exe` を取得し、ZIP、バイナリ、ライセンスを生成してチェックサムを記録する。`npm --prefix plugins/artifact-workflow run runtime:verify` は配布前に ZIP 内のバイナリと記録済み公式チェックサム、ライセンスの一致を検証し、`npm run package` と MCP のテストでも自動実行される。更新では Node.js の公式配布元と同じ版の LICENSE を使う。
 
 配布経路は目的で分ける。
 
-- **開発・小規模な Git 配布:** `codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery` で GitHub marketplace を追加する。Codex がリポジトリを取得するため、利用者の手動 clone、npm install、`dist/` 生成は不要。MCP bundle と Windows x64 runtime はリポジトリに同梱済みである。
-- **OpenAI の公開 Plugins Directory:** Platform の提出ポータルで Plugin ごとに提出し、審査後に公開する。公開後の利用者は Directory で検索して Install する。GitHub Release は不要。
+- **開発・小規模な Git 配布:** `codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery` で GitHub marketplace を追加する。Codex がリポジトリを取得する。MCP bundle と Windows x64 runtime はリポジトリに同梱済みである。
+- **OpenAI の公開 Plugins Directory:** Platform の提出ポータルで Plugin ごとに提出し、審査後に公開する。公開後の利用者は Directory で検索して Install する。
 
 Agent Plugins 仕様は `plugin.json`、`skills/`、任意の `mcp.json` などパッケージの構造とメタデータを定めるもので、公開レジストリや配布ホスティングを提供するものではない。[仕様](https://agent-plugins.org/specification)と[公式の Plugin packaging guide](https://developers.openai.com/plugins/build/plugins)を参照。
 
@@ -60,9 +60,15 @@ codex plugin add artifact-workflow@matsu-artifact-delivery
 codex plugin add expert-escalation@matsu-artifact-delivery
 ```
 
-必要な Plugin だけインストールする。既に同名 marketplace が別の場所を指す場合は、一覧で場所を確認し、切り替えるときだけ `codex plugin marketplace remove matsu-artifact-delivery` を実行してから正しいソースを追加する。GitHub marketplace からの利用者向け導入では手動 clone や `dist/` 生成は不要だが、作業中のソースを試すときは上記の通り `dist/` を使う。
+必要な Plugin だけインストールする。既に同名 marketplace が別の場所を指す場合は、一覧で場所を確認し、切り替えるときだけ `codex plugin marketplace remove matsu-artifact-delivery` を実行してから正しいソースを追加する。
 
 アプリとCLIで見える一覧が異なる場合は、アプリが選択しているmarketplaceとインストール元も確認する。配布物の再生成だけではインストール済みキャッシュは更新されない。再インストール後、アプリでPluginが有効であることを確認し、**新しいタスク**で試す。既存の実行中タスクへ更新が反映される前提にしない。
+
+### 更新後の起動確認
+
+marketplace を更新した後は Codex を再起動し、新しいタスクで Plugin を確認する。
+
+起動時に存在しない Agent 設定ファイルへの参照エラーが出る場合は、利用先の Codex 設定に残る未使用の `[agents.artifact-reviewer]`、`[agents.escalation-advisor]`、`[agents.escalation-deep-advisor]` の設定ブロックを `config_file` ごと削除する。独立 TOML で登録されている場合は、`.codex/agents/` または `~/.codex/agents/` の該当ファイルも削除する。設定修正後に Codex を再起動して確認する。
 
 ## 開発時のcachebuster
 

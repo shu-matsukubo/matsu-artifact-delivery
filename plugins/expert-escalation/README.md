@@ -15,7 +15,7 @@
 | 相談結果と親の対応判断のテンプレート | [escalation-result-template.md](skills/expert-escalation/assets/escalation-result-template.md) |
 | 唯一の相談役の役割指示 | [advisor-contract.md](skills/expert-escalation/references/advisor-contract.md) |
 
-相談役の役割指示は [Skill 内の契約](skills/expert-escalation/references/advisor-contract.md)にまとめ、起動時に標準 subagent へ渡します。subagent は親のモデルと推論設定を継承します。利用者が Custom Agent を登録する設定ファイルは不要です。
+相談役の役割指示は [Skill 内の契約](skills/expert-escalation/references/advisor-contract.md)にまとめ、起動時に標準 subagent へ渡します。subagent は親のモデルと推論設定を継承します。
 
 相談役には再委任しないようプロンプトで指示します。
 
@@ -44,20 +44,20 @@
 
 `.codex-plugin/plugin.json` と Skill の `agents/openai.yaml` は、Codex の既存の読み込み位置を維持する互換性上の例外です。共通規格のコンポーネントを増やす独自の検出方式ではなく、Codex 固有の設定として扱います。[Plugin パッケージ](https://developers.openai.com/plugins/build/plugins)と[Skill の optional metadata](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。manifest の共通フィールドは root を正本とし、変更時はリポジトリルートの `npm run sync:manifests` で互換 manifest を同期します。
 
-MCP、外部 API、中央ログ、専用のリスクスコアは追加していません。Custom Agent、モデル選択、sandbox、同時起動枠の管理は Agent Plugins の共通仕様に含まれません。他の client では同等の役割と親による明示呼び出しの経路を用意してください。
+Custom Agent、モデル選択、sandbox、同時起動枠の管理は Agent Plugins の共通仕様に含まれません。他の client では同等の役割と親による明示呼び出しの経路を用意してください。
 
 ## Codex への登録
 
-公開 Plugins Directory にはまだ掲載していません。掲載までは GitHub marketplace から利用できます。Codex がリポジトリを取得するため、手動 clone は不要です。
+GitHub marketplace からインストールできます。Codex がリポジトリを取得します。
 
 ```sh
 codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery
 codex plugin add expert-escalation@matsu-artifact-delivery
 ```
 
-利用者は npm の実行や `dist/` の生成を必要としません。開発時のビルド・パッケージ検証は[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md)を参照してください。
+開発時のビルド・パッケージ検証は[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md)を参照してください。
 
-Codex アプリでこのマーケットプレイスの `expert-escalation` をインストールし、新しいタスクを開始します。Plugin 内の Skill が標準 subagent に役割指示を渡すため、利用者による `.codex` 配下への設定ファイル配置は不要です。
+Codex アプリでこのマーケットプレイスの `expert-escalation` をインストールし、新しいタスクを開始します。
 
 Plugin を新しい版へ更新したら、marketplace を更新してインストール済みファイルを反映します。
 
@@ -65,7 +65,7 @@ Plugin を新しい版へ更新したら、marketplace を更新してインス�
 codex plugin marketplace upgrade matsu-artifact-delivery
 ```
 
-旧版で `[agents.escalation-advisor]` または `[agents.escalation-deep-advisor]` を登録していた場合は、古い `config_file` を含む設定ブロックを利用先の Codex 設定から削除してください。独立 TOML で登録していた場合は、`.codex/agents/` または `~/.codex/agents/` の該当ファイルも削除してください。
+更新後は Codex を再起動し、新しいタスクを開始してください。起動時の設定エラーは[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md#更新後の起動確認)を参照してください。
 
 ## 実行上の境界
 
