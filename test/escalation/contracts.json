@@ -112,8 +112,11 @@
   },
   {
     "id": "EX-U09",
-    "title": "相談役の推奨モデルと推論強度を契約に記載",
+    "title": "相談役が親のモデル設定を継承する",
     "file": "skills/expert-escalation/references/advisor-contract.md",
-    "contains": ["`gpt-6.1-sol`", "`max`", "client が対応する場合"]
+    "contains": [
+      "標準 subagent は呼び出し元のモデル、推論設定、利用可能なツールを継承する",
+      "呼び出し元はタスク全体に適した設定を選ぶ"
+    ]
   }
 ]

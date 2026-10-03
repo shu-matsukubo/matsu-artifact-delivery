@@ -1,13 +1,8 @@
 # Standard subagent role templates
 
-The parent creates standard subagents with the spawn_agent tool. Keep both role prompts and their recommended model settings here so dispatch does not depend on user configuration. These settings are dispatch hints, not host-enforced configuration.
+The parent creates standard subagents with the spawn_agent tool. Subagents inherit the parent request's model, reasoning configuration, and available tools; spawn_agent does not provide per-child overrides. Choose settings for the whole task in the parent request. Keep role-specific behavior in these prompts.
 
-| Role | Model | Reasoning effort | Sandbox |
-| --- | --- | --- | --- |
-| `artifact-worker` | `gpt-6-luna` | `medium` | inherited |
-| `artifact-reviewer` | `gpt-6-sol` | `high` | prompt requests read-only behavior; it cannot enforce sandbox or approval settings |
-
-Use the listed model and reasoning effort when the host supports them. The worker must not be given review-only restrictions. The reviewer prompt forbids edits and write-capable actions, but host permissions may still allow them; do not treat the prompt as a security boundary.
+The worker must not be given review-only restrictions. The reviewer prompt forbids edits and write-capable actions, but host permissions may still allow them; do not treat the prompt as a security boundary.
 
 ## artifact-worker
 

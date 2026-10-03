@@ -15,7 +15,7 @@
 | 相談結果と親の対応判断のテンプレート | [escalation-result-template.md](skills/expert-escalation/assets/escalation-result-template.md) |
 | 唯一の相談役の役割指示 | [advisor-contract.md](skills/expert-escalation/references/advisor-contract.md) |
 
-相談役の役割指示と推奨モデルは [Skill 内の契約](skills/expert-escalation/references/advisor-contract.md)にまとめ、起動時に標準 subagent へ渡します。利用者が Custom Agent を登録する設定ファイルは不要です。
+相談役の役割指示は [Skill 内の契約](skills/expert-escalation/references/advisor-contract.md)にまとめ、起動時に標準 subagent へ渡します。subagent は親のモデルと推論設定を継承します。利用者が Custom Agent を登録する設定ファイルは不要です。
 
 相談役には再委任しないようプロンプトで指示します。
 

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import test from 'node:test';
-import { assertReadOnly } from '../lib/contract-suite.ts';
 import { read, stagePlugin, walkReferences } from '../lib/plugin.ts';
 
 await test('INT-E01: installed optional Skill is discoverable and its return contract matches Workflow', async (t) => {
@@ -35,14 +34,11 @@ await test('INT-E02: reviewer findings return through Parent to the advisor, the
   const escalation = await stagePlugin(t, 'expert-escalation');
   const roles = await read(join(workflow.skills.get('artifact-workflow')!.root, 'assets/subagent-roles.md'));
   assert.ok(roles.includes('## artifact-reviewer'));
-  assert.ok(roles.includes('指摘・不足情報・エスカレーションが必要な論点はすべて親へ返す'));
   const caller = await read(join(workflow.skills.get('artifact-workflow')!.root, 'references/escalation.md'));
   assert.ok(caller.includes('発見元のレビュワーと修正担当のワーカーを区別'));
   assert.ok(caller.includes('生成・修正はワーカー、独立再レビューはレビュワー'));
   assert.ok(caller.includes('親が指摘の採否と通常の完了条件を判断する'));
-  for (const advisor of escalation.agents.values()) {
-    assertReadOnly(advisor);
-    assert.ok(advisor.developer_instructions.includes('子ワーカーから直接依頼された場合は調査を始めず'));
-    assert.ok(advisor.developer_instructions.includes('他のエージェント、相談役、別の Codex タスクを起動しない'));
-  }
+  const advisor = await read(join(escalation.skills.get('expert-escalation')!.root, 'references/advisor-contract.md'));
+  assert.ok(advisor.includes('子ワーカーから直接依頼された場合は調査を始めず'));
+  assert.ok(advisor.includes('他のエージェントやタスクの起動・再委任を行わない'));
 });

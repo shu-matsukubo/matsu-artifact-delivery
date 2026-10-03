@@ -146,7 +146,7 @@ npm run ci:select -- --all
 | EX-U01 / EX-U02          | manifest、Skill 発見 policy、相談役のプロンプト上の読み取り専用・子起動禁止、参照・契約網羅                    | [Escalation unit](../test/escalation/unit.test.ts)、共通検証                              |
 | EX-U03 / EX-U04          | 親の明示依頼、単発起動、回数・枠管理、失敗時の返却                                                             | Escalation 契約一覧                                                                       |
 | EX-U05 / EX-U06 / EX-U07 | 入出力契約・実行状態、相談例の非自動性、結果テンプレート                                                       | Escalation 契約一覧                                                                       |
-| EX-U08 / EX-U09 / EX-U10 | 相談役のプロンプト契約と権限制約、推奨モデル・推論強度、Workflow / MCP への必須依存なし                        | Escalation 契約一覧、Escalation unit                                                      |
+| EX-U08 / EX-U09 / EX-U10 | 相談役のプロンプト契約と権限制約、親のモデル設定の継承、Workflow / MCP への必須依存なし                        | Escalation 契約一覧、Escalation unit                                                      |
 | WF-U19                   | 導入・環境変更を要求しない指示とフォールバックの欠落を、Workflow 単体契約で検出                                | Workflow unit                                                                             |
 | EX-U11                   | 相談役の返却指示から親識別子などの必須項目だけを削除しても、単体契約で検出                                     | Escalation unit                                                                           |
 | CI-U01〜CI-U08           | パス対応、未知・共通変更、和集合、イベント不正、merge-base、rename・削除、300 件超・Unicode、CLI 出力          | [差分判定試験](../test/infrastructure/selection.test.ts)                                  |

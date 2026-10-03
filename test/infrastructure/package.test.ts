@@ -47,7 +47,7 @@ await test('PKG-U03: Plugin installation documents prompt-based roles and resolv
 
   const workflowReadme = await read(join(repository, 'plugins/artifact-workflow/README.md'));
   assert.ok(workflowReadme.includes('利用者による `.codex` 配下への設定ファイル配置は不要'));
-  assert.ok(workflowReadme.includes('Custom Agent の設定による強制ではありません'));
+  assert.ok(workflowReadme.includes('これは実行環境の権限を変更しません'));
   const escalationReadme = await read(join(repository, 'plugins/expert-escalation/README.md'));
   assert.ok(escalationReadme.includes('利用者による `.codex` 配下への設定ファイル配置は不要'));
 });
