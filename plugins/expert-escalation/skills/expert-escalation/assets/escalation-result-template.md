@@ -13,7 +13,7 @@
 | 結果の状態 | 〈advice / input_insufficient / inconclusive / human_decision_required / unavailable / no_result〉 |
 | 起動試行 `attempted` | 〈true / false〉 |
 | 実行状態 `execution_state`・実行ID | 〈not_started / running / completed / stopped / unknown、得られたID〉 |
-| 利用不能・未取得の理由 | 〈役割未登録、capacity、起動エラーなど。該当する場合〉 |
+| 利用不能・未取得の理由 | 〈マルチエージェント機能未利用、capacity、起動エラーなど。該当する場合〉 |
 
 ## 助言と確認結果
 

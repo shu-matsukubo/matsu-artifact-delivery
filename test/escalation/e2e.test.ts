@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { assertReadOnly } from '../lib/contract-suite.ts';
 import { files, localLinks, read, stagePlugin, walkReferences } from '../lib/plugin.ts';
 
 await test('EX-E01: standalone package discovers the Skill, its advisor and all references', async (t) => {
@@ -16,14 +15,10 @@ await test('EX-E01: standalone package discovers the Skill, its advisor and all 
     await walkReferences(skill.root),
     (await files(skill.root)).filter((file) => file.endsWith('.md')),
   );
-  assert.deepEqual([...plugin.agents.keys()].sort(), ['escalation-advisor']);
-  for (const agent of plugin.agents.values()) {
-    assertReadOnly(agent);
-    assert.ok(skill.body.includes(`\`${agent.name}\``));
-  }
+  assert.deepEqual([...plugin.agents.keys()], []);
 });
 
-await test('EX-E02: Skill → advisor contract → advisor → result template preserve states and identity', async (t) => {
+await test('EX-E02: Skill prompt → advisor contract → result template preserve states and identity', async (t) => {
   const plugin = await stagePlugin(t, 'expert-escalation');
   const root = plugin.skills.get('expert-escalation')!.root;
   const contract = await read(join(root, 'references/advisor-contract.md'));
@@ -38,8 +33,7 @@ await test('EX-E02: Skill → advisor contract → advisor → result template p
   ]) {
     assert.ok(contract.includes(value), value);
     assert.ok(template.includes(value), value);
-    for (const agent of plugin.agents.values())
-      assert.ok(agent.developer_instructions.includes(value), `${agent.name}: ${value}`);
+    assert.ok((await read(join(root, 'references/advisor-contract.md'))).includes(value), value);
   }
   for (const value of [
     'attempted',

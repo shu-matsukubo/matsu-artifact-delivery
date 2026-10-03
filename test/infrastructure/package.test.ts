@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
-import { readdir } from 'node:fs/promises';
+import { access, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { parse as parseToml } from 'smol-toml';
 import { inside, json, loadPlugin, localLinks, read, repository } from '../lib/plugin.ts';
 
 import type { Marketplace, PackageMetadata } from '../../scripts/manifest-types.ts';
@@ -27,27 +26,16 @@ await test('PKG-U01: marketplace discovers every package with matching metadata 
   }
 });
 
-await test('PKG-U02: the read-only Workflow reviewer and Escalation roles match their registrations', async () => {
-  const config = parseToml(await read(join(repository, '.codex/config.toml'))) as {
-    agents: Record<string, { config_file: string }>;
-  };
+await test('PKG-U02: Workflow and Escalation prompt roles need no Custom Agent registration', async () => {
   const catalog = await json<Marketplace>(join(repository, '.agents/plugins/marketplace.json'));
-  const shipped = [];
   for (const entry of catalog.plugins) {
     const plugin = await loadPlugin(inside(repository, entry.source.path));
-    if (entry.name === 'artifact-workflow') {
-      assert.deepEqual([...plugin.agents.keys()], ['artifact-reviewer']);
-    }
-    for (const [name, agent] of plugin.agents) {
-      shipped.push(name);
-      const path = inside(repository, join('.codex', config.agents[name]!.config_file));
-      assert.deepEqual(parseToml(await read(path)), agent);
-    }
+    assert.deepEqual([...plugin.agents.keys()], []);
   }
-  assert.deepEqual(Object.keys(config.agents).sort(), shipped.sort());
+  await assert.rejects(access(join(repository, '.codex/config.toml')), { code: 'ENOENT' });
 });
 
-await test('PKG-U03: Plugin installation documents reviewer registration and resolves local links', async () => {
+await test('PKG-U03: Plugin installation documents prompt-based roles and resolves local links', async () => {
   for (const path of [
     'README.md',
     'docs/testing.md',
@@ -58,10 +46,10 @@ await test('PKG-U03: Plugin installation documents reviewer registration and res
     await localLinks(repository, path);
 
   const workflowReadme = await read(join(repository, 'plugins/artifact-workflow/README.md'));
-  assert.ok(workflowReadme.includes('[agents.artifact-reviewer]'));
-  assert.ok(workflowReadme.includes('artifact-workflow/<installed-version>/com.openai/agents/artifact-reviewer.toml'));
-  assert.ok(workflowReadme.includes('codex plugin marketplace upgrade matsu-artifact-delivery'));
-  assert.ok(workflowReadme.includes('Codex を再起動'));
+  assert.ok(workflowReadme.includes('利用者による `.codex` 配下への設定ファイル配置は不要'));
+  assert.ok(workflowReadme.includes('これは実行環境の権限を変更しません'));
+  const escalationReadme = await read(join(repository, 'plugins/expert-escalation/README.md'));
+  assert.ok(escalationReadme.includes('利用者による `.codex` 配下への設定ファイル配置は不要'));
 });
 
 await test('PKG-U04: all contract IDs and runnable suites appear in the test inventory', async () => {

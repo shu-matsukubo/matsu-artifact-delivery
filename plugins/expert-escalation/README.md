@@ -13,11 +13,11 @@
 | 原理原則、起動主体、呼び出し元との責務境界 | [principles.md](skills/expert-escalation/references/principles.md) |
 | 相談役の役割・入力・返却項目 | [advisor-contract.md](skills/expert-escalation/references/advisor-contract.md) |
 | 相談結果と親の対応判断のテンプレート | [escalation-result-template.md](skills/expert-escalation/assets/escalation-result-template.md) |
-| 唯一の相談役（Sol 6.1） | [escalation-advisor.toml](com.openai/agents/escalation-advisor.toml) |
+| 唯一の相談役の役割指示 | [advisor-contract.md](skills/expert-escalation/references/advisor-contract.md) |
 
-相談役を Sol 6.1 に固定し、推論強度は TOML の `model_reasoning_effort` で管理します。相談役の使い分けを判断する必要はありません。モデル名・推論強度は役割定義で管理し、呼び出し元の Workflow や Skill に埋め込みません。
+相談役の役割指示は [Skill 内の契約](skills/expert-escalation/references/advisor-contract.md)にまとめ、起動時に標準 subagent へ渡します。subagent は親のモデルと推論設定を継承します。利用者が Custom Agent を登録する設定ファイルは不要です。
 
-OpenAI の [Max / Ultra の説明](https://learn.chatgpt.com/docs/models#know-when-to-use-max-or-ultra)に従い、初期設定は単体の推論を最大にする `max` としています。`ultra` は自動再委任を含む実行モードです。相談役には再委任させず、`agents.enabled = false` も設定しています。
+相談役には再委任しないようプロンプトで指示します。
 
 ## 親・ワーカーからの利用
 
@@ -39,13 +39,12 @@ OpenAI の [Max / Ultra の説明](https://learn.chatgpt.com/docs/models#know-wh
 | --- | --- |
 | [plugin.json](plugin.json) | 共通の識別情報・リリースバージョンの正本。`$schema` で対象規格を宣言する。 |
 | `skills/expert-escalation/` | 共通の Skill 検出位置。手順・参照資料・テンプレートを同じ Skill 配下にまとめる。 |
-| `com.openai/agents/` | Codex 固有のモデル・権限・役割定義。[client extensions](https://agent-plugins.org/plugin-authors/client-extensions)の逆ドメイン配置に合わせる。自動登録用のディレクトリではない。 |
 | [.codex-plugin/plugin.json](.codex-plugin/plugin.json) | plugin-creator が生成する Codex 互換用 manifest。共通 manifest の識別情報に Codex の Skill 位置・表示情報を加える。 |
 | [skills/expert-escalation/agents/openai.yaml](skills/expert-escalation/agents/openai.yaml) | Codex 向けの表示情報と `allow_implicit_invocation: true`。相談の開始条件は Skill の description と本文で管理する。 |
 
 `.codex-plugin/plugin.json` と Skill の `agents/openai.yaml` は、Codex の既存の読み込み位置を維持する互換性上の例外です。共通規格のコンポーネントを増やす独自の検出方式ではなく、Codex 固有の設定として扱います。[Plugin パッケージ](https://developers.openai.com/plugins/build/plugins)と[Skill の optional metadata](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。manifest の共通フィールドは root を正本とし、変更時はリポジトリルートの `npm run sync:manifests` で互換 manifest を同期します。
 
-MCP、外部 API、中央ログ、専用のリスクスコアは追加していません。Custom Agent、モデル選択、sandbox、同時起動枠の管理は Agent Plugins の共通仕様に含まれません。他の client では同等の読み取り専用の相談役と親による明示呼び出しの経路を用意してください。
+MCP、外部 API、中央ログ、専用のリスクスコアは追加していません。Custom Agent、モデル選択、sandbox、同時起動枠の管理は Agent Plugins の共通仕様に含まれません。他の client では同等の役割と親による明示呼び出しの経路を用意してください。
 
 ## Codex への登録
 
@@ -58,16 +57,7 @@ codex plugin add expert-escalation@matsu-artifact-delivery
 
 利用者は npm の実行や `dist/` の生成を必要としません。開発時のビルド・パッケージ検証は[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md)を参照してください。
 
-Codex アプリでこのマーケットプレイスの `expert-escalation` をインストールし、次の役割登録を確認したうえで新しいタスクを開始します。Plugin のインストールだけでは Custom Agent の参照設定は追加されません。
-
-このリポジトリでは [リポジトリのAgent登録例](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/.codex/config.toml) に登録しています。別の作業場所では、そのプロジェクトの `.codex/config.toml`（個人共通なら `~/.codex/config.toml`）に以下を追加し、パスを同梱 TOML の実際の絶対パスへ置き換えてください。
-
-```toml
-[agents.escalation-advisor]
-config_file = "C:/Users/<username>/.codex/plugins/cache/matsu-artifact-delivery/expert-escalation/<installed-version>/com.openai/agents/escalation-advisor.toml"
-```
-
-`<username>` と `<installed-version>` は実際の CODEX_HOME と Plugin キャッシュのバージョンに置き換えます。キャッシュの場所は[公式の Plugin package 説明](https://developers.openai.com/plugins/build/plugins)を参照してください。
+Codex アプリでこのマーケットプレイスの `expert-escalation` をインストールし、新しいタスクを開始します。Plugin 内の Skill が標準 subagent に役割指示を渡すため、利用者による `.codex` 配下への設定ファイル配置は不要です。
 
 Plugin を新しい版へ更新したら、marketplace を更新してインストール済みファイルを反映します。
 
@@ -75,14 +65,12 @@ Plugin を新しい版へ更新したら、marketplace を更新してインス�
 codex plugin marketplace upgrade matsu-artifact-delivery
 ```
 
-更新後、`<CODEX_HOME>/plugins/cache/matsu-artifact-delivery/expert-escalation/` にある新しい版のディレクトリ名を確認し、上記の `config_file` をその版のパスへ変更します。旧版を使っていた場合は、同じ設定ファイルから `[agents.escalation-deep-advisor]` の登録ブロックも削除してください。独立 TOML で登録していた場合は、`.codex/agents/` または `~/.codex/agents/` にある `escalation-deep-advisor.toml` を削除します。古い版のパスや相談役の登録を残すと、存在しない Custom Agent 定義を読み込もうとします。設定を保存したら Codex を再起動し、新しいタスクで確認してください。
-
-本リポジトリは既存設定と同じ `agents.<name>.config_file` による登録を使います。利用する Codex が独立 TOML の自動検出を使う場合は、[Custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents)に従って同じ定義を利用先の `.codex/agents/` または `~/.codex/agents/` に配置します。同名の役割を両方の方式で重複登録しないでください。
+旧版で `[agents.escalation-advisor]` または `[agents.escalation-deep-advisor]` を登録していた場合は、古い `config_file` を含む設定ブロックを利用先の Codex 設定から削除してください。独立 TOML で登録していた場合は、`.codex/agents/` または `~/.codex/agents/` の該当ファイルも削除してください。
 
 ## 実行上の境界
 
-- 事前確認で役割未登録・環境不備・枠不足が分かった場合は `unavailable`、`attempted: false` を返します。起動を試した後の失敗・結果未取得は `no_result`、`attempted: true` と実行状態を返します。別モデルへの自動置き換えはしません。
-- `sandbox_mode = "read-only"` と `approval_policy = "never"` を設定し、相談役が書き込みや権限拡大を求める動作を避けます。sandbox は外部コネクタの書き込み全般を強制禁止する仕組みではないため、役割の指示でも禁止しています。
+- 事前確認でマルチエージェント機能・実行環境の利用不能や枠不足が分かった場合は `unavailable`、`attempted: false` を返します。起動を試した後の失敗・結果未取得は `no_result`、`attempted: true` と実行状態を返します。
+- 相談役には読み取り専用の振る舞いと再委任禁止をプロンプトで指示します。この指示は sandbox や承認設定による技術的な強制ではありません。親が利用可能なツールや実行環境を制限できる場合は、読み取り専用にします。
 - 消費回数と上限到達は呼び出し元が判定します。相談結果から自力での継続・該当作業だけの停止・全体停止を選ぶのも親です。本 Plugin は全ワーカーの停止を要求せず、相談役も回数を理由に依頼を拒否しません。
 
 設定の詳細は OpenAI 公式の [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference)を参照してください。

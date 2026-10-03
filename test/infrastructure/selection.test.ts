@@ -34,7 +34,7 @@ const cases: [string, string[]][] = [
   ['plugins/artifact-workflow/README.md', workflow],
   ['plugins/artifact-workflow/LICENSE', workflow],
   ['plugins/expert-escalation/skills/expert-escalation/SKILL.md', escalation],
-  ['plugins/expert-escalation/com.openai/agents/escalation-advisor.toml', escalation],
+  ['plugins/expert-escalation/skills/expert-escalation/references/advisor-contract.md', escalation],
   ['plugins/expert-escalation/plugin.json', escalation],
   ['plugins/expert-escalation/.codex-plugin/plugin.json', escalation],
   ['plugins/expert-escalation/README.md', escalation],

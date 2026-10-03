@@ -32,8 +32,8 @@ await registerContracts(
     name: 'artifact-workflow',
     prefix: 'WF',
     implicit: false,
-    agents: ['artifact-reviewer'],
-    readOnly: ['artifact-reviewer'],
+    agents: [],
+    readOnly: [],
   },
   new URL('./contracts.json', import.meta.url),
 );

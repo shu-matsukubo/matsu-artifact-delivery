@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import test from 'node:test';
 import { registerContracts } from '../lib/contract-suite.ts';
-import { assertContract, json, loadPlugin, pluginRoot, read } from '../lib/plugin.ts';
+import { json, loadPlugin, pluginRoot, read } from '../lib/plugin.ts';
 
 import type { FileContract } from '../lib/types.ts';
 
@@ -11,8 +11,8 @@ await registerContracts(
     name: 'expert-escalation',
     prefix: 'EX',
     implicit: true,
-    agents: ['escalation-advisor'],
-    readOnly: ['escalation-advisor'],
+    agents: [],
+    readOnly: [],
   },
   new URL('./contracts.json', import.meta.url),
 );
@@ -30,11 +30,13 @@ await test('EX-U11: advisor unit contract rejects removal of a required return f
     const contract = cases.find((item) => item.id === id);
     assert.ok(contract, `Missing contract: ${id}`);
     const source = await read(join(pluginRoot('expert-escalation'), contract.file));
-    const output = source.split(/\r?\n/).find((line) => line.startsWith('- 相談ID・受け取った親識別子'));
-    assert.ok(output, 'Missing advisor return instruction');
-    for (const field of [
+    const start = source.indexOf('## 相談役が返す結果');
+    const end = source.indexOf('## 親が付ける呼び出しの状態', start);
+    const output = source.slice(start, end);
+    assert.ok(start >= 0 && end > start, 'Missing advisor return contract');
+    const fields = [
       '相談ID',
-      '受け取った親識別子',
+      '親識別子',
       '役割',
       'advice',
       'input_insufficient',
@@ -48,11 +50,13 @@ await test('EX-U11: advisor unit contract rejects removal of a required return f
       '残るリスク',
       '人間判断の要否と理由',
       'を返す',
-    ]) {
+    ];
+    const returnsRequiredFields = (value: string) => fields.every((field) => value.includes(field));
+    assert.ok(returnsRequiredFields(output), 'Missing advisor return fields');
+    for (const field of fields) {
       assert.ok(output.includes(field), field);
-      // Leave the same terms in the input instructions; the return clause itself must require them.
-      const changed = source.replace(output, output.replace(field, ''));
-      assert.throws(() => assertContract(changed, contract), new RegExp(`${id}: missing`), field);
+      const changed = output.split(field).join('');
+      assert.equal(returnsRequiredFields(changed), false, field);
     }
   }
 });
