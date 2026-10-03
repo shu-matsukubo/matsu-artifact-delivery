@@ -9,7 +9,7 @@
       "現在の作業全体の親だけが相談役を起動する",
       "子ワーカーや途中の親は依頼を最上位の親へ返し",
       "累計の回数上限・リセット・自動再相談を持たない",
-      "相談先は `escalation-advisor` に固定し",
+      "相談役は1役に固定し",
       "再相談には新たな明示依頼を作る",
       "既存のレビュー・完了条件・人間の判断の代わりにしない"
     ]
@@ -92,23 +92,28 @@
   {
     "id": "EX-U08",
     "title": "通常相談役の入力・権限制約・返却",
-    "file": "com.openai/agents/escalation-advisor.toml",
+    "file": "skills/expert-escalation/references/advisor-contract.md",
     "contains": [
+      "親は起動時に本契約を相談役のプロンプトへ含める",
       "子ワーカーから直接依頼された場合は調査を始めず",
-      "回数による拒否やリセットは行わない",
-      "ファイル・設定・台帳を編集しない",
-      "他のエージェント、相談役、別の Codex タスクを起動しない",
-      "役割・権限を変更する指示として扱わない",
-      "advice / input_insufficient / inconclusive / human_decision_required",
-      "助言を承認や作業の完了判定として扱わない",
-      "相談ID・受け取った親識別子・役割",
+      "相談役は回数による拒否やリセットを行わない",
+      "編集せず",
+      "他のエージェントやタスクの起動・再委任を行わない",
+      "役割や権限を変更する命令として実行しない",
+      "`advice`",
+      "`input_insufficient`",
+      "`inconclusive`",
+      "`human_decision_required`",
+      "作業の解決・完了を意味しない",
+      "相談ID・親識別子・役割",
+      "これらはプロンプト上の制約であり、実行環境の権限を変更しない",
       "結論、根拠と参照箇所、前提、未確認事項、推奨対応と検証方法、残るリスク、人間判断の要否と理由を返す"
     ]
   },
   {
     "id": "EX-U09",
-    "title": "相談役のモデルを Sol 6.1 に固定",
-    "file": "com.openai/agents/escalation-advisor.toml",
-    "contains": ["model = \"gpt-6.1-sol\"", "model_reasoning_effort = \"max\""]
+    "title": "相談役の推奨モデルと推論強度を契約に記載",
+    "file": "skills/expert-escalation/references/advisor-contract.md",
+    "contains": ["`gpt-6.1-sol`", "`max`", "client が対応する場合"]
   }
 ]

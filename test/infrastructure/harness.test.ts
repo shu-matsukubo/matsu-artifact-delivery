@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { assertReadOnly } from '../lib/contract-suite.ts';
 import {
   assertContract,
   frontmatter,
@@ -68,40 +67,20 @@ await test('HAR-U04: local reference graph handles cycles and rejects broken fil
   }
 });
 
-await test('HAR-U05: packaged metadata mismatches and invalid Agent / YAML syntax fail validation', async (t) => {
+await test('HAR-U05: packaged metadata mismatches and invalid Skill YAML syntax fail validation', async (t) => {
   const plugin = await stagePlugin(t, 'expert-escalation');
   const manifestPath = join(plugin.root, '.codex-plugin/plugin.json');
   const original = await read(manifestPath);
   await writeFile(manifestPath, JSON.stringify({ ...(await json<CodexManifest>(manifestPath)), version: '999.0.0' }));
   await assert.rejects(loadPlugin(plugin.root), /Inconsistent manifest version/);
   await writeFile(manifestPath, original);
-  const agentPath = join(plugin.root, 'com.openai/agents/escalation-advisor.toml');
-  const agent = await read(agentPath);
-  await writeFile(agentPath, 'name = [');
-  await assert.rejects(loadPlugin(plugin.root));
-  await writeFile(agentPath, agent);
   const settings = join(plugin.root, 'skills/expert-escalation/agents/openai.yaml');
   await writeFile(settings, 'policy: [');
   await assert.rejects(loadPlugin(plugin.root));
 });
 
-await test('HAR-U06: missing Skills, empty Agent instructions and lost read-only settings are detected', async (t) => {
+await test('HAR-U06: missing Skill source is detected', async (t) => {
   const plugin = await stagePlugin(t, 'expert-escalation');
-  for (const field of ['sandbox_mode', 'approval_policy', 'agents'] as const) {
-    const role = { ...plugin.agents.get('escalation-advisor') };
-    delete role[field];
-    assert.throws(() => assertReadOnly(role));
-  }
-  const agentPath = join(plugin.root, 'com.openai/agents/escalation-advisor.toml');
-  const original = await read(agentPath);
-  await writeFile(agentPath, original.replace('enabled = false', 'enabled = true'));
-  const changed = await loadPlugin(plugin.root);
-  assert.throws(() => assertReadOnly(changed.agents.get('escalation-advisor')), /delegation/);
-  await writeFile(
-    agentPath,
-    original.replace(/developer_instructions = """[\s\S]*?"""/, 'developer_instructions = ""'),
-  );
-  await assert.rejects(loadPlugin(plugin.root), /Missing agent developer_instructions/);
   await unlink(join(plugin.root, 'skills/expert-escalation/SKILL.md'));
   await assert.rejects(loadPlugin(plugin.root), { code: 'ENOENT' });
 });

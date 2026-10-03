@@ -3,14 +3,12 @@ import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import type { Tokens } from 'marked';
-import { assertReadOnly } from '../lib/contract-suite.ts';
 import { files, localLinks, markdown, read, stagePlugin, walkReferences } from '../lib/plugin.ts';
 
 await test('WF-E01: isolated package discovers its Skill, role templates and complete document graph', async (t) => {
   const plugin = await stagePlugin(t, 'artifact-workflow');
   assert.deepEqual([...plugin.skills.keys()], ['artifact-workflow']);
-  assert.deepEqual([...plugin.agents.keys()], ['artifact-reviewer']);
-  assertReadOnly(plugin.agents.get('artifact-reviewer'));
+  assert.deepEqual([...plugin.agents.keys()], []);
   await localLinks(plugin.root, 'README.md');
   assert.ok(!(await readdir(plugin.root)).includes('node_modules'));
   const skill = plugin.skills.get('artifact-workflow')!;

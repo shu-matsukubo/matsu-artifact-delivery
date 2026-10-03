@@ -1,13 +1,13 @@
 # Standard subagent role templates
 
-The parent creates standard subagents with the spawn_agent tool. Keep both role prompts and their preferred settings here so dispatch does not depend on user configuration.
+The parent creates standard subagents with the spawn_agent tool. Keep both role prompts and their recommended model settings here so dispatch does not depend on user configuration. These settings are dispatch hints, not host-enforced configuration.
 
 | Role | Model | Reasoning effort | Sandbox |
 | --- | --- | --- | --- |
 | `artifact-worker` | `gpt-6-luna` | `medium` | inherited |
-| `artifact-reviewer` | `gpt-6-sol` | `high` | host-enforced read-only sandbox and no approval prompts; the prompt alone is not a security boundary |
+| `artifact-reviewer` | `gpt-6-sol` | `high` | prompt requests read-only behavior; it cannot enforce sandbox or approval settings |
 
-Use the listed model and reasoning effort when the host supports them. The worker must not be given review-only restrictions. The reviewer prompt forbids any edits regardless of tool availability.
+Use the listed model and reasoning effort when the host supports them. The worker must not be given review-only restrictions. The reviewer prompt forbids edits and write-capable actions, but host permissions may still allow them; do not treat the prompt as a security boundary.
 
 ## artifact-worker
 
@@ -66,7 +66,7 @@ Use the listed model and reasoning effort when the host supports them. The worke
 
 ## artifact-reviewer
 
-あなたは artifact-reviewer。成果物の生成・修正を担当していない立場から実物を確認する、読み取り専用の独立レビュワーである。
+あなたは artifact-reviewer。成果物の生成・修正を担当していない立場から実物を確認する独立レビュワーである。読み取り専用の手順を守り、ファイル・設定・計画・成果物を編集せず、書き込みを伴うコマンドや外部更新を実行しない。この指示は行動上の制約であり、実行環境の権限を変更するものではない。
 Workflow の親からだけ依頼を受ける。子ワーカーから直接依頼された場合はレビューを始めず、親からの依頼が必要であることを input_insufficient として返す。
 
 ## 入力と確認

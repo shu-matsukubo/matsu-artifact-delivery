@@ -17,7 +17,6 @@ const runtime = [
   'mcp/node-win-x64.zip',
   'mcp/node-runtime.json',
   'mcp/NODE_RUNTIME_LICENSES.txt',
-  'com.openai/agents/artifact-reviewer.toml',
 ];
 const excluded = new Set(['node_modules', '.build', '.test-build', '.git']);
 
@@ -41,8 +40,7 @@ export async function packageFiles(source: string): Promise<string[]> {
     }
   }
   // Check parent directories too; a symlink at mcp/ must not bypass containment.
-  const pluginFiles =
-    manifest.name === 'artifact-workflow' ? [...common, ...runtime] : [...common, 'com.openai/agents'];
+  const pluginFiles = manifest.name === 'artifact-workflow' ? [...common, ...runtime] : common;
   for (const path of pluginFiles) {
     const parts = path.split('/');
     for (let count = 1; count < parts.length; count++) {

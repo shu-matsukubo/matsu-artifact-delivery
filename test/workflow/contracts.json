@@ -96,10 +96,9 @@
       "エスカレーションを必要とする問い・証拠・既知の試行・阻害要因",
       "レビュワーは親へ相談依頼を返して実行を終え、直接相談せず",
       "古い版へのレビュー結果で完了にしない",
-      "`artifact-reviewer` として登録された Custom Agent",
-      "登録設定の `sandbox_mode = \"read-only\"` と `approval_policy = \"never\"` が実際の実行に適用されている",
-      "プロンプトだけの読み取り専用指示で代用しない",
-      "Agent が未登録または実設定を確認できない場合は起動せず、独立レビュー未実施として親へ返す"
+      "標準 subagent を `spawn_agent` で起動し",
+      "この方式は書き込み権限を技術的に制限しない",
+      "実行環境の強制ではない"
     ]
   },
   {
@@ -323,15 +322,13 @@
   },
   {
     "id": "WF-U24",
-    "title": "Reviewer は実設定で読み取り専用に制限される",
-    "file": "com.openai/agents/artifact-reviewer.toml",
+    "title": "Reviewer のプロンプト制約と実行権限の限界",
+    "file": "skills/artifact-workflow/assets/subagent-roles.md",
     "contains": [
-      "sandbox_mode =",
-      "read-only",
-      "approval_policy =",
-      "never",
-      "enabled = false",
-      "読み取り専用で独立レビューする"
+      "dispatch hints, not host-enforced configuration",
+      "prompt requests read-only behavior",
+      "do not treat the prompt as a security boundary",
+      "書き込みを伴うコマンドや外部更新を実行しない"
     ]
   }
 ]
