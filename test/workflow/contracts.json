@@ -190,6 +190,8 @@
       "親だけが相談 Skill と相談役を起動し、子は直接起動しない",
       "全論点・全相談役の試行を1つの記録に集約",
       "合計最大3回",
+      "`references/advisor-contract.md` の契約をプロンプトに含めて標準 subagent を1件起動する",
+      "`expert-escalation` の `references/advisor-contract.md` をプロンプトに含める",
       "`attempted`",
       "`execution_state`",
       "上限到達や相談不能だけでは全体を止めない",
