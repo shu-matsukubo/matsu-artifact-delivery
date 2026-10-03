@@ -35,7 +35,7 @@ await test('PKG-U02: Workflow and Escalation prompt roles need no Custom Agent r
   await assert.rejects(access(join(repository, '.codex/config.toml')), { code: 'ENOENT' });
 });
 
-await test('PKG-U03: Plugin installation documents prompt-based roles and resolves local links', async () => {
+await test('PKG-U03: Plugin documentation resolves local links and explains reviewer permissions', async () => {
   for (const path of [
     'README.md',
     'docs/testing.md',
@@ -46,10 +46,7 @@ await test('PKG-U03: Plugin installation documents prompt-based roles and resolv
     await localLinks(repository, path);
 
   const workflowReadme = await read(join(repository, 'plugins/artifact-workflow/README.md'));
-  assert.ok(workflowReadme.includes('利用者による `.codex` 配下への設定ファイル配置は不要'));
   assert.ok(workflowReadme.includes('これは実行環境の権限を変更しません'));
-  const escalationReadme = await read(join(repository, 'plugins/expert-escalation/README.md'));
-  assert.ok(escalationReadme.includes('利用者による `.codex` 配下への設定ファイル配置は不要'));
 });
 
 await test('PKG-U04: all contract IDs and runnable suites appear in the test inventory', async () => {

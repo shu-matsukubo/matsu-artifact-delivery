@@ -2,7 +2,7 @@
 
 成果物を作る作業を計画し、承認後に生成・セルフレビュー・独立レビュー・検証を行う Plugin です。完成品と検証結果を提示し、必要な引き渡し情報を親へ返します。
 
-`artifact-workflow` は標準 subagent を使い、worker と reviewer の役割指示を Plugin 内の Skill にまとめています。利用者による `.codex` 配下への設定ファイル配置は不要です。Node.js の事前導入は不要です。初期対応環境は Windows x64 です。
+`artifact-workflow` は標準 subagent を使い、worker と reviewer の役割指示を Plugin 内の Skill にまとめています。対応環境は Windows x64 です。
 
 ## インストール
 
@@ -13,13 +13,13 @@ codex plugin add artifact-workflow@matsu-artifact-delivery
 
 Plugin をインストールし、新しいタスクで `artifact-workflow` の利用を指定してください。親が計画を提示し、承認後に作業を進めます。
 
-旧版で `[agents.artifact-reviewer]` を登録していた場合は、`config_file` を含む設定ブロックを利用先の Codex 設定から削除してください。
+更新する場合は、marketplace を更新してインストール済みファイルを反映します。
 
 ```sh
 codex plugin marketplace upgrade matsu-artifact-delivery
 ```
 
-設定ブロックを削除した後、Codex を再起動してください。
+更新後は Codex を再起動し、新しいタスクを開始してください。起動時の設定エラーは[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md#更新後の起動確認)を参照してください。
 
 ## Workflow の構成
 
@@ -33,7 +33,7 @@ codex plugin marketplace upgrade matsu-artifact-delivery
 
 生成とセルフレビューには標準 subagent を使い、独立レビューには生成担当とは別の標準 subagent を使います。各役割の指示は Plugin 内の `subagent-roles.md` にまとめます。subagent は親のモデル、推論設定、利用可能なツールを継承するため、親がタスク全体に適した設定を選びます。reviewer にはプロンプトで読み取り専用の振る舞いを求めますが、これは実行環境の権限を変更しません。親が全 subagent の実行を管理します。
 
-MCP の依存 bundle、Windows x64 Node.js runtime、初回起動時に runtime をユーザーデータ領域へ展開するランチャーを同梱します。ネットワーク接続、npm、利用者によるビルドは不要です。計画データは Plugin の外にある `PLUGIN_DATA/task-memory/` に保存されます。
+MCP の依存 bundle、Windows x64 Node.js runtime、初回起動時に runtime をユーザーデータ領域へ展開するランチャーを同梱します。計画データは Plugin の外にある `PLUGIN_DATA/task-memory/` に保存されます。
 
 他の compatible client への移植では、その client の subagent 委任方法を別途確認してください。全 client で同一の委任動作は保証しません。
 

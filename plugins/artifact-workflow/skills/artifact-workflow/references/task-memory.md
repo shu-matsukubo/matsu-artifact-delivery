@@ -28,7 +28,7 @@
 
 ## 計画のJSON
 
-ユーザーへの提示には従来の [タスク計画テンプレート](../assets/task-plan-template.md) を使う。保存時は、その合意済み内容を以下の形式へ対応付ける。`request` は元の依頼、`scope` は今回の生成範囲、`inputs` は作業に必要な入力の参照先。`tasks` は目的・成果物・完了条件と依存関係、`acceptanceCriteria` は全体の条件、`delivery` は引き渡し情報を記録する。空の要件・制約・入力・依存関係は空配列にする。
+ユーザーへの提示には [タスク計画テンプレート](../assets/task-plan-template.md) を使う。保存時は、その合意済み内容を以下の形式へ対応付ける。`request` は元の依頼、`scope` は今回の生成範囲、`inputs` は作業に必要な入力の参照先。`tasks` は目的・成果物・完了条件と依存関係、`acceptanceCriteria` は全体の条件、`delivery` は引き渡し情報を記録する。空の要件・制約・入力・依存関係は空配列にする。
 
 ```json
 {
