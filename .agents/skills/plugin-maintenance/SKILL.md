@@ -1,10 +1,17 @@
 ---
 name: plugin-maintenance
-description: Create or modify a plugin in this repository. Use for plugin manifests, skills, MCP, packaging, or related documentation.
+description: このリポジトリでプラグインを新規作成または修正するときに使う。マニフェスト、スキル、MCP、配布処理、関連文書が対象。
 ---
 
-# Plugin の作成・修正
+# プラグインの作成・修正
 
-依頼された変更を実装する。作業前に[実装ガイド](references/implementation.md)と、変更箇所に関係する開発資料を読む。
+## 手順
 
-判断待ちの提案が必要な場合は[変更提案テンプレート](assets/change-proposal.md)を使う。合意済みの要件に不要な承認段階を追加しない。
+1. 依頼の範囲と対象の仕様・契約を特定する。[実装方針](references/implementation.md)を参照する。
+2. 対象箇所の単体テストと E2E テストを確認し、変更前後の挙動を確認できるか判断する。[テスト設計の観点](references/test-design.md)を参照する。
+3. テストが不足していれば、実装前に必要なテストを追加・実行し、維持する挙動と回帰条件を確認する。バグ修正では修正前に失敗する回帰テストを確認する。
+4. 既存の責務と正本・生成物の境界を保って実装する。[実装方針](references/implementation.md)を参照する。
+5. 意図した仕様変更に必要な期待値だけを更新し、対象の単体テストと E2E テストを再実行する。試験の選び方は[テスト設計の観点](references/test-design.md)を参照する。
+6. 関係する文書・配布物を確認し、変更内容、実行した試験、その結果を報告する。
+
+依頼内容に判断が必要な場合は[変更提案テンプレート](assets/change-proposal.md)を使う。合意済みの要件に不要な承認段階を追加しない。

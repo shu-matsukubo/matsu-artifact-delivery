@@ -1,10 +1,15 @@
 ---
 name: plugin-review
-description: Review plugin changes in this repository for defects in behavior, standards, contracts, or packaging.
+description: このリポジトリのプラグイン変更を、挙動・仕様・契約・配布の不具合についてレビューするときに使う。
 ---
 
-# Plugin レビュー
+# プラグイン変更のレビュー
 
-変更を読み取り専用でレビューし、指摘を重要度順に報告する。[レビュー観点](references/review-checklist.md)を使い、該当する場合は[製造・レビュー観点](../../../docs/manufacturing-review.md)と[テスト・検証観点](../../../docs/testing-review.md)を参照する。
+レビュー中はファイルを変更しない。
 
-差分から導ける具体的な不具合だけを、根拠となるファイル・行・発生条件とともに示す。指摘がなければその旨と確認できなかった範囲を伝える。
+## 手順
+
+1. レビュー対象の差分と依頼された仕様を特定する。
+2. 差分をプラグイン・スキルの仕様、既存契約、プラグインの責務と照合する。[レビュー観点と仕様](references/review-checklist.md)を参照する。
+3. 変更箇所に関係するテストと、その確認範囲を調べる。必要なら既存の安全な試験を実行し、結果と未確認範囲を分ける。
+4. 具体的な不具合だけを重要度順に報告する。各指摘にファイル・行、発生条件、影響を付ける。指摘がなければ、確認した範囲と残る未確認事項を伝える。
