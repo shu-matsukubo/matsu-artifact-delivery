@@ -13,7 +13,7 @@ import { plan, planAtSnapshotSize, temporaryDirectory } from './fixtures.js';
 const bundledServer = fileURLToPath(new URL('../../mcp/task-memory.cjs', import.meta.url));
 const windowsLauncher = fileURLToPath(new URL('../../mcp/start.ps1', import.meta.url));
 
-async function connect(directory: string, entry = bundledServer) {
+async function connect(directory: string, entry = bundledServer, manifestEnvironment = false) {
   const inheritedEnvironment = getDefaultEnvironment();
   if (process.platform === 'win32') delete inheritedEnvironment.PATHEXT;
   const command = process.platform === 'win32' ? 'powershell.exe' : process.execPath;
@@ -28,7 +28,7 @@ async function connect(directory: string, entry = bundledServer) {
           ...(entry === bundledServer ? [] : ['-Entry', entry]),
         ]
       : [entry];
-  const environment = {
+  const environment: NodeJS.ProcessEnv = {
     ...process.env,
     ...inheritedEnvironment,
     ARTIFACT_WORKFLOW_DATA_DIR: join(directory, 'data'),
@@ -52,12 +52,22 @@ async function connect(directory: string, entry = bundledServer) {
         }
       : {}),
   };
+  if (process.platform === 'win32' && manifestEnvironment) {
+    environment.LOCALAPPDATA = undefined;
+    environment.ARTIFACT_WORKFLOW_RUNTIME_DIR = undefined;
+    environment.PLUGIN_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+    environment.PLUGIN_DATA = join(directory, 'plugin-data');
+    environment.ARTIFACT_WORKFLOW_DATA_DIR = join(environment.PLUGIN_DATA, 'task-memory');
+    const sdkEnvironment = { ...getDefaultEnvironment(), ...environment };
+    assert.equal(sdkEnvironment.LOCALAPPDATA, undefined);
+    assert.equal(sdkEnvironment.ARTIFACT_WORKFLOW_RUNTIME_DIR, undefined);
+  }
   if (process.platform === 'win32') Reflect.deleteProperty(environment, 'PATHEXT');
   const transport = new StdioClientTransport({
     command,
     args,
     cwd: directory,
-    env: environment,
+    env: environment as Record<string, string>,
     stderr: 'pipe',
   });
   let stderr = '';
@@ -130,6 +140,25 @@ await test(
       ...(process.platform === 'win32' ? ['runtime'] : []),
       'standalone.cjs',
     ]);
+  },
+);
+
+await test(
+  'starts from manifest-provided directories without ambient Windows runtime paths',
+  { skip: process.platform !== 'win32', timeout: 30_000 },
+  async (t) => {
+    const cleanup: Array<() => Promise<void>> = [];
+    const directory = await temporaryDirectory(t, cleanup);
+    const client = await connect(directory, bundledServer, true);
+    cleanup.push(() => client.close());
+    assert.ok((await client.listTools()).tools.length > 0);
+    assert.ok((await readdir(join(directory, 'plugin-data', 'runtime'))).length > 0);
+    assert.deepEqual(
+      (await client.callTool({ name: 'get_plan', arguments: { sessionId: 'manifest' } })).structuredContent,
+      {
+        session: null,
+      },
+    );
   },
 );
 

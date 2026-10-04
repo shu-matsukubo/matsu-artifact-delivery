@@ -23,7 +23,10 @@ try {
 }
 $runtimeRoot = $env:ARTIFACT_WORKFLOW_RUNTIME_DIR
 if ([string]::IsNullOrWhiteSpace($runtimeRoot)) {
-    $runtimeRoot = Join-Path $env:LOCALAPPDATA 'artifact-workflow\runtime'
+    if ([string]::IsNullOrWhiteSpace($env:PLUGIN_DATA)) {
+        throw 'Set PLUGIN_DATA or ARTIFACT_WORKFLOW_RUNTIME_DIR to select a runtime directory.'
+    }
+    $runtimeRoot = Join-Path $env:PLUGIN_DATA 'runtime'
 }
 $runtime = Join-Path $runtimeRoot $hash
 $node = Join-Path $runtime 'node.exe'

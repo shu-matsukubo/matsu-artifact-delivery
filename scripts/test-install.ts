@@ -72,17 +72,24 @@ try {
           const expand = (value: string) =>
             value.replace(/\$\{(PLUGIN_ROOT|PLUGIN_DATA)\}/g, (_, key) => (key === 'PLUGIN_ROOT' ? installed : data));
           const client = new Client({ name: 'distribution-check', version: '1.0.0' });
+          const environment: NodeJS.ProcessEnv = {
+            ...getDefaultEnvironment(),
+            PLUGIN_ROOT: installed,
+            PLUGIN_DATA: data,
+            ...Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, expand(value)])),
+          };
+          environment.LOCALAPPDATA = undefined;
+          environment.ARTIFACT_WORKFLOW_RUNTIME_DIR = undefined;
+          const sdkEnvironment = { ...getDefaultEnvironment(), ...environment };
+          assert.equal(sdkEnvironment.LOCALAPPDATA, undefined);
+          assert.equal(sdkEnvironment.ARTIFACT_WORKFLOW_RUNTIME_DIR, undefined);
           try {
             await client.connect(
               new StdioClientTransport({
                 command: config.command,
                 args: config.args.map(expand),
                 cwd: temporary,
-                env: {
-                  ...getDefaultEnvironment(),
-                  ARTIFACT_WORKFLOW_RUNTIME_DIR: join(temporary, 'runtime'),
-                  ...Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, expand(value)])),
-                },
+                env: environment as Record<string, string>,
                 stderr: 'pipe',
               }),
             );
