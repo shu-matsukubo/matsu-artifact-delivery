@@ -21,6 +21,7 @@ const temporary = await mkdtemp(join(tmpdir(), 'matsu-plugin-install-'));
 const isolatedHome = join(temporary, 'codex-home');
 const catalog = await json<Marketplace>(join(source, '.agents/plugins/marketplace.json'));
 const summary = [];
+const runtimeDirectories: string[] = [];
 const cli = (args: string[]) =>
   execute(process.env.CODEX_CLI ?? 'codex', args, {
     cwd: temporary,
@@ -69,6 +70,7 @@ try {
         for (const configName of ['mcp.json', '.mcp.json']) {
           const config = (await json<McpManifest>(join(installed, configName))).mcpServers['artifact-task-memory']!;
           const data = join(temporary, '日本語 data', configName);
+          runtimeDirectories.push(join(data, 'runtime'));
           const expand = (value: string) =>
             value.replace(/\$\{(PLUGIN_ROOT|PLUGIN_DATA)\}/g, (_, key) => (key === 'PLUGIN_ROOT' ? installed : data));
           const client = new Client({ name: 'distribution-check', version: '1.0.0' });
@@ -123,18 +125,19 @@ try {
   assert.equal(resolve(temporary), join(tmpdir(), temporary.split(/[\\/]/).at(-1)!));
   assert.ok(temporary.split(/[\\/]/).at(-1)!.startsWith('matsu-plugin-install-'));
   if (process.platform === 'win32')
-    for (const hash of await readdir(join(temporary, 'runtime')).catch(() => [])) {
-      const runtimeNode = join(temporary, 'runtime', hash, 'node.exe');
-      const quotedNode = "'" + runtimeNode.replaceAll("'", "''") + "'";
-      await execute(
-        'powershell.exe',
-        [
-          '-NoProfile',
-          '-Command',
-          `Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq ${quotedNode} } | Stop-Process -Force`,
-        ],
-        { encoding: 'utf8', windowsHide: true },
-      );
-    }
+    for (const runtimeDirectory of runtimeDirectories)
+      for (const hash of await readdir(runtimeDirectory).catch(() => [])) {
+        const runtimeNode = join(runtimeDirectory, hash, 'node.exe');
+        const quotedNode = "'" + runtimeNode.replaceAll("'", "''") + "'";
+        await execute(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-Command',
+            `Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq ${quotedNode} } | Stop-Process -Force`,
+          ],
+          { encoding: 'utf8', windowsHide: true },
+        );
+      }
   await rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
