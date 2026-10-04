@@ -9,6 +9,7 @@
 
 ## 必要に応じて読む資料
 
+- Codex 向け資料の配置と責務: [Codex 開発ルールの設計](docs/codex-workflows.md)
 - 変更・レビュー方針: [製造・レビュー観点](docs/manufacturing-review.md)
 - 試験を選ぶ判断基準: [テスト・検証観点](docs/testing-review.md)
 - 試験コマンド、CI 対象、契約 ID: [試験と差分 CI](docs/testing.md)
