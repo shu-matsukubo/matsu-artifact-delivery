@@ -16,10 +16,8 @@ await test('WF-E01: isolated package discovers its Skill, role templates and com
   const roleDocument = await read(join(skill.root, 'assets/subagent-roles.md'));
   assert.ok(roleDocument.includes('## artifact-worker'));
   assert.ok(roleDocument.includes('## artifact-reviewer'));
-  assert.ok(
-    roleDocument.includes("Subagents inherit the parent request's model, reasoning configuration, and available tools"),
-  );
-  assert.ok(roleDocument.includes('spawn_agent does not provide per-child overrides'));
+  assert.ok(roleDocument.includes('サブエージェントは親の依頼からモデル、推論設定、利用可能なツールを引き継ぐ'));
+  assert.ok(roleDocument.includes('`spawn_agent` では子ごとに設定を上書きできない'));
   const reachable = await walkReferences(skill.root);
   assert.deepEqual(
     reachable,
