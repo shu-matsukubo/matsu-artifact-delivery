@@ -327,10 +327,10 @@
     "title": "Reviewer のプロンプト制約と実行権限の限界",
     "file": "skills/artifact-workflow/assets/subagent-roles.md",
     "contains": [
-      "Subagents inherit the parent request's model, reasoning configuration, and available tools",
-      "spawn_agent does not provide per-child overrides",
+      "サブエージェントは親の依頼からモデル、推論設定、利用可能なツールを引き継ぐ",
+      "`spawn_agent` では子ごとに設定を上書きできない",
       "読み取り専用の手順を守り",
-      "do not treat the prompt as a security boundary",
+      "プロンプトをセキュリティ境界として扱わない",
       "書き込みを伴うコマンドや外部更新を実行しない"
     ]
   }

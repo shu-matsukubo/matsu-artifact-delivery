@@ -1,8 +1,8 @@
-# Standard subagent role templates
+# 標準サブエージェントの役割テンプレート
 
-The parent creates standard subagents with the spawn_agent tool. Subagents inherit the parent request's model, reasoning configuration, and available tools; spawn_agent does not provide per-child overrides. Choose settings for the whole task in the parent request. Keep role-specific behavior in these prompts.
+親は `spawn_agent` ツールで標準サブエージェントを作成する。サブエージェントは親の依頼からモデル、推論設定、利用可能なツールを引き継ぐ。`spawn_agent` では子ごとに設定を上書きできないため、タスク全体の設定は親の依頼で指定し、役割ごとの動作は各プロンプトに記述する。
 
-The worker must not be given review-only restrictions. The reviewer prompt forbids edits and write-capable actions, but host permissions may still allow them; do not treat the prompt as a security boundary.
+作業担当には、レビュー専用の制約を与えない。レビュワーのプロンプトでは編集や書き込み操作を禁じるが、実行環境の権限によっては操作できるため、プロンプトをセキュリティ境界として扱わない。
 
 ## artifact-worker
 
