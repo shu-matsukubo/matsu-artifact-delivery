@@ -1,0 +1,31 @@
+name: 課題・提案
+description: 背景、目的、対応内容、完了条件を整理して起票します。
+body:
+  - type: textarea
+    id: background
+    attributes:
+      label: 背景
+      description: 必要な情報に絞って簡潔に記入してください。過剰な説明や一般論は避けてください。
+    validations:
+      required: true
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 目的
+      description: 実現したい状態を必要な情報に絞って簡潔に記入してください。過剰な説明や一般論は避けてください。
+    validations:
+      required: true
+  - type: textarea
+    id: response
+    attributes:
+      label: 対応内容
+      description: 必要な対応や変更を記入してください。項目数に制限はありません。
+    validations:
+      required: true
+  - type: textarea
+    id: completion-criteria
+    attributes:
+      label: 完了条件
+      description: 完了を判断できる具体的な条件を記入してください。項目数に制限はありません。
+    validations:
+      required: true
