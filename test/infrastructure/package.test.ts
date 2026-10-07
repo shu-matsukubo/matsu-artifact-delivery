@@ -2,7 +2,18 @@ import assert from 'node:assert/strict';
 import { access, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { files, inside, json, loadPlugin, localLinks, read, repository, stagePlugin } from '../lib/plugin.ts';
+import { parse as parseToml } from 'smol-toml';
+import {
+  files,
+  frontmatter,
+  inside,
+  json,
+  loadPlugin,
+  localLinks,
+  read,
+  repository,
+  stagePlugin,
+} from '../lib/plugin.ts';
 
 import type { Marketplace, PackageMetadata } from '../../scripts/manifest-types.ts';
 import type { FileContract } from '../lib/types.ts';
@@ -66,4 +77,34 @@ await test('PKG-U04: all contract IDs and runnable suites appear in the test inv
     assert.ok(scripts[command], `Missing command: ${command}`);
     assert.ok(docs.includes(command), `Undocumented ${command}`);
   }
+});
+
+await test('SCH-U01: scheduled Issue processing is explicit and preserves remote-state and role boundaries', async () => {
+  const { metadata, body } = frontmatter(
+    await read(join(repository, '.agents/skills/scheduled-issue-processing/SKILL.md')),
+  );
+  assert.equal(metadata.name, 'scheduled-issue-processing');
+  assert.match(metadata.description, /スケジューラが.*明示指定した場合のみ/);
+  assert.match(metadata.description, /通常の Issue 対応や一般的な開発作業には使用しない/);
+  assert.match(body, /GitHub Plugin.*read\/write capability/s);
+  assert.match(body, /git、`gh`、ブラウザー等へフォールバックせず停止/);
+  assert.match(body, /default branch とその最新コミット SHA/);
+  assert.match(body, /同名ブランチが既にある場合は再利用・上書きせず停止/);
+  assert.match(body, /`git push` は使用しない/);
+  assert.match(body, /レビュー済みの変更が反映済みであることを確認してから、Issue を参照する Open PR を作成/);
+  assert.match(body, /`Closes`、`Fixes`、`Resolves` 等の Issue closing keyword を含めない/);
+  assert.match(body, /Issue はこの Skill では閉じず/);
+  assert.match(body, /plugin-maintenance/);
+  assert.match(body, /plugin-review/);
+
+  const codex = parseToml(await read(join(repository, '.codex/config.toml'))) as {
+    model: string;
+    model_reasoning_effort: string;
+  };
+  const implementer = parseToml(await read(join(repository, '.codex/agents/issue-implementer.toml'))) as {
+    model: string;
+    model_reasoning_effort: string;
+  };
+  assert.deepEqual([codex.model, codex.model_reasoning_effort], ['gpt-6.1-sol', 'xhigh']);
+  assert.deepEqual([implementer.model, implementer.model_reasoning_effort], ['gpt-6-luna', 'medium']);
 });
