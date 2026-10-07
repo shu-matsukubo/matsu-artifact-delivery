@@ -178,12 +178,28 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
 
   assertContract(publish, {
     id: 'SCH-U01',
-    ordered: ['コミットを作成', 'リモートブランチを再取得', 'GitHub Plugin で Issue を参照する Open PR を作成'],
+    ordered: [
+      'コミットを作成',
+      'リモートブランチを再取得',
+      '対応するローカルコミットを作成',
+      'git status --porcelain=v1 --untracked-files=all',
+      'GitHub Plugin で Issue を参照する Open PR を作成',
+    ],
   });
   assert.match(publish, /検証・レビュー済みの差分.*GitHub Plugin.*コミット・Git object.*ref 更新/);
   assert.match(publish, /`git push` は使用しない/);
   assert.match(publish, /リモートブランチの先端 SHA が作成したコミット SHA と一致.*差分がレビュー済みの差分と一致/);
   assert.match(publish, /確認できない場合は PR を作成しない/);
+  assert.match(
+    publish,
+    /ローカル HEAD の tree.*リモートコミットの tree.*一致していなければ.*レビュー済みの変更だけを stage/,
+  );
+  assert.match(publish, /コミット前に index の tree.*リモートコミットの tree と一致.*確認/);
+  assert.match(
+    publish,
+    /ローカル HEAD の tree.*リモートコミットの tree と一致.*staged、unstaged、untracked file.*clean/,
+  );
+  assert.match(publish, /不一致や失敗、レビュー対象外の変更.*変更の保全.*停止し、PR を作成しない/);
   assert.match(publish, /PR の base は開始時に確認した default branch、head は Issue 用ブランチ/);
   assert.match(publish, /`Closes`、`Fixes`、`Resolves` 等の Issue closing keyword を含めない/);
   assert.match(publish, /PR の merge と Issue の Close は別のライフサイクル/);
