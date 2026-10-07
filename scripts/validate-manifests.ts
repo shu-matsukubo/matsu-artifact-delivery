@@ -3,6 +3,7 @@ import { lstat, readFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep, win32 } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js';
+import { parse as parseYaml } from 'yaml';
 import type { CodexManifest, McpManifest, PluginManifest } from './manifest-types.ts';
 
 const repository = fileURLToPath(new URL('../', import.meta.url));
@@ -64,6 +65,14 @@ export async function validateManifests(root: string) {
   const allowed = new Set<string>([...identity, 'id', 'skills', 'apps', 'mcpServers', 'interface']);
   for (const key of Object.keys(codex)) assert.ok(allowed.has(key), 'Unsupported Codex field: ' + key);
   for (const key of identity) assert.deepEqual(codex[key], manifest[key], 'Inconsistent manifest ' + key);
+  if (manifest.name === 'expert-escalation') {
+    const skillMetadata = parseYaml(
+      await readFile(join(root, 'skills/expert-escalation/agents/openai.yaml'), 'utf8'),
+    ) as { interface?: { display_name?: unknown } };
+    const displayName = skillMetadata?.interface?.display_name;
+    assert.ok(typeof displayName === 'string' && displayName.trim(), 'Missing Skill display_name');
+    assert.equal(codex.interface.displayName, displayName, 'Inconsistent Skill/Plugin display name');
+  }
   assert.equal(codex.skills, './skills/');
   await packagePath(root, codex.skills, true);
   let mcp;

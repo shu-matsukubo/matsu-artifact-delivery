@@ -202,3 +202,17 @@ await test('VER-U01: both plugins synchronize canonical metadata and adopt only 
     }
   }
 });
+
+await test('VER-U02: Escalation plugin display name is generated from Skill metadata', async (t) => {
+  const plugin = await stagePlugin(t, 'expert-escalation');
+  const metadataPath = join(plugin.root, 'skills/expert-escalation/agents/openai.yaml');
+  const original = await read(metadataPath);
+  const changed = original.replace('相談役への相談', '変更後の相談名');
+  assert.notEqual(changed, original);
+  await writeFile(metadataPath, changed);
+  await assert.rejects(loadPlugin(plugin.root), /Inconsistent Skill\/Plugin display name/);
+  await assert.rejects(syncManifests(plugin.root, { check: true }), /Outdated compatibility manifest/);
+  await syncManifests(plugin.root);
+  const synchronized = await loadPlugin(plugin.root);
+  assert.equal(synchronized.codex.interface.displayName, '変更後の相談名');
+});
