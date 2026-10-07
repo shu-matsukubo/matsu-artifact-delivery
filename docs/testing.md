@@ -156,6 +156,7 @@ npm run ci:select -- --all
 | HAR-U01〜HAR-U08         | YAML / Markdown、相対パス、参照循環・切断、metadata 不整合、契約欠落・順序変更を拒否                           | [検証器の単体試験](../test/infrastructure/harness.test.ts)                                |
 | PKG-U01〜PKG-U04         | marketplace、Plugin Agent 登録不要とリポジトリ Codex 設定の配布外確認、README 参照、ID 対応                    | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U01                  | スケジューラ限定の明示起動、GitHub Plugin によるリモート状態管理、担当モデルと責務境界                         | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
+| SCH-U02                  | プラグイン Issue への対象限定、実装中・merge 済み PR がある Issue の選定除外                                   | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 
 ### 既存 MCP の対応表
 

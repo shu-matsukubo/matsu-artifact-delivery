@@ -89,9 +89,14 @@ await test('SCH-U01: scheduled Issue processing is explicit and preserves remote
   assert.match(body, /GitHub Plugin.*read\/write capability/s);
   assert.match(body, /git、`gh`、ブラウザー等へフォールバックせず停止/);
   assert.match(body, /default branch とその最新コミット SHA/);
+  assert.match(body, /取得したコミット SHA と一致する新しい隔離作業ツリー/);
+  assert.match(body, /前回の作業ブランチ、ローカル HEAD、未マージまたは破棄済み作業の変更は引き継がない/);
+  assert.match(body, /取得した SHA から作成する/);
   assert.match(body, /同名ブランチが既にある場合は再利用・上書きせず停止/);
   assert.match(body, /`git push` は使用しない/);
-  assert.match(body, /レビュー済みの変更が反映済みであることを確認してから、Issue を参照する Open PR を作成/);
+  assert.match(body, /作成したコミット SHA を記録/);
+  assert.match(body, /リモートブランチの先端 SHA が記録したコミット SHA と一致/);
+  assert.match(body, /その差分がレビュー済みの差分と一致することを確認してから、Issue を参照する Open PR を作成/);
   assert.match(body, /`Closes`、`Fixes`、`Resolves` 等の Issue closing keyword を含めない/);
   assert.match(body, /Issue はこの Skill では閉じず/);
   assert.match(body, /plugin-maintenance/);
@@ -107,4 +112,20 @@ await test('SCH-U01: scheduled Issue processing is explicit and preserves remote
   };
   assert.deepEqual([codex.model, codex.model_reasoning_effort], ['gpt-6.1-sol', 'xhigh']);
   assert.deepEqual([implementer.model, implementer.model_reasoning_effort], ['gpt-6-luna', 'medium']);
+});
+
+await test('SCH-U02: scheduled selection excludes in-progress and merged implementations and non-plugin Issues', async () => {
+  const { body } = frontmatter(await read(join(repository, '.agents/skills/scheduled-issue-processing/SKILL.md')));
+  const selection = body.split('\n').find((line) => line.startsWith('3. '));
+  assert.ok(selection, 'Missing Issue selection step');
+  assert.match(selection, /プラグインの新規作成・修正に該当する候補だけを対象/);
+  assert.match(selection, /インフラ、CI、リポジトリ文書のみの Issue は対象外/);
+  assert.match(selection, /関連付けられた実装 PR を、ブランチ名にかかわらず確認/);
+  assert.match(selection, /Open の実装 PR がある候補.*merge 済みの実装 PR があり人間の Close 待ちの候補は除外/);
+
+  const implementer = parseToml(await read(join(repository, '.codex/agents/issue-implementer.toml'))) as {
+    developer_instructions: string;
+  };
+  assert.match(implementer.developer_instructions, /プラグインの新規作成・修正に該当しない場合は実装を開始せず/);
+  assert.match(implementer.developer_instructions, /対象外であることを親エージェントに返す/);
 });

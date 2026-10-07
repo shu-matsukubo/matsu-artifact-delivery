@@ -15,6 +15,6 @@ Codex のリポジトリ用スキルは `.agents/skills/` に置く。配布す�
 
 リポジトリ用スキルはリポジトリの作業手順を定義し、責務を分けて他のスキルと連携する。`SKILL.md` にスキルの前提と手順を記し、手順の詳細を references、再利用する文面を assets に分ける。設計資料と実行手順を重複して記述しない。
 
-定期 Issue 処理 Skill はスケジューラが名前を明示して起動する。`.agents/skills/scheduled-issue-processing/SKILL.md` が順序と停止条件を調整し、実装とレビューはそれぞれ `plugin-maintenance` と `plugin-review` に委ねる。モデルと推論レベルは `.codex/config.toml` と `.codex/agents/` で設定する。
+定期 Issue 処理 Skill はスケジューラが名前を明示して起動する。`.agents/skills/scheduled-issue-processing/SKILL.md` がプラグイン Issue の選定、順序と停止条件を調整し、実装とレビューはそれぞれ `plugin-maintenance` と `plugin-review` に委ねる。モデルと推論レベルは `.codex/config.toml` と `.codex/agents/` で設定する。
 
 この構成は[Codex のスキル配置・構成](https://developers.openai.com/codex/skills)、[スキル仕様](https://agentskills.io/specification)、[プラグインのスキル作成ガイド](https://developers.openai.com/plugins/build/skills)に従う。Codex はリポジトリの `.agents/skills/` を探索し、スキルは `SKILL.md` と任意の `references/`、`assets/`、`scripts/` から構成できる。
