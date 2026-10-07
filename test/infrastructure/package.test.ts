@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { access, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { inside, json, loadPlugin, localLinks, read, repository } from '../lib/plugin.ts';
+import { files, inside, json, loadPlugin, localLinks, read, repository, stagePlugin } from '../lib/plugin.ts';
 
 import type { Marketplace, PackageMetadata } from '../../scripts/manifest-types.ts';
 import type { FileContract } from '../lib/types.ts';
@@ -26,13 +26,18 @@ await test('PKG-U01: marketplace discovers every package with matching metadata 
   }
 });
 
-await test('PKG-U02: Workflow and Escalation prompt roles need no Custom Agent registration', async () => {
+await test('PKG-U02: project Codex settings stay outside packages; prompt roles need no Custom Agent registration', async (t) => {
   const catalog = await json<Marketplace>(join(repository, '.agents/plugins/marketplace.json'));
+  await access(join(repository, '.codex/config.toml'));
   for (const entry of catalog.plugins) {
-    const plugin = await loadPlugin(inside(repository, entry.source.path));
+    const plugin = await stagePlugin(t, entry.name);
     assert.deepEqual([...plugin.agents.keys()], []);
+    const packagedFiles = await files(plugin.root);
+    assert.ok(
+      !packagedFiles.some((path) => path.startsWith('.codex/')),
+      `Repository Codex settings must not be packaged: ${entry.name}`,
+    );
   }
-  await assert.rejects(access(join(repository, '.codex/config.toml')), { code: 'ENOENT' });
 });
 
 await test('PKG-U03: Plugin documentation resolves local links and explains reviewer permissions', async () => {
