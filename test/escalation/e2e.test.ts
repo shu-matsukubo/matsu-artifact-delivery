@@ -11,6 +11,8 @@ await test('EX-E01: standalone package discovers the Skill, its advisor and all 
   await localLinks(plugin.root, 'README.md');
   const skill = plugin.skills.get('expert-escalation')!;
   assert.equal(skill.settings.policy.allow_implicit_invocation, true);
+  assert.equal(plugin.codex.interface.displayName, '相談役への相談');
+  assert.equal(plugin.codex.interface.displayName, skill.settings.interface.display_name);
   assert.deepEqual(
     await walkReferences(skill.root),
     (await files(skill.root)).filter((file) => file.endsWith('.md')),

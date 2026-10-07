@@ -1,5 +1,5 @@
 interface:
-  display_name: "上位モデルへの相談"
+  display_name: "相談役への相談"
   short_description: "親からの明示依頼で設計・リスクの論点を読み取り専用の相談役へ渡す"
 
 policy:

@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { validatePortable } from './validate-manifests.ts';
+import { parse as parseYaml } from 'yaml';
 
 import type { CodexManifest, McpManifest, PluginManifest } from './manifest-types.ts';
 
@@ -10,6 +11,15 @@ const repository = fileURLToPath(new URL('../', import.meta.url));
 const names = ['artifact-workflow', 'expert-escalation'];
 const readJson = async <T>(path: string): Promise<T> => JSON.parse(await readFile(path, 'utf8'));
 const serialize = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
+
+async function escalationDisplayName(root: string) {
+  const metadata = parseYaml(await readFile(join(root, 'skills/expert-escalation/agents/openai.yaml'), 'utf8')) as {
+    interface?: { display_name?: unknown };
+  };
+  const displayName = metadata?.interface?.display_name;
+  assert.ok(typeof displayName === 'string' && displayName.trim(), 'Missing Skill display_name');
+  return displayName;
+}
 
 export async function syncManifests(root: string, { adoptCachebuster = false, check = false } = {}) {
   const canonicalPath = join(root, 'plugin.json');
@@ -29,13 +39,14 @@ export async function syncManifests(root: string, { adoptCachebuster = false, ch
   const { $schema: _schema, extensions: _extensions, ...identity } = manifest;
   // Preserve Codex-only presentation fields, refreshing all portable metadata.
   const { id, skills, apps, mcpServers, interface: display } = compatibility;
+  const displayName = manifest.name === 'expert-escalation' ? await escalationDisplayName(root) : display.displayName;
   const generated = {
     ...identity,
     ...(id === undefined ? {} : { id }),
     skills,
     ...(apps === undefined ? {} : { apps }),
     ...(mcpServers === undefined ? {} : { mcpServers }),
-    interface: { ...display, longDescription: manifest.description, developerName: manifest.author.name },
+    interface: { ...display, displayName, longDescription: manifest.description, developerName: manifest.author.name },
   };
   const outputs = new Map<string, unknown>([[compatibilityPath, generated]]);
   if (adoptCachebuster) outputs.set(canonicalPath, manifest);
