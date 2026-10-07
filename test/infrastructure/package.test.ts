@@ -88,6 +88,38 @@ await test('SCH-U01: scheduled Issue processing is explicit and preserves remote
   assert.match(metadata.description, /通常の Issue 対応や一般的な開発作業には使用しない/);
   assert.match(body, /GitHub Plugin.*read\/write capability/s);
   assert.match(body, /git、`gh`、ブラウザー等へフォールバックせず停止/);
+
+  const steps = body.split('\n').filter((line) => /^\d+\. /.test(line));
+  const startup = [
+    /GitHub Plugin の利用可否/,
+    /未完了作業の有無/,
+    /リポジトリの Open PR/,
+    /git status --porcelain=v1 --untracked-files=all/,
+    /`AI処理可能` ラベル付きの Open Issue/,
+    /default branch とその最新コミット SHA/,
+  ].map((contract) => {
+    const index = steps.findIndex((step) => contract.test(step));
+    assert.ok(index >= 0, `Missing startup contract: ${contract}`);
+    return index;
+  });
+  assert.ok(startup.every((index, position) => position === 0 || index > startup[position - 1]!));
+  const resume = steps[startup[1]!]!;
+  assert.match(resume, /作業記録.*実行状態.*ローカル.*GitHub Plugin.*照合/);
+  assert.match(resume, /制限到達、エラー、その他の中断/);
+  assert.match(resume, /一意に特定.*新しい Issue を選ばず.*再開/);
+  assert.match(resume, /確認できた既存ブランチのみ再利用/);
+  assert.match(resume, /その作業によるローカル変更を利用/);
+  assert.match(resume, /現在の差分に対する検証・レビュー完了を確認できなければ/);
+  assert.match(resume, /曖昧.*停止して状況を報告/);
+  assert.match(resume, /初回は記録と未完了作業の痕跡がないことを確認/);
+  assert.match(resume, /未完了作業がないと確認できた場合だけ/);
+  const clean = steps[startup[3]!]!;
+  assert.match(clean, /staged、unstaged、untracked file/);
+  assert.match(clean, /差分があれば.*人間による確認が必要.*終了/);
+  assert.match(body, /`reset`.*`checkout`.*`restore`.*`stash`.*`clean`.*未追跡ファイルの削除.*行わない/);
+  assert.match(body, /作業ディレクトリ外の永続的な作業記録/);
+  assert.match(body, /開始前と各段階の前後.*記録/);
+  assert.match(body, /PR 作成済み.*完了を記録.*終了/);
   assert.match(body, /default branch とその最新コミット SHA/);
   assert.match(body, /取得したコミット SHA と一致する新しい隔離作業ツリー/);
   assert.match(body, /前回の作業ブランチ、ローカル HEAD、未マージまたは破棄済み作業の変更は引き継がない/);
@@ -116,7 +148,7 @@ await test('SCH-U01: scheduled Issue processing is explicit and preserves remote
 
 await test('SCH-U02: scheduled selection excludes in-progress and merged implementations and non-plugin Issues', async () => {
   const { body } = frontmatter(await read(join(repository, '.agents/skills/scheduled-issue-processing/SKILL.md')));
-  const selection = body.split('\n').find((line) => line.startsWith('3. '));
+  const selection = body.split('\n').find((line) => /^\d+\. GitHub Plugin で `AI処理可能`/.test(line));
   assert.ok(selection, 'Missing Issue selection step');
   assert.match(selection, /プラグインの新規作成・修正に該当する候補だけを対象/);
   assert.match(selection, /インフラ、CI、リポジトリ文書のみの Issue は対象外/);
