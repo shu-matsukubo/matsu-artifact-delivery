@@ -155,7 +155,7 @@ npm run ci:select -- --all
 | RUN-U01〜RUN-U08         | 引数、層別実行、MCP 登録の網羅性・欠落・重複・入れ子、MCP 限定 CLI の登録漏れ拒否、環境選択、失敗伝搬、dry-run | [実行コマンドの単体試験](../test/infrastructure/runner.test.ts)                           |
 | HAR-U01〜HAR-U08         | YAML / Markdown、相対パス、参照循環・切断、metadata 不整合、契約欠落・順序変更を拒否                           | [検証器の単体試験](../test/infrastructure/harness.test.ts)                                |
 | PKG-U01〜PKG-U04         | marketplace、Plugin Agent 登録不要とリポジトリ Codex 設定の配布外確認、README 参照、ID 対応                    | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
-| SCH-U01                  | 明示起動、未完了作業の再開、新規開始時の clean 確認、変更破棄・ブランチ衝突の拒否、リモート状態管理と担当境界  | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
+| SCH-U01                  | 明示起動、履歴・現状による再開、状態ファイル禁止、clean / dirty 分岐、変更保全・反映と担当境界                 | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U02                  | プラグイン Issue への対象限定、実装中・merge 済み PR がある Issue の選定除外                                   | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 
 ### 既存 MCP の対応表

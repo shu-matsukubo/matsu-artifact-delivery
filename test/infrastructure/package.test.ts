@@ -79,7 +79,7 @@ await test('PKG-U04: all contract IDs and runnable suites appear in the test inv
   }
 });
 
-await test('SCH-U01: scheduled Issue processing is explicit and preserves remote-state and role boundaries', async () => {
+await test('SCH-U01: 明示起動、現在状態による再開判定と担当境界を維持する', async () => {
   const { metadata, body } = frontmatter(
     await read(join(repository, '.agents/skills/scheduled-issue-processing/SKILL.md')),
   );
@@ -89,7 +89,7 @@ await test('SCH-U01: scheduled Issue processing is explicit and preserves remote
   assert.match(body, /GitHub Plugin.*read\/write capability/s);
   assert.match(body, /git、`gh`、ブラウザー等へフォールバックせず停止/);
 
-  const steps = body.split('\n').filter((line) => /^\d+\. /.test(line));
+  const steps = body.split(/(?=^\d+\. |^## )/m).filter((section) => /^\d+\. /.test(section));
   const startup = [
     /GitHub Plugin の利用可否/,
     /未完了作業の有無/,
@@ -104,33 +104,47 @@ await test('SCH-U01: scheduled Issue processing is explicit and preserves remote
   });
   assert.ok(startup.every((index, position) => position === 0 || index > startup[position - 1]!));
   const resume = steps[startup[1]!]!;
-  assert.match(resume, /作業記録.*実行状態.*ローカル.*GitHub Plugin.*照合/);
+  assert.match(body, /スケジューラ \/ オートメーションから同一スレッドで繰り返し実行/);
+  assert.match(body, /同一スレッドの過去の会話・実行ログ.*前回実行時の結果や中断内容.*Memory.*補助情報/);
+  assert.match(body, /状態の正本ではなく/);
+  assert.match(body, /過去ログや Memory 等が利用できないこと自体をエラーや停止理由にしない/);
+  assert.match(body, /GitHub とローカル workspace の現在状態を最終的な判断材料/);
+  assert.match(body, /独自の状態ファイルやチェックポイントファイル.*作成・永続化しない/);
+  assert.doesNotMatch(body, /作業ディレクトリ外の永続的な作業記録|記録を保存できない場合は停止/);
+  assert.doesNotMatch(body, /開始前と各段階の前後.*記録|完了記録|記録の base branch|記録したコミット SHA/);
+  assert.match(
+    resume,
+    /利用可能な補助情報.*GitHub Plugin.*Issue・PR・branch・commit.*ローカル HEAD・branch・worktree.*照合/,
+  );
   assert.match(resume, /制限到達、エラー、その他の中断/);
-  assert.match(resume, /一意に特定.*新しい Issue を選ばず.*再開/);
+  assert.match(
+    resume,
+    /過去ログ等と現在状態から.*Open Issue.*branch.*workspace.*差分.*安全に一意に特定.*新しい Issue を選ばず.*再開/,
+  );
   assert.match(resume, /確認できた既存ブランチのみ再利用/);
   assert.match(resume, /その作業によるローカル変更を利用/);
   assert.match(resume, /現在の差分に対する検証・レビュー完了を確認できなければ/);
-  assert.match(resume, /曖昧.*停止して状況を報告/);
-  assert.match(resume, /初回は記録と未完了作業の痕跡がないことを確認/);
-  assert.match(resume, /未完了作業がないと確認できた場合だけ/);
+  assert.match(resume, /前回作業を一意に特定できない場合.*staged \/ unstaged \/ untracked.*確認/);
+  assert.match(resume, /clean なら未完了作業なしとして手順 3 へ進む/);
+  assert.match(resume, /変更がある場合は由来を推測せず、人間による確認が必要と報告して停止/);
   const clean = steps[startup[3]!]!;
   assert.match(clean, /staged、unstaged、untracked file/);
   assert.match(clean, /差分があれば.*人間による確認が必要.*終了/);
+  assert.match(clean, /新規開始に適用.*正当に特定した再開作業には適用しない/);
   assert.match(body, /`reset`.*`checkout`.*`restore`.*`stash`.*`clean`.*未追跡ファイルの削除.*行わない/);
-  assert.match(body, /作業ディレクトリ外の永続的な作業記録/);
-  assert.match(body, /開始前と各段階の前後.*記録/);
-  assert.match(body, /PR 作成済み.*完了を記録.*終了/);
+  assert.match(body, /異常状態は自動修復しない/);
+  assert.match(resume, /PR 作成済み.*base・head.*差分が検証・レビュー済みの作業と一致.*レビュー待ちとして終了/);
   assert.match(body, /default branch とその最新コミット SHA/);
   assert.match(body, /取得したコミット SHA と一致する新しい隔離作業ツリー/);
   assert.match(body, /前回の作業ブランチ、ローカル HEAD、未マージまたは破棄済み作業の変更は引き継がない/);
   assert.match(body, /取得した SHA から作成する/);
   assert.match(body, /同名ブランチが既にある場合は再利用・上書きせず停止/);
   assert.match(body, /`git push` は使用しない/);
-  assert.match(body, /作成したコミット SHA を記録/);
-  assert.match(body, /リモートブランチの先端 SHA が記録したコミット SHA と一致/);
+  assert.match(body, /リモートブランチの先端 SHA が作成したコミット SHA と一致/);
   assert.match(body, /その差分がレビュー済みの差分と一致することを確認してから、Issue を参照する Open PR を作成/);
   assert.match(body, /`Closes`、`Fixes`、`Resolves` 等の Issue closing keyword を含めない/);
   assert.match(body, /Issue はこの Skill では閉じず/);
+  assert.match(body, /状態管理用のラベルは追加しない/);
   assert.match(body, /plugin-maintenance/);
   assert.match(body, /plugin-review/);
 
