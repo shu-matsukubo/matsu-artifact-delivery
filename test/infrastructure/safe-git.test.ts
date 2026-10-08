@@ -46,7 +46,18 @@ await test('SGT-U01: Push は検証済み URL と単一の commit:branch を使�
   const push = calls.find((args) => args.includes('push'))!;
   assert.deepEqual(push.slice(-3), ['--', url, `${head}:refs/heads/${branch}`]);
   for (const option of ['--no-verify', '--no-follow-tags', '--recurse-submodules=no']) assert.ok(push.includes(option));
-  assert.ok(!push.some((arg) => /force|mirror|delete|all|tags$/.test(arg) && arg !== '--no-follow-tags'));
+  assert.ok(push.includes(`--force-with-lease=refs/heads/${branch}:`));
+  assert.ok(!push.some((arg) => /^(?:--force|\+|--mirror|--delete|--all|--tags)(?:$|[^-])/.test(arg)));
+  const existing = fixture();
+  existing.replies.set(
+    `ls-remote --symref ${url} HEAD refs/heads/${branch}`,
+    `ref: refs/heads/main\tHEAD\n${head}\tHEAD\n${head}\trefs/heads/${branch}`,
+  );
+  existing.replies.set(`merge-base --is-ancestor ${head} ${head}`, '');
+  safePush({ branch, dryRun: false }, repository, existing.run);
+  assert.ok(
+    existing.calls.find((args) => args.includes('push'))!.includes(`--force-with-lease=refs/heads/${branch}:${head}`),
+  );
 });
 
 await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不一致では Push しない', () => {
@@ -158,6 +169,12 @@ await test('SGT-U06: CLI は未知の引数・別 cwd・Git 設定の環境変�
       env: { ...process.env, GIT_CONFIG_COUNT: '0' },
       message: /環境変数/,
     },
+    {
+      args: ['--branch', branch],
+      cwd: repository,
+      env: { ...process.env, GIT_EXEC_PATH: join(repository, 'plugins') },
+      message: /環境変数/,
+    },
   ]) {
     const result = spawnSync(process.execPath, [script, ...options.args], {
       cwd: options.cwd,
@@ -167,6 +184,18 @@ await test('SGT-U06: CLI は未知の引数・別 cwd・Git 設定の環境変�
     assert.equal(result.status, 1);
     assert.match(result.stderr, options.message);
   }
+});
+
+await test('SGT-U07: 確認後に同名ブランチが作成された場合は Push を拒否する', async (t) => {
+  const f = await gitFixture(t);
+  const run: Run = (args, cwd) => {
+    const result = f.run(args, cwd);
+    if (args[0] === 'ls-remote')
+      execFileSync('git', ['fetch', f.cwd, `main:refs/heads/${branch}`], { cwd: f.remote, stdio: 'pipe' });
+    return result;
+  };
+  assert.throws(() => safePush({ branch, dryRun: false }, f.cwd, run));
+  assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`).split('\t')[0], f.base);
 });
 
 await test('SGT-U04: non-fast-forward・Git 失敗は成功扱いせず、remote を変更しない', async (t) => {
@@ -200,6 +229,8 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['git', 'reset', '--hard'],
     ['git', 'clean', '-fd'],
     ['git', 'branch', '-D', branch],
+    ['git', 'branch', '-M', 'source', 'target'],
+    ['git', 'branch', '-C', 'source', 'target'],
     ['git', '-C', '.', 'push'],
     ['git', 'send-pack', url],
   ];

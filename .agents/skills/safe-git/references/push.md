@@ -11,8 +11,9 @@
 - `origin` の取得先と Push 先が、それぞれ `shu-matsukubo/matsu-artifact-delivery` の単一 GitHub URL である。HTTPS または Git SSH の固定形式を許可し、URL 書き換え設定、複数 URL、別リポジトリは拒否する。
 - Push 先が作業ブランチであり、リモートから取得した default branch ではなく、`main`、`master`、`develop`、`development`、`release`、`releases`、`prod`、`production`、`stable` とその配下ではない。
 - 既存のリモートブランチを更新する場合、その先端が送信する commit の祖先である。リモートの commit がローカルにない場合は、対象を確認して fetch してから検証し直す。
+- 検証時のリモート先端を `--force-with-lease` の期待値に指定する。新規作成時は空値を指定し、検証後にブランチが作成・更新された場合は Push を拒否する。
 
-Push は検証した URL と `<commit SHA>:refs/heads/<作業ブランチ>` 一件だけを指定する。強制更新、削除、mirror、タグ送信、submodule の Push を行わない。pre-push hook は実行しない。GitHub 側の追加の保護ルールはサーバー側で適用される。
+Push は検証した URL と `<commit SHA>:refs/heads/<作業ブランチ>` 一件だけを指定する。祖先関係の確認と先端の一致を条件とし、強制的な履歴の書き換え、削除、mirror、タグ送信、submodule の Push を行わない。pre-push hook は実行しない。GitHub 側の追加の保護ルールはサーバー側で適用される。
 
 `--dry-run` はリモートの読み取りを含む検証を行い、更新せず送信予定を JSON で返す。通常実行は成功時に送信結果を JSON で返す。引数は `--branch` と任意の `--dry-run` に限定する。
 

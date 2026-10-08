@@ -15,10 +15,10 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = [["git", "git.exe"], "branch", ["-d", "-D", "--delete", "-f", "--force"]],
+    pattern = [["git", "git.exe"], "branch", ["-d", "-D", "--delete", "-f", "--force", "-M", "-C"]],
     decision = "forbidden",
     justification = "ブランチの削除・強制更新は禁止です。既存の作業を保全してください。",
-    match = ["git branch -D topic", "git branch --force topic HEAD"],
+    match = ["git branch -D topic", "git branch --force topic HEAD", "git branch -M source target", "git branch -C source target"],
 )
 
 prefix_rule(

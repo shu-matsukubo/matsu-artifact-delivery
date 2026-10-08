@@ -43,7 +43,7 @@ const runGit: Run = (args, cwd) => {
   // Git の探索先・設定を環境変数で差し替えない。認証用変数は維持する。
   if (
     Object.keys(process.env).some((key) =>
-      /^GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG(?:_.*)?|NAMESPACE|REPLACE_REF_BASE|SHALLOW_FILE)$/i.test(
+      /^GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG(?:_.*)?|NAMESPACE|REPLACE_REF_BASE|SHALLOW_FILE|EXEC_PATH)$/i.test(
         key,
       ),
     )
@@ -82,14 +82,16 @@ export function safePush(options: Options, root = repository, run: Run = runGit)
   if (!defaultBranch || defaultBranch.toLowerCase() === options.branch.toLowerCase())
     throw new Error('default branch を確認できない、または Push 先が default branch です。');
   const remoteLine = refs.split('\n').find((line) => line.endsWith('\trefs/heads/' + options.branch));
+  let expectedRemoteCommit = '';
   if (remoteLine) {
     const remoteCommit = remoteLine.split('\t')[0]!;
     if (!/^[a-f0-9]{40,64}$/.test(remoteCommit)) throw new Error('リモートの commit SHA が不正です。');
     git('merge-base', '--is-ancestor', remoteCommit, commit);
+    expectedRemoteCommit = remoteCommit;
   }
   const plan = { remote: 'origin', url: pushUrl, branch: options.branch, commit };
   if (!options.dryRun) {
-    // URL と単一 refspec を明示し、remote の mirror/refspec と自動タグ送信を使わない。
+    // 検証後に先端が変わった場合は拒否する。URL と単一 refspec を明示する。
     git(
       '-c',
       'push.gpgSign=false',
@@ -98,6 +100,7 @@ export function safePush(options: Options, root = repository, run: Run = runGit)
       '--no-verify',
       '--no-follow-tags',
       '--recurse-submodules=no',
+      '--force-with-lease=refs/heads/' + options.branch + ':' + expectedRemoteCommit,
       '--',
       pushUrl,
       commit + ':refs/heads/' + options.branch,
