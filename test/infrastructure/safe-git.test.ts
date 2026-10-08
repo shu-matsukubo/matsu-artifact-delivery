@@ -53,7 +53,7 @@ await test('SGT-U01: Push は検証済み URL と単一の commit:branch を使�
     `ls-remote --symref ${url} HEAD refs/heads/${branch}`,
     `ref: refs/heads/main\tHEAD\n${head}\tHEAD\n${head}\trefs/heads/${branch}`,
   );
-  existing.replies.set(`merge-base --is-ancestor ${head} ${head}`, '');
+  existing.replies.set(`--no-replace-objects merge-base --is-ancestor ${head} ${head}`, '');
   safePush({ branch, dryRun: false }, repository, existing.run);
   assert.ok(
     existing.calls.find((args) => args.includes('push'))!.includes(`--force-with-lease=refs/heads/${branch}:${head}`),
@@ -108,6 +108,16 @@ await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不�
       command,
     );
   }
+  const ssh = fixture();
+  const sshUrl = 'git@github.com:shu-matsukubo/matsu-artifact-delivery.git';
+  ssh.replies.set('remote get-url --all origin', sshUrl);
+  ssh.replies.set('remote get-url --push --all origin', sshUrl);
+  ssh.replies.set('config --name-only --list', 'core.sshCommand');
+  assert.throws(() => safePush({ branch, dryRun: false }, repository, ssh.run), /SSH コマンド/);
+  assert.equal(
+    ssh.calls.some((args) => args.includes('ls-remote') || args.includes('push')),
+    false,
+  );
 });
 
 async function gitFixture(t: TestContext) {
@@ -175,6 +185,12 @@ await test('SGT-U06: CLI は未知の引数・別 cwd・Git 設定の環境変�
       env: { ...process.env, GIT_EXEC_PATH: join(repository, 'plugins') },
       message: /環境変数/,
     },
+    ...['GIT_SSH', 'GIT_SSH_COMMAND', 'GIT_SSH_VARIANT'].map((key) => ({
+      args: ['--branch', branch],
+      cwd: repository,
+      env: { ...process.env, [key]: 'override' },
+      message: /環境変数/,
+    })),
   ]) {
     const result = spawnSync(process.execPath, [script, ...options.args], {
       cwd: options.cwd,
@@ -214,6 +230,21 @@ await test('SGT-U04: non-fast-forward・Git 失敗は成功扱いせず、remote
   };
   f.git('switch', '-c', 'fresh-branch');
   assert.throws(() => safePush({ branch: 'fresh-branch', dryRun: false }, f.cwd, run), /Push rejected/);
+});
+
+await test('SGT-U08: 置換 ref が偽装した祖先関係では Push しない', async (t) => {
+  const f = await gitFixture(t);
+  safePush({ branch, dryRun: false }, f.cwd, f.run);
+  f.git('switch', '-c', 'diverged', f.base);
+  await writeFile(join(f.cwd, 'file'), 'diverged');
+  f.git('commit', '-qam', 'diverged');
+  const divergent = f.git('rev-parse', 'HEAD');
+  f.git('branch', '-f', branch, divergent);
+  f.git('switch', branch);
+  f.git('replace', '--graft', divergent, f.commit);
+  f.git('merge-base', '--is-ancestor', f.commit, divergent);
+  assert.throws(() => safePush({ branch, dryRun: false }, f.cwd, f.run));
+  assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`).split('\t')[0], f.commit);
 });
 
 await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を検証する', async (t) => {

@@ -43,7 +43,7 @@ const runGit: Run = (args, cwd) => {
   // Git の探索先・設定を環境変数で差し替えない。認証用変数は維持する。
   if (
     Object.keys(process.env).some((key) =>
-      /^GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG(?:_.*)?|NAMESPACE|REPLACE_REF_BASE|SHALLOW_FILE|EXEC_PATH)$/i.test(
+      /^GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG(?:_.*)?|NAMESPACE|REPLACE_REF_BASE|SHALLOW_FILE|EXEC_PATH|SSH(?:_COMMAND|_VARIANT)?)$/i.test(
         key,
       ),
     )
@@ -71,12 +71,13 @@ export function safePush(options: Options, root = repository, run: Run = runGit)
   const pushUrl = git('remote', 'get-url', '--push', '--all', 'origin');
   if (!approvedUrls.has(fetchUrl) || !approvedUrls.has(pushUrl))
     throw new Error('origin の取得先・Push 先は対象 GitHub リポジトリの単一 URL に限定します。');
+  const sshTransport = [fetchUrl, pushUrl].some((url) => url.startsWith('git@') || url.startsWith('ssh://'));
   if (
     git('config', '--name-only', '--list')
       .split('\n')
-      .some((key) => key.toLowerCase().startsWith('url.'))
+      .some((key) => key.toLowerCase().startsWith('url.') || (sshTransport && key.toLowerCase() === 'core.sshcommand'))
   )
-    throw new Error('URL の書き換え設定があるため Push できません。');
+    throw new Error('URL の書き換え設定または SSH コマンドの上書きがあるため Push できません。');
   const refs = git('ls-remote', '--symref', pushUrl, 'HEAD', 'refs/heads/' + options.branch);
   const defaultBranch = /^ref: refs\/heads\/([^\s]+)\tHEAD$/m.exec(refs)?.[1];
   if (!defaultBranch || defaultBranch.toLowerCase() === options.branch.toLowerCase())
@@ -86,7 +87,7 @@ export function safePush(options: Options, root = repository, run: Run = runGit)
   if (remoteLine) {
     const remoteCommit = remoteLine.split('\t')[0]!;
     if (!/^[a-f0-9]{40,64}$/.test(remoteCommit)) throw new Error('リモートの commit SHA が不正です。');
-    git('merge-base', '--is-ancestor', remoteCommit, commit);
+    git('--no-replace-objects', 'merge-base', '--is-ancestor', remoteCommit, commit);
     expectedRemoteCommit = remoteCommit;
   }
   const plan = { remote: 'origin', url: pushUrl, branch: options.branch, commit };
