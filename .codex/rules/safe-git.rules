@@ -1,0 +1,36 @@
+# Codex の直接実行を制限する。Push は safe-git Skill のスクリプトを使う。
+prefix_rule(
+    pattern = [["git", "git.exe"], ["push", "send-pack", "receive-pack", "reset", "clean", "checkout", "restore", "stash", "rebase", "filter-branch", "update-ref", "symbolic-ref"]],
+    decision = "forbidden",
+    justification = "直接の Push・破壊的な Git 操作は禁止です。Push は safe-git の検証付きスクリプトを使い、変更を保全してください。",
+    match = ["git push origin codex/example", "git.exe push --force", "git push --delete origin topic", "git reset --hard", "git clean -fd", "git restore file"],
+    not_match = ["git status", "git diff", "git add file", "git commit -m change", "git switch -c codex/example", "node .agents/skills/safe-git/scripts/push.ts --branch codex/example"],
+)
+
+prefix_rule(
+    pattern = [["git", "git.exe"], ["-C", "-c", "--git-dir", "--work-tree", "--bare", "--exec-path", "--config-env", "--no-pager", "--paginate"]],
+    decision = "forbidden",
+    justification = "グローバルオプションで Git コマンドを迂回しないでください。cwd はツールで指定し、Push は safe-git を使ってください。",
+    match = ["git -C . push", "git -c alias.publish=push publish"],
+)
+
+prefix_rule(
+    pattern = [["git", "git.exe"], "branch", ["-d", "-D", "--delete", "-f", "--force"]],
+    decision = "forbidden",
+    justification = "ブランチの削除・強制更新は禁止です。既存の作業を保全してください。",
+    match = ["git branch -D topic", "git branch --force topic HEAD"],
+)
+
+prefix_rule(
+    pattern = [["git", "git.exe"], "tag", ["-d", "--delete", "-f", "--force"]],
+    decision = "forbidden",
+    justification = "タグの削除・強制更新は禁止です。",
+    match = ["git tag --delete v1", "git tag --force v1"],
+)
+
+prefix_rule(
+    pattern = [["git", "git.exe"], "switch", ["-f", "--force", "--discard-changes", "-C", "--force-create"]],
+    decision = "forbidden",
+    justification = "変更を破棄するブランチ切り替えは禁止です。既存の作業を保全してください。",
+    match = ["git switch --discard-changes main", "git switch -C topic"],
+)
