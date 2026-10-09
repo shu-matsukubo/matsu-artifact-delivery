@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { lstatSync, realpathSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { delimiter, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 type Options = { branch: string; dryRun: boolean };
@@ -39,17 +39,21 @@ export function parseArguments(args: string[]): Options {
   return { branch, dryRun };
 }
 
-function trustedExecutable(name: 'Git' | 'SSH') {
+function trustedExecutable(name: 'Git' | 'SSH' | 'Shell') {
   // OS 管理の固定配置を使い、PATH や環境変数から実行ファイルを選ばない。
   const path =
     process.platform === 'win32'
       ? name === 'Git'
         ? 'C:/Program Files/Git/cmd/git.exe'
-        : 'C:/Program Files/Git/usr/bin/ssh.exe'
+        : name === 'SSH'
+          ? 'C:/Program Files/Git/usr/bin/ssh.exe'
+          : 'C:/Program Files/Git/usr/bin/sh.exe'
       : process.platform === 'linux' || process.platform === 'darwin'
         ? name === 'Git'
           ? '/usr/bin/git'
-          : '/usr/bin/ssh'
+          : name === 'SSH'
+            ? '/usr/bin/ssh'
+            : undefined
         : undefined;
   if (!path) throw new Error(`この OS の信頼する ${name} 実行ファイルが定義されていません。`);
   const executable = realpathSync(path);
@@ -81,13 +85,32 @@ const runGit: Run = (args, cwd, sshTransport = false) => {
     throw new Error('Git の実行先・設定を上書きする環境変数が設定されています。');
   try {
     const executable = trustedExecutable('Git');
-    const env = sshTransport ? { ...process.env, GIT_SSH: trustedExecutable('SSH') } : process.env;
-    return execFileSync(executable, args, {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: '0',
+      GCM_INTERACTIVE: '0',
+      GIT_ASKPASS: '',
+      SSH_ASKPASS: '',
+      SSH_ASKPASS_REQUIRE: 'never',
+      ...(sshTransport
+        ? { GIT_SSH_COMMAND: `"${trustedExecutable('SSH').replaceAll('\\', '/')}" -o BatchMode=yes` }
+        : {}),
+    };
+    if (sshTransport && process.platform === 'win32') {
+      // GIT_SSH_COMMAND を解釈する Git for Windows の sh も固定配置から選ぶ。
+      const pathKey = Object.keys(env).find((key) => key.toLowerCase() === 'path');
+      const inheritedPath = pathKey ? env[pathKey] : '';
+      if (pathKey) delete env[pathKey];
+      env.PATH = dirname(trustedExecutable('Shell')) + delimiter + (inheritedPath ?? '');
+    }
+    return execFileSync(executable, ['-c', 'core.askPass=', '-c', 'credential.interactive=false', ...args], {
       cwd,
       env,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      timeout: 60_000,
+      killSignal: 'SIGKILL',
     }).trim();
   } catch (error) {
     throw new Error('Git の検証または Push に失敗しました。状態を確認してから再実行してください。', { cause: error });
@@ -103,6 +126,11 @@ export function safePush(options: Options, root = repository, run: Run = runGit)
   if (lstatSync(grafts, { throwIfNoEntry: false })) throw new Error('info/grafts が存在するため Push できません。');
   if (git('symbolic-ref', '--quiet', '--short', 'HEAD') !== options.branch)
     throw new Error('現在のブランチと --branch が一致しません。');
+  try {
+    git('-c', 'core.fsmonitor=false', 'update-index', '--really-refresh');
+  } catch (error) {
+    throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。', { cause: error });
+  }
   if (git('-c', 'core.fsmonitor=false', 'status', '--porcelain=v1', '--untracked-files=all'))
     throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。');
   const commit = git('rev-parse', '--verify', 'HEAD^{commit}');

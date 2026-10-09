@@ -9,7 +9,7 @@ Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux
 [スクリプト](../scripts/push.ts)は次を確認する。
 
 - スクリプトの配置先が Git リポジトリのルートに対応し、そのルートから実行されている。
-- 現在のブランチが `--branch` と一致し、HEAD が commit を指し、`core.fsmonitor` を無効化した検査で staged / unstaged / untracked の変更がない。
+- 現在のブランチが `--branch` と一致し、HEAD が commit を指し、staged / unstaged / untracked の変更がない。`core.fsmonitor` を無効化し、`update-index --really-refresh` で `assume-unchanged` のファイルも検査してから `status` を確認する。
 - `origin` の取得先と Push 先が、それぞれ `shu-matsukubo/matsu-artifact-delivery` の単一 GitHub URL である。HTTPS または Git SSH の固定形式を許可し、URL 書き換え設定、複数 URL、別リポジトリは拒否する。TLS 検証を無効化する環境変数・Git 設定と SSH コマンドを差し替える環境変数・Git 設定も拒否する。
 - Push 先が作業ブランチであり、リモートから取得した default branch ではなく、`main`、`master`、`develop`、`development`、`release`、`releases`、`prod`、`production`、`stable` とその配下ではない。
 - Git が参照する `info/grafts` が存在しない。worktree では共通 Git ディレクトリの配置先を確認する。
@@ -19,6 +19,8 @@ Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux
 Push は検証した URL と `<commit SHA>:refs/heads/<作業ブランチ>` 一件だけを指定する。祖先関係の確認と先端の一致を条件とし、強制的な履歴の書き換え、削除、mirror、タグ送信、submodule の Push を行わない。pre-push hook は実行しない。GitHub 側の追加の保護ルールはサーバー側で適用される。
 
 `--dry-run` はリモートの読み取りを含む検証を行い、更新せず送信予定を JSON で返す。通常実行は成功時に送信結果を JSON で返す。引数は `--branch` と任意の `--dry-run` に限定する。
+
+認証は対話入力を要求せず、利用可能な credential helper・SSH agent 等を使う。Git の terminal prompt・askpass と credential helper の対話設定を無効化し、SSH は固定実行ファイルに `BatchMode=yes` を指定する。Windows ではコマンドを解釈する `C:/Program Files/Git/usr/bin/sh.exe` も検証し、そのディレクトリを PATH の先頭に置く。各 Git コマンドは60秒でタイムアウトとし、終了しないプロセスを停止して失敗を返す。
 
 ## 失敗時
 

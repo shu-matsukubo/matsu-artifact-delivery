@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import childProcess, { execFileSync, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from 'node:child_process';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { delimiter, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test, { type TestContext } from 'node:test';
@@ -18,6 +19,7 @@ function fixture(root = repository) {
     ['rev-parse --show-toplevel', root],
     ['rev-parse --path-format=absolute --git-path info/grafts', join(root, '.git/info/grafts')],
     ['symbolic-ref --quiet --short HEAD', branch],
+    ['-c core.fsmonitor=false update-index --really-refresh', ''],
     ['-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all', ''],
     ['rev-parse --verify HEAD^{commit}', head],
     ['remote get-url --all origin', url],
@@ -86,6 +88,7 @@ await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不�
     ['rev-parse --show-toplevel', join(repository, 'plugins')],
     ['symbolic-ref --quiet --short HEAD', 'other-branch'],
     ['symbolic-ref --quiet --short HEAD', new Error('detached HEAD')],
+    ['-c core.fsmonitor=false update-index --really-refresh', new Error('index refresh failure')],
     ['-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all', '?? unreviewed.ts'],
     ['remote get-url --all origin', 'https://github.com/other/repository.git'],
     ['remote get-url --push --all origin', 'https://github.com/attacker/repo.git'],
@@ -182,6 +185,191 @@ await test('SGT-U11: 不正な fsmonitor が変更を隠しても Push しない
   assert.equal(f.git('status', '--porcelain=v1'), '');
   assert.throws(() => safePush({ branch, dryRun: false }, f.cwd, f.run), /clean/);
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`), '');
+});
+
+await test('SGT-U13: assume-unchanged の未変更ファイルは許可し、隠れた変更は通信前に拒否する', async (t) => {
+  const f = await gitFixture(t);
+  f.git('update-index', '--assume-unchanged', 'file');
+  safePush({ branch, dryRun: true }, f.cwd, f.run);
+  assert.match(f.git('ls-files', '-v'), /^h file$/);
+  await writeFile(join(f.cwd, 'file'), 'unreviewed change');
+  assert.equal(f.git('status', '--porcelain=v1'), '');
+  const calls: string[][] = [];
+  const run: Run = (args, cwd) => {
+    calls.push(args);
+    return f.run(args, cwd);
+  };
+  assert.throws(() => safePush({ branch, dryRun: false }, f.cwd, run), /clean/);
+  assert.equal(
+    calls.some((args) => args.includes('ls-remote') || args.includes('push')),
+    false,
+  );
+  assert.equal(await read(join(f.cwd, 'file')), 'unreviewed change');
+  assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`), '');
+});
+
+await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失敗として返す', async (t) => {
+  const execute = childProcess.execFileSync;
+  // 通信だけをローカルの認証・SSH 設定検査に置換し、runGit の設定で実プロセスを動かす。
+  async function intercept(t: TestContext) {
+    const f = await gitFixture(t);
+    const replies = fixture(f.cwd).replies;
+    let probe: (file: string, args: readonly string[], options: ExecFileSyncOptionsWithStringEncoding) => void;
+    t.mock.method(childProcess, 'execFileSync', ((
+      file: string,
+      args: readonly string[],
+      options: ExecFileSyncOptionsWithStringEncoding,
+    ) => {
+      const index = args.indexOf('ls-remote');
+      if (index >= 0) {
+        probe(file, args.slice(0, index), options);
+        return replies.get(`ls-remote --symref ${url} HEAD refs/heads/${branch}`)!;
+      }
+      assert.ok(!args.includes('push'), '失敗した認証の後に Push しない');
+      return execute(file, args, options);
+    }) as typeof execFileSync);
+    syncBuiltinESMExports();
+    t.after(() => {
+      t.mock.restoreAll();
+      syncBuiltinESMExports();
+    });
+    return {
+      ...f,
+      setProbe: (value: typeof probe) => {
+        probe = value;
+      },
+    };
+  }
+
+  await t.test('HTTPS の terminal・askpass 設定を継承しても認証入力を要求しない', async (t) => {
+    const f = await intercept(t);
+    const marker = join(f.cwd, '.git/asked');
+    const askpass = join(f.cwd, '.git/askpass');
+    await writeFile(marker, '');
+    await writeFile(askpass, `#!/bin/sh\nprintf asked >> '${marker.replaceAll('\\', '/')}'\nprintf credential\n`, {
+      mode: 0o755,
+    });
+    const before = { ...process.env };
+    t.after(() => {
+      process.env = before;
+    });
+    process.env.GIT_TERMINAL_PROMPT = '1';
+    process.env.GCM_INTERACTIVE = 'always';
+    process.env.GIT_ASKPASS = askpass;
+    process.env.SSH_ASKPASS = askpass;
+    f.git('config', 'core.askPass', askpass);
+    f.setProbe((file, args, options) => {
+      assert.equal(options.env?.GCM_INTERACTIVE, '0');
+      execute(file, [...args, '-c', 'credential.helper=', 'credential', 'fill'], {
+        ...options,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        input: 'protocol=https\nhost=safe-git.invalid\n\n',
+      });
+    });
+    assert.throws(
+      () => safePush({ branch, dryRun: true }, f.cwd),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /Git の検証または Push に失敗/);
+        assert.match(
+          String((error.cause as { stderr: string }).stderr),
+          /terminal prompts disabled|unable to get password from user/,
+        );
+        return true;
+      },
+    );
+    assert.equal(await read(marker), '');
+    const helper = join(f.cwd, '.git/credential-helper');
+    await writeFile(helper, '#!/bin/sh\nprintf "username=test\\npassword=test\\n\\n"\n', { mode: 0o755 });
+    f.setProbe((file, args, options) => {
+      const output = execute(
+        file,
+        [
+          ...args,
+          '-c',
+          'credential.helper=',
+          '-c',
+          `credential.helper=!"${helper.replaceAll('\\', '/')}"`,
+          'credential',
+          'fill',
+        ],
+        {
+          ...options,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          input: 'protocol=https\nhost=safe-git.invalid\n\n',
+        },
+      );
+      assert.match(output, /username=test/);
+    });
+    safePush({ branch, dryRun: true }, f.cwd);
+    assert.equal(await read(marker), '');
+  });
+
+  await t.test('SSH の設定で BatchMode が無効でも固定 SSH で対話を止める', async (t) => {
+    const f = await intercept(t);
+    f.git('remote', 'set-url', 'origin', 'git@github.com:shu-matsukubo/matsu-artifact-delivery.git');
+    const config = join(f.cwd, '.git/ssh-config');
+    await writeFile(config, 'Host *\n  BatchMode no\n');
+    const bin = join(f.cwd, '.git/bin');
+    await mkdir(bin);
+    const marker = join(bin, 'executed');
+    await writeFile(marker, '');
+    const fakeScript = join(bin, 'fake.ts');
+    await copyFile(process.execPath, join(bin, process.platform === 'win32' ? 'sh.exe' : 'sh'));
+    await writeFile(
+      fakeScript,
+      `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(marker)}, 'executed');\nprocess.exit(1);\n`,
+    );
+    const before = { ...process.env };
+    t.after(() => {
+      process.env = before;
+    });
+    const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
+    process.env[pathKey] = bin + delimiter + process.env[pathKey];
+    process.env.NODE_OPTIONS = '--import=' + pathToFileURL(fakeScript).href;
+    f.setProbe((file, args, options) => {
+      const command = options.env?.GIT_SSH_COMMAND ?? options.env?.GIT_SSH ?? '';
+      const match = /^(?:"([^"]+)"|([^ ]+))(.*)$/.exec(command);
+      assert.ok(match, '固定 SSH 実行ファイルが指定されている');
+      const output = execute(
+        match[1] ?? match[2]!,
+        [...match[3]!.trim().split(/\s+/).filter(Boolean), '-G', '-F', config, 'github.com'],
+        options,
+      );
+      assert.match(output, /^batchmode yes$/m);
+      // 実 Git に SSH コマンドを起動させ、PATH の偽 sh を呼ばないことも確認する。
+      assert.throws(() =>
+        execute(file, [...args, 'ls-remote', 'ssh://git@127.0.0.1:1/unreachable'], {
+          ...options,
+          env: {
+            ...options.env,
+            GIT_SSH_COMMAND: `${command} -F "${config.replaceAll('\\', '/')}" -o ConnectTimeout=1`,
+          },
+        }),
+      );
+    });
+    safePush({ branch, dryRun: true }, f.cwd);
+    assert.equal(await read(marker), '');
+  });
+
+  await t.test('Git の実行時間を制限し、タイムアウト後に Push しない', async (t) => {
+    const f = await intercept(t);
+    f.setProbe((_file, _args, options) => {
+      assert.ok(options.timeout && options.timeout > 0 && options.timeout <= 60_000);
+      assert.equal(options.killSignal, 'SIGKILL');
+      // 本番の上限だけを短縮し、終了しない子プロセスを実際に停止する。
+      execute(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { ...options, timeout: 100 });
+    });
+    assert.throws(
+      () => safePush({ branch, dryRun: false }, f.cwd),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /Git の検証または Push に失敗/);
+        assert.equal((error.cause as NodeJS.ErrnoException).code, 'ETIMEDOUT');
+        return true;
+      },
+    );
+  });
 });
 
 await test('SGT-U12: SSH 接続のリモート操作だけに固定 SSH 実行を指定する', () => {
