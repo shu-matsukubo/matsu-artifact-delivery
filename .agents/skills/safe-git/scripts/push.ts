@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 type Options = { branch: string; dryRun: boolean };
-type Run = (args: string[], cwd: string) => string;
+type Run = (args: string[], cwd: string, sshTransport?: boolean) => string;
 const repository = fileURLToPath(new URL('../../../../', import.meta.url));
 const approvedUrls = new Set([
   'https://github.com/shu-matsukubo/matsu-artifact-delivery',
@@ -39,43 +39,52 @@ export function parseArguments(args: string[]): Options {
   return { branch, dryRun };
 }
 
-function trustedGit() {
+function trustedExecutable(name: 'Git' | 'SSH') {
   // OS 管理の固定配置を使い、PATH や環境変数から実行ファイルを選ばない。
   const path =
     process.platform === 'win32'
-      ? 'C:/Program Files/Git/cmd/git.exe'
+      ? name === 'Git'
+        ? 'C:/Program Files/Git/cmd/git.exe'
+        : 'C:/Program Files/Git/usr/bin/ssh.exe'
       : process.platform === 'linux' || process.platform === 'darwin'
-        ? '/usr/bin/git'
+        ? name === 'Git'
+          ? '/usr/bin/git'
+          : '/usr/bin/ssh'
         : undefined;
-  if (!path) throw new Error('この OS の信頼する Git 実行ファイルが定義されていません。');
+  if (!path) throw new Error(`この OS の信頼する ${name} 実行ファイルが定義されていません。`);
   const executable = realpathSync(path);
   const normalize = (value: string) => (process.platform === 'win32' ? resolve(value).toLowerCase() : resolve(value));
   if (normalize(executable) !== normalize(path) || !lstatSync(executable).isFile())
-    throw new Error('信頼する Git 実行ファイルの配置が不正です。');
+    throw new Error(`信頼する ${name} 実行ファイルの配置が不正です。`);
   if (process.platform !== 'win32') {
     for (let entry = executable; ; entry = dirname(entry)) {
       const stat = lstatSync(entry);
       if (stat.uid !== 0 || (stat.mode & 0o022) !== 0)
-        throw new Error('Git 実行ファイルと親ディレクトリは root 所有で、group / other の書き込みを禁止してください。');
+        throw new Error(
+          `${name} 実行ファイルと親ディレクトリは root 所有で、group / other の書き込みを禁止してください。`,
+        );
       if (dirname(entry) === entry) break;
     }
   }
   return executable;
 }
 
-const runGit: Run = (args, cwd) => {
+const runGit: Run = (args, cwd, sshTransport = false) => {
   // Git の探索先・設定を環境変数で差し替えない。認証用変数は維持する。
   if (
     Object.keys(process.env).some((key) =>
-      /^GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG(?:_.*)?|NAMESPACE|REPLACE_REF_BASE|SHALLOW_FILE|EXEC_PATH|SSH(?:_COMMAND|_VARIANT)?)$/i.test(
+      /^GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG(?:_.*)?|NAMESPACE|REPLACE_REF_BASE|SHALLOW_FILE|EXEC_PATH|SSH(?:_COMMAND|_VARIANT)?|SSL_NO_VERIFY)$/i.test(
         key,
       ),
     )
   )
     throw new Error('Git の実行先・設定を上書きする環境変数が設定されています。');
   try {
-    return execFileSync(trustedGit(), args, {
+    const executable = trustedExecutable('Git');
+    const env = sshTransport ? { ...process.env, GIT_SSH: trustedExecutable('SSH') } : process.env;
+    return execFileSync(executable, args, {
       cwd,
+      env,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
@@ -94,7 +103,7 @@ export function safePush(options: Options, root = repository, run: Run = runGit)
   if (lstatSync(grafts, { throwIfNoEntry: false })) throw new Error('info/grafts が存在するため Push できません。');
   if (git('symbolic-ref', '--quiet', '--short', 'HEAD') !== options.branch)
     throw new Error('現在のブランチと --branch が一致しません。');
-  if (git('status', '--porcelain=v1', '--untracked-files=all'))
+  if (git('-c', 'core.fsmonitor=false', 'status', '--porcelain=v1', '--untracked-files=all'))
     throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。');
   const commit = git('rev-parse', '--verify', 'HEAD^{commit}');
   if (!/^[a-f0-9]{40,64}$/.test(commit)) throw new Error('HEAD の commit SHA を確認できません。');
@@ -106,10 +115,16 @@ export function safePush(options: Options, root = repository, run: Run = runGit)
   if (
     git('config', '--name-only', '--list')
       .split('\n')
-      .some((key) => key.toLowerCase().startsWith('url.') || (sshTransport && key.toLowerCase() === 'core.sshcommand'))
+      .some(
+        (key) =>
+          key.toLowerCase().startsWith('url.') ||
+          /^http(?:\..+)?\.sslverify$/i.test(key) ||
+          (sshTransport && key.toLowerCase() === 'core.sshcommand'),
+      )
   )
-    throw new Error('URL の書き換え設定または SSH コマンドの上書きがあるため Push できません。');
-  const refs = git('ls-remote', '--symref', pushUrl, 'HEAD', 'refs/heads/' + options.branch);
+    throw new Error('URL・TLS 検証・SSH コマンドの設定が上書きされているため Push できません。');
+  const remoteGit = (...args: string[]) => run(args, root, sshTransport).trim();
+  const refs = remoteGit('ls-remote', '--symref', pushUrl, 'HEAD', 'refs/heads/' + options.branch);
   const defaultBranch = /^ref: refs\/heads\/([^\s]+)\tHEAD$/m.exec(refs)?.[1];
   if (!defaultBranch || defaultBranch.toLowerCase() === options.branch.toLowerCase())
     throw new Error('default branch を確認できない、または Push 先が default branch です。');
@@ -124,7 +139,7 @@ export function safePush(options: Options, root = repository, run: Run = runGit)
   const plan = { remote: 'origin', url: pushUrl, branch: options.branch, commit };
   if (!options.dryRun) {
     // 検証後に先端が変わった場合は拒否する。URL と単一 refspec を明示する。
-    git(
+    remoteGit(
       '-c',
       'push.gpgSign=false',
       'push',

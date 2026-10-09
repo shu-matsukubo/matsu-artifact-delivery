@@ -10,7 +10,7 @@ import { frontmatter, localLinks, read, repository, temporaryDirectory } from '.
 const url = 'https://github.com/shu-matsukubo/matsu-artifact-delivery.git';
 const branch = 'codex/issue-51';
 const head = 'a'.repeat(40);
-type Run = (args: string[], cwd: string) => string;
+type Run = (args: string[], cwd: string, sshTransport?: boolean) => string;
 
 function fixture(root = repository) {
   const calls: string[][] = [];
@@ -18,7 +18,7 @@ function fixture(root = repository) {
     ['rev-parse --show-toplevel', root],
     ['rev-parse --path-format=absolute --git-path info/grafts', join(root, '.git/info/grafts')],
     ['symbolic-ref --quiet --short HEAD', branch],
-    ['status --porcelain=v1 --untracked-files=all', ''],
+    ['-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all', ''],
     ['rev-parse --verify HEAD^{commit}', head],
     ['remote get-url --all origin', url],
     ['remote get-url --push --all origin', url],
@@ -86,12 +86,14 @@ await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不�
     ['rev-parse --show-toplevel', join(repository, 'plugins')],
     ['symbolic-ref --quiet --short HEAD', 'other-branch'],
     ['symbolic-ref --quiet --short HEAD', new Error('detached HEAD')],
-    ['status --porcelain=v1 --untracked-files=all', '?? unreviewed.ts'],
+    ['-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all', '?? unreviewed.ts'],
     ['remote get-url --all origin', 'https://github.com/other/repository.git'],
     ['remote get-url --push --all origin', 'https://github.com/attacker/repo.git'],
     ['remote get-url --push --all origin', `${url}\n${url}`],
     ['remote get-url --push --all origin', 'ext::command'],
     ['config --name-only --list', 'url.ssh://attacker/.pushinsteadof'],
+    ['config --name-only --list', 'http.sslverify'],
+    ['config --name-only --list', 'http.https://github.com/.sslverify'],
     [`ls-remote --symref ${url} HEAD refs/heads/${branch}`, ''],
     [`ls-remote --symref ${url} HEAD refs/heads/${branch}`, `ref: refs/heads/${branch}\tHEAD\n${head}\tHEAD`],
     [`ls-remote --symref ${url} HEAD refs/heads/${branch}`, new Error('network failure')],
@@ -170,6 +172,31 @@ await test('SGT-U03: 実 Git で新規・fast-forward の単一ブランチを P
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`).split('\t')[0], f.git('rev-parse', 'HEAD'));
 });
 
+await test('SGT-U11: 不正な fsmonitor が変更を隠しても Push しない', async (t) => {
+  const f = await gitFixture(t);
+  const hook = join(f.cwd, '.git/hooks/fake-fsmonitor');
+  await writeFile(hook, "#!/bin/sh\nprintf 'token\\0'\n", { mode: 0o755 });
+  f.git('config', 'core.fsmonitor', hook.replaceAll('\\', '/'));
+  f.git('status', '--porcelain=v1');
+  await writeFile(join(f.cwd, 'file'), 'unreviewed change');
+  assert.equal(f.git('status', '--porcelain=v1'), '');
+  assert.throws(() => safePush({ branch, dryRun: false }, f.cwd, f.run), /clean/);
+  assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`), '');
+});
+
+await test('SGT-U12: SSH 接続のリモート操作だけに固定 SSH 実行を指定する', () => {
+  const f = fixture();
+  const sshUrl = 'git@github.com:shu-matsukubo/matsu-artifact-delivery.git';
+  f.replies.set('remote get-url --all origin', sshUrl);
+  f.replies.set('remote get-url --push --all origin', sshUrl);
+  f.replies.set(`ls-remote --symref ${sshUrl} HEAD refs/heads/${branch}`, `ref: refs/heads/main\tHEAD\n${head}\tHEAD`);
+  const run: Run = (args, cwd, sshTransport) => {
+    assert.equal(sshTransport ?? false, args[0] === 'ls-remote' || args.includes('push'));
+    return f.run(args, cwd);
+  };
+  safePush({ branch, dryRun: false }, repository, run);
+});
+
 await test('SGT-U06: CLI は未知の引数・別 cwd・Git 設定の環境変数を終了コード 1 で拒否する', () => {
   const script = join(repository, '.agents/skills/safe-git/scripts/push.ts');
   for (const options of [
@@ -193,6 +220,12 @@ await test('SGT-U06: CLI は未知の引数・別 cwd・Git 設定の環境変�
       env: { ...process.env, [key]: 'override' },
       message: /環境変数/,
     })),
+    {
+      args: ['--branch', branch],
+      cwd: repository,
+      env: { ...process.env, GIT_SSL_NO_VERIFY: 'true' },
+      message: /環境変数/,
+    },
   ]) {
     const result = spawnSync(process.execPath, [script, ...options.args], {
       cwd: options.cwd,
@@ -353,6 +386,9 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['git', 'branch', '-C', 'source', 'target'],
     ['git', '-C', '.', 'push'],
     ['git', 'send-pack', url],
+    ['git', 'worktree', 'remove', '--force', 'path'],
+    ['git', 'worktree', 'remove', 'path', '--force'],
+    ['git', 'worktree', 'remove', '-f', 'path'],
   ];
   const allowed = [
     ['git', 'status'],

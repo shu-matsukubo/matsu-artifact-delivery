@@ -34,3 +34,10 @@ prefix_rule(
     justification = "変更を破棄するブランチ切り替えは禁止です。既存の作業を保全してください。",
     match = ["git switch --discard-changes main", "git switch -C topic"],
 )
+
+prefix_rule(
+    pattern = [["git", "git.exe"], "worktree", "remove"],
+    decision = "forbidden",
+    justification = "作業ツリーの削除は Codex から直接実行しないでください。既存の変更を保全してください。",
+    match = ["git worktree remove --force path", "git worktree remove path --force", "git worktree remove -f path"],
+)
