@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { delimiter, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test, { type TestContext } from 'node:test';
 import { parseArguments, safePush } from '../../.agents/skills/safe-git/scripts/push.ts';
 import { frontmatter, localLinks, read, repository, temporaryDirectory } from '../lib/plugin.ts';
@@ -15,6 +16,7 @@ function fixture(root = repository) {
   const calls: string[][] = [];
   const replies = new Map<string, string>([
     ['rev-parse --show-toplevel', root],
+    ['rev-parse --path-format=absolute --git-path info/grafts', join(root, '.git/info/grafts')],
     ['symbolic-ref --quiet --short HEAD', branch],
     ['status --porcelain=v1 --untracked-files=all', ''],
     ['rev-parse --verify HEAD^{commit}', head],
@@ -245,6 +247,93 @@ await test('SGT-U08: 置換 ref が偽装した祖先関係では Push しない
   f.git('merge-base', '--is-ancestor', f.commit, divergent);
   assert.throws(() => safePush({ branch, dryRun: false }, f.cwd, f.run));
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`).split('\t')[0], f.commit);
+});
+
+await test('SGT-U09: PATH の偽 Git を実行せず、実リポジトリの接続先を検証する', async (t) => {
+  const f = await gitFixture(t);
+  f.git('remote', 'set-url', 'origin', 'https://github.com/other/repository.git');
+  const fakeDirectory = join(await temporaryDirectory(t), 'bin');
+  await mkdir(fakeDirectory);
+  const marker = join(fakeDirectory, 'executed');
+  const fakeScript = join(fakeDirectory, 'fake.ts');
+  const fakeGit = join(fakeDirectory, process.platform === 'win32' ? 'git.exe' : 'git');
+  await copyFile(process.execPath, fakeGit);
+  // Node のコピーを偽 Git とし、検証をすべて通す応答を生成する。
+  await writeFile(
+    fakeScript,
+    `import { appendFileSync } from 'node:fs';
+import { basename } from 'node:path';
+if (/[/\\\\]git(?:\\.exe)?$/.test(process.execPath)) {
+  appendFileSync(${JSON.stringify(marker)}, 'executed\\n');
+  const replies = ${JSON.stringify(Object.fromEntries(fixture(f.cwd).replies))};
+  console.log(replies[[basename(process.argv[1]), ...process.argv.slice(2)].join(' ')] ?? '');
+  process.exit(0);
+}
+`,
+  );
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
+  const env = {
+    ...process.env,
+    [pathKey]: fakeDirectory + delimiter + process.env[pathKey],
+    NODE_OPTIONS: '--import=' + pathToFileURL(fakeScript).href,
+  };
+  // 通常の PATH 探索なら偽 Git が選ばれ、期待した応答を返すことを確認する。
+  const probe = spawnSync('git', ['rev-parse', '--show-toplevel'], { env, encoding: 'utf8' });
+  assert.equal(probe.status, 0, probe.stderr);
+  assert.equal(probe.stdout.trim(), f.cwd);
+  const before = await read(marker);
+  const script = pathToFileURL(join(repository, '.agents/skills/safe-git/scripts/push.ts')).href;
+  const result = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `import { safePush } from ${JSON.stringify(script)};
+try { safePush({ branch: ${JSON.stringify(branch)}, dryRun: true }, ${JSON.stringify(f.cwd)}); }
+catch (error) { console.error(error.message); process.exitCode = 1; }`,
+    ],
+    { cwd: f.cwd, env, encoding: 'utf8' },
+  );
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /origin/);
+  assert.equal(await read(marker), before);
+});
+
+await test('SGT-U10: info/grafts が偽装した祖先関係では通常 checkout と worktree の Push を拒否する', async (t) => {
+  const f = await gitFixture(t);
+  safePush({ branch, dryRun: false }, f.cwd, f.run);
+  f.git('switch', '-c', 'diverged', f.base);
+  await writeFile(join(f.cwd, 'file'), 'diverged');
+  f.git('commit', '-qam', 'diverged');
+  const divergent = f.git('rev-parse', 'HEAD');
+  f.git('branch', '-f', branch, divergent);
+  f.git('switch', branch);
+  const grafts = f.git('rev-parse', '--path-format=absolute', '--git-path', 'info/grafts');
+  await writeFile(grafts, `${divergent} ${f.commit}\n`);
+  f.git('--no-replace-objects', 'merge-base', '--is-ancestor', f.commit, divergent);
+  const worktree = join(await temporaryDirectory(t), 'linked');
+  f.git('worktree', 'add', '-b', 'codex/linked', worktree, divergent);
+  for (const [cwd, targetBranch] of [
+    [f.cwd, branch],
+    [worktree, 'codex/linked'],
+  ]) {
+    const calls: string[][] = [];
+    const run: Run = (args) => {
+      calls.push(args);
+      return execFileSync(
+        'git',
+        args.map((arg) => (arg === url && (args.includes('ls-remote') || args.includes('push')) ? f.remote : arg)),
+        { cwd, encoding: 'utf8', stdio: 'pipe' },
+      ).trim();
+    };
+    assert.throws(() => safePush({ branch: targetBranch!, dryRun: false }, cwd, run), /grafts/);
+    assert.equal(
+      calls.some((args) => args.includes('ls-remote') || args.includes('push')),
+      false,
+    );
+  }
+  assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`).split('\t')[0], f.commit);
+  assert.equal(f.git('ls-remote', f.remote, 'refs/heads/codex/linked'), '');
 });
 
 await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を検証する', async (t) => {

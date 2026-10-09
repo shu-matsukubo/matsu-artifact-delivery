@@ -157,7 +157,7 @@ npm run ci:select -- --all
 | PKG-U01〜PKG-U04         | marketplace、Plugin Agent 登録不要とリポジトリ Codex 設定の配布外確認、README 参照、ID 対応                    | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U01                  | 入口の reference 参照、起動・再開・新規選定・環境準備・GitHub とローカルへの反映・clean 確認の契約と担当境界   | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U02                  | プラグイン Issue への対象限定、実装中・merge 済み PR がある Issue の選定除外                                   | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
-| SGT-U01〜SGT-U06         | Push の入力・接続先・作業状態・祖先確認、実 Git の単一 ref 更新と拒否、CLI、Skill 参照、Codex Rules            | [安全な Push の試験](../test/infrastructure/safe-git.test.ts)                             |
+| SGT-U01〜SGT-U10         | Push の入力・接続先・祖先確認、単一 ref 更新、競合・置換 ref・grafts・偽 Git の拒否、CLI・Skill・Rules         | [安全な Push の試験](../test/infrastructure/safe-git.test.ts)                             |
 
 ### 既存 MCP の対応表
 
@@ -205,7 +205,7 @@ npm run ci:select -- --all
 
 CI-U11 は [GitHub の式評価ライブラリ](https://github.com/actions/languageservices/tree/main/expressions)で実際の YAML の条件・対象・環境を評価し、式全体の文字列一致は要求しない。npm の公開コマンドは RUN-U06 で実際の `--dry-run` の結果を確認する。ジョブの依存関係、Quality gate の公開名、対象引数の引用など、接続に必要な条件は検証する。GitHub の runner 全体や shell の再実装は行わない。
 
-`SGT-U03` / `SGT-U04` は一時ディレクトリの bare remote を使い、実 Git による新規・fast-forward の Push、他の ref の保全、non-fast-forward の拒否を検証する。GitHub の認証は要求しない。`SGT-U05` の Rules 評価は Codex CLI がある環境で `codex execpolicy check` を使い、CLI がない CI ではその評価だけをスキップする。Rules 内の `match` / `not_match` も Codex の読み込み時に検査される。スキル内の TypeScript スクリプトはルートの型・lint・書式チェックの対象に含む。
+`SGT-U03` / `SGT-U04` は一時ディレクトリの bare remote を使い、実 Git による新規・fast-forward の Push、他の ref の保全、non-fast-forward の拒否を検証する。`SGT-U07` / `SGT-U08` / `SGT-U10` はブランチ作成の競合、置換 ref と通常 checkout / worktree の grafts による祖先偽装の拒否を検証する。`SGT-U09` は PATH に置いた偽 Git が実行されず、実リポジトリの接続先が検証されることを実プロセスで確認する。GitHub の認証は要求しない。`SGT-U05` の Rules 評価は Codex CLI がある環境で `codex execpolicy check` を使い、CLI がない CI ではその評価だけをスキップする。Rules 内の `match` / `not_match` も Codex の読み込み時に検査される。スキル内の TypeScript スクリプトはルートの型・lint・書式チェックの対象に含む。
 
 契約 ID のガイド掲載確認は、差分 CI の入口が異なるため WF/EX-U02 と PKG-U04 の両方に置く。契約一覧だけの変更では前者、ガイドだけの変更では後者が実行される。単純に片方を削除すると一方の変更経路に検証漏れが生じるため、追加の CI 対象を増やしてまで統合しない。
 

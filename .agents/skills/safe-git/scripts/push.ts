@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { realpathSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { lstatSync, realpathSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 type Options = { branch: string; dryRun: boolean };
@@ -39,6 +39,30 @@ export function parseArguments(args: string[]): Options {
   return { branch, dryRun };
 }
 
+function trustedGit() {
+  // OS 管理の固定配置を使い、PATH や環境変数から実行ファイルを選ばない。
+  const path =
+    process.platform === 'win32'
+      ? 'C:/Program Files/Git/cmd/git.exe'
+      : process.platform === 'linux' || process.platform === 'darwin'
+        ? '/usr/bin/git'
+        : undefined;
+  if (!path) throw new Error('この OS の信頼する Git 実行ファイルが定義されていません。');
+  const executable = realpathSync(path);
+  const normalize = (value: string) => (process.platform === 'win32' ? resolve(value).toLowerCase() : resolve(value));
+  if (normalize(executable) !== normalize(path) || !lstatSync(executable).isFile())
+    throw new Error('信頼する Git 実行ファイルの配置が不正です。');
+  if (process.platform !== 'win32') {
+    for (let entry = executable; ; entry = dirname(entry)) {
+      const stat = lstatSync(entry);
+      if (stat.uid !== 0 || (stat.mode & 0o022) !== 0)
+        throw new Error('Git 実行ファイルと親ディレクトリは root 所有で、group / other の書き込みを禁止してください。');
+      if (dirname(entry) === entry) break;
+    }
+  }
+  return executable;
+}
+
 const runGit: Run = (args, cwd) => {
   // Git の探索先・設定を環境変数で差し替えない。認証用変数は維持する。
   if (
@@ -50,7 +74,12 @@ const runGit: Run = (args, cwd) => {
   )
     throw new Error('Git の実行先・設定を上書きする環境変数が設定されています。');
   try {
-    return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    return execFileSync(trustedGit(), args, {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    }).trim();
   } catch (error) {
     throw new Error('Git の検証または Push に失敗しました。状態を確認してから再実行してください。', { cause: error });
   }
@@ -61,6 +90,8 @@ export function safePush(options: Options, root = repository, run: Run = runGit)
   const git = (...args: string[]) => run(args, root).trim();
   if (realpathSync(git('rev-parse', '--show-toplevel')) !== realpathSync(root))
     throw new Error('スクリプトと Git リポジトリのルートが一致しません。');
+  const grafts = git('rev-parse', '--path-format=absolute', '--git-path', 'info/grafts');
+  if (lstatSync(grafts, { throwIfNoEntry: false })) throw new Error('info/grafts が存在するため Push できません。');
   if (git('symbolic-ref', '--quiet', '--short', 'HEAD') !== options.branch)
     throw new Error('現在のブランチと --branch が一致しません。');
   if (git('status', '--porcelain=v1', '--untracked-files=all'))
