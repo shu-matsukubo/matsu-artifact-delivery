@@ -4,7 +4,7 @@ prefix_rule(
     decision = "forbidden",
     justification = "直接の Push・破壊的な Git 操作は禁止です。Push は safe-git の検証付きスクリプトを使い、変更を保全してください。",
     match = ["git push origin codex/example", "git.exe push --force", "git push --delete origin topic", "git fast-import --force", "git.exe fast-import --quiet --force", "git reset --hard", "git clean -fd", "git restore file", "git rm --force file", "git rm file --force", "git rm -rf directory", "git mv -f source target", "git.exe mv --force source target", "git mv source target --force", "git mv -vf source target", "git checkout-index -f -a", "git.exe checkout-index file --force", "git read-tree --reset -u HEAD", "git submodule deinit --force --all", "git submodule update sub --force", "git submodule --quiet update --force --recursive", "git.exe submodule -q deinit -f --all", "git merge --abort", "git.exe merge --quiet --abort", "git am --abort", "git cherry-pick --abort", "git revert --abort", "git fetch origin +topic:refs/heads/topic", "git fetch origin topic:refs/tags/v1 --force", "git.exe pull --force origin topic:refs/heads/topic"],
-    not_match = ["git status", "git diff", "git add file", "C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/create-branch.ts --branch codex/example", "C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/push.ts --branch codex/example"],
+    not_match = ["git status", "git diff", "C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/create-branch.ts --branch codex/example", "C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/push.ts --branch codex/example"],
 )
 
 prefix_rule(
@@ -12,7 +12,15 @@ prefix_rule(
     decision = "forbidden",
     justification = "オプションの位置や短縮形によらず amend による履歴の書き換えを防ぐため、直接の commit は禁止です。ステージ後に safe-git の commit.ts --message <メッセージ> を使ってください。",
     match = ["git commit --amend --no-edit", "git.exe commit --no-edit --amend", "git commit -m change --amend", "git commit --am", "git commit -m change"],
-    not_match = ["git add file", "C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/commit.ts --message change"],
+    not_match = ["C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/commit.ts --message change"],
+)
+
+prefix_rule(
+    pattern = [["git", "git.exe"], "add"],
+    decision = "forbidden",
+    justification = "ステージ時の外部 filter 実行を防ぐため、直接の add は禁止です。safe-git の stage.ts -- <レビュー済みパス>... を使ってください。",
+    match = ["git add file", "git.exe add --all", "git add -- file", "git add -p file", "git add --renormalize file"],
+    not_match = ["C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/stage.ts -- file"],
 )
 
 prefix_rule(

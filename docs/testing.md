@@ -157,7 +157,7 @@ npm run ci:select -- --all
 | PKG-U01〜PKG-U04         | marketplace、Plugin Agent 登録不要とリポジトリ Codex 設定の配布外確認、README 参照、ID 対応                                                                                                     | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U01                  | 入口の reference 参照、起動・再開・新規選定・環境準備・GitHub とローカルへの反映・clean 確認の契約と担当境界                                                                                    | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U02                  | プラグイン Issue への対象限定、実装中・merge 済み PR がある Issue の選定除外                                                                                                                    | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
-| SGT-U01〜SGT-U34         | Push の接続先・祖先・単一 ref、競合・偽装・隠れた変更・filter・helper・partial clone の拒否、submodule の検査、固定 SSH・非対話認証・環境除去・子孫停止、新規ブランチ・コミット作成・CLI・Rules | [安全な Git 操作の試験](../test/infrastructure/safe-git.test.ts)                          |
+| SGT-U01〜SGT-U38         | Push の接続先・祖先・単一 ref、競合・偽装・隠れた変更・filter・helper・partial clone の拒否、submodule の検査、固定 SSH・非対話認証・環境除去・子孫停止、新規ブランチ・コミット作成・CLI・Rules | [安全な Git 操作の試験](../test/infrastructure/safe-git.test.ts)                          |
 
 ### 既存 MCP の対応表
 
@@ -220,6 +220,8 @@ CI-U11 は [GitHub の式評価ライブラリ](https://github.com/actions/langu
 `SGT-U29` は通常・URL 別の任意 helper を通信前に拒否する。`SGT-U30` は partial clone を Push・ブランチ作成で拒否し、Git の自動 fetch 無効化も確認する。`SGT-U31` は起動済み Bash で loader 変数を設定してから Skill の除去手順を実行し、Node・Git の子プロセスへ継承しないことを確認する。Linux では C コンパイラーで preload ライブラリを作り、`env` 経由の起動で実行される負例と、組み込み機能で除去後は実行されないことを確認する。`SGT-U32` は固定 helper の実体検証、URL 別設定、ローカルの実 Git 認証、取得先と Push 先の異なる HTTPS / SSH 経路を確認する。`SGT-U05` は fast-import の禁止も評価する。
 
 `SGT-U33` は置換 ref が HEAD と索引の差分を隠す状態を実 Git で作り、ルート・直下と入れ子の submodule の Push、ルートのブランチ・コミット作成を通信前に拒否する。索引・ファイル・ref の保全も確認する。`SGT-U34` は新規コミットの親・ステージ内容・未ステージと未追跡の変更を保全し、追加オプション・hook・署名プログラムを実行しないことを確認する。`SGT-U05` は commit・update-index・replace、refs の書き込み操作の禁止と読み取り操作を評価する。
+
+`SGT-U35` は通常 checkout と worktree で merge・cherry-pick・revert・rebase・sequencer の進行中状態を拒否し、HEAD・索引・ファイル・操作状態を保全する。`SGT-U36` は Linux の固定 helper が symlink である配置を fixture で再現し、経由先を含む所有者・書き込み権限と起動名の維持を確認する。実 Linux インストールは再現しない。`SGT-U37` は通常・URL 別 helper を交互に設定し、空値によるリセットの順序を実 Git の認証で確認する。`SGT-U38` は追跡・新規ファイルの clean / process filter をステージ前に拒否し、索引・作業変更・ref を保全する。個別ファイルの追加・削除、literal path、hook の抑止、追跡済み submodule の更新と作業変更の保全も検証する。`SGT-U05` は直接の add の禁止も評価する。
 
 契約 ID のガイド掲載確認は、差分 CI の入口が異なるため WF/EX-U02 と PKG-U04 の両方に置く。契約一覧だけの変更では前者、ガイドだけの変更では後者が実行される。単純に片方を削除すると一方の変更経路に検証漏れが生じるため、追加の CI 対象を増やしてまで統合しない。
 

@@ -7,7 +7,7 @@
 - プラグインの構造・実装は[プラグイン仕様](https://agent-plugins.org/)と[スキル仕様](https://agentskills.io/)に従う。
 - 人間・AIが保守する実装、テスト、補助スクリプトは TypeScript（`.ts`）を基本とする。ソース、スキル、エージェント、MCP は責務を分ける。
 - 正本と生成物を分離し、生成物を手編集しない。
-- Codex の Push、作業ブランチ・コミットの新規作成は開発用 [safe-git](.agents/skills/safe-git/SKILL.md) の検証付きスクリプトを使う。直接の `git push`・`git commit`、強制更新、ブランチ・タグの削除、既存の変更を失わせる Git 操作は禁止する。実行ファイルの別表記、alias、オプション、shell や別スクリプトで [Codex Rules](.codex/rules/safe-git.rules) を迂回しない。人間の通常の Git 操作は対象外とする。
+- Codex のステージ・Push、作業ブランチ・コミットの新規作成は開発用 [safe-git](.agents/skills/safe-git/SKILL.md) の検証付きスクリプトを使う。直接の `git add`・`git push`・`git commit`、強制更新、ブランチ・タグの削除、既存の変更を失わせる Git 操作は禁止する。実行ファイルの別表記、alias、オプション、shell や別スクリプトで [Codex Rules](.codex/rules/safe-git.rules) を迂回しない。人間の通常の Git 操作は対象外とする。
 
 ## 必要に応じて読む資料
 

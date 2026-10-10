@@ -192,12 +192,13 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   });
   assert.match(publish, /検証・レビュー済みの差分.*GitHub Plugin.*コミット・Git object.*ref 更新/);
   assert.match(publish, /safe-git.*ローカルコミット.*Push/);
-  assert.match(publish, /`git push` の直接実行は禁止/);
+  assert.match(publish, /`stage\.ts`.*レビュー済みの変更だけをステージ.*`commit\.ts`/);
+  assert.match(publish, /`git add`・`git commit`・`git push` は直接実行しない/);
   assert.match(publish, /リモートブランチの先端 SHA が作成したコミット SHA と一致.*差分がレビュー済みの差分と一致/);
   assert.match(publish, /確認できない場合は PR を作成しない/);
   assert.match(
     publish,
-    /ローカル HEAD の tree.*リモートコミットの tree.*一致していなければ.*レビュー済みの変更だけを stage/,
+    /ローカル HEAD の tree.*リモートコミットの tree.*一致していなければ.*`stage\.ts`.*レビュー済みの変更だけをステージ/,
   );
   assert.match(publish, /コミット前に index の tree.*リモートコミットの tree と一致.*確認/);
   assert.match(

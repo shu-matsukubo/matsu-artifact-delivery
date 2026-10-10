@@ -4,7 +4,7 @@
 
 Node.js は Windows の `C:/Program Files/nodejs/node.exe`、Linux の `/usr/bin/node`、macOS の `/usr/local/bin/node` に固定し、管理者が実行ファイルと配置先を保護する。信頼する起動済みのシェルで `NODE_OPTIONS`、`NODE_PATH`、`GLIBC_TUNABLES` と `LD_*`、`DYLD_*`、`_RLD_*`、`RLD_*`、`LDR_*` を組み込み機能で除去してから起動する。シェル自体の起動環境は管理者が保護する。Git・SSH・helper の子プロセスにも同じ除去を適用する。固定配置がない場合は実行を止める。起動コマンドは [Skill](../SKILL.md) を参照する。
 
-Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux / macOS の `/usr/bin/git` に固定する。SSH 接続時は SSH 実行ファイルも Windows の `C:/Program Files/Git/usr/bin/ssh.exe`、Linux / macOS の `/usr/bin/ssh` に固定する。実体がこのパスにある通常ファイルかを検証し、PATH や環境変数で配置先を選ばない。Windows の配置先は管理者権限で保護する。Linux / macOS では実行ファイルと親ディレクトリが root 所有で、group / other が書き込めないことも検証する。固定配置に実行ファイルがない場合は検証失敗とする。
+Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux / macOS の `/usr/bin/git` に固定する。SSH 接続時は SSH 実行ファイルも Windows の `C:/Program Files/Git/usr/bin/ssh.exe`、Linux / macOS の `/usr/bin/ssh` に固定する。実体がこのパスにある通常ファイルかを検証し、PATH や環境変数で配置先を選ばない。Windows の配置先は管理者権限で保護する。Linux / macOS では実行ファイルと親ディレクトリが root 所有で、group / other が書き込めないことも検証する。Linux の credential helper は、固定パスの symlink・経由する symlink・実体・各親ディレクトリを検証し、symlink は root 所有、通常ファイルとディレクトリは root 所有で group / other が書き込めない場合に許可する。helper の選択に使われる起動名を維持する。固定配置に実行ファイルがない場合は検証失敗とする。
 
 ## 検証と更新
 
@@ -24,7 +24,7 @@ Push は検証した URL と `<commit SHA>:refs/heads/<作業ブランチ>` 一�
 
 `--dry-run` はリモートの読み取りを含む検証を行い、更新せず送信予定を JSON で返す。通常実行は成功時に送信結果を JSON で返す。引数は `--branch` と任意の `--dry-run` に限定する。
 
-認証は対話入力を要求せず、固定配置の credential helper・SSH agent 等を使う。HTTPS の `credential.helper` と URL 別の helper は、空値または次の名前だけを許可し、Git・SSH と同じ実体検証を行った絶対パスへ置き換える。任意の shell snippet、実行パス、追加引数、未知の helper は通信前に拒否する。複数 helper と空値によるリセットの順序を維持する。SSH の Push では helper を使用しない。
+認証は対話入力を要求せず、固定配置の credential helper・SSH agent 等を使う。HTTPS の `credential.helper` と URL 別の helper は、空値または次の名前だけを許可し、検証した固定パスへ置き換える。任意の shell snippet、実行パス、追加引数、未知の helper は通信前に拒否する。通常・URL 別の設定を設定ファイルの順序で読み、複数 helper と空値によるリセットの順序を維持する。SSH の Push では helper を使用しない。
 
 | OS      | 設定名            | 固定配置                                                                                                                                                                                  |
 | ------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -34,9 +34,11 @@ Push は検証した URL と `<commit SHA>:refs/heads/<作業ブランチ>` 一�
 
 Git の terminal prompt・askpass と credential helper の対話設定を無効化する。SSH は固定実行ファイルに `-F none` と `BatchMode=yes` を指定し、ユーザー・システムの SSH 設定を読み込まない。接続先は `github.com:22`、proxy は無効、ホスト鍵検証は `StrictHostKeyChecking=yes` に固定する。事前に信頼した GitHub のホスト鍵と、既定の鍵または SSH agent による認証を必要とする。Windows では SSH・helper のコマンドを解釈する `C:/Program Files/Git/usr/bin/sh.exe` も検証し、そのディレクトリを PATH の先頭に置く。各 Git コマンドは60秒でタイムアウトとし、Linux / macOS は独立したプロセスグループ、Windows は固定配置の `C:/Windows/System32/taskkill.exe /T /F` で子孫を含め停止して失敗を返す。呼び出し元の `SIGINT` / `SIGTERM` と通常終了でも同じ停止処理を行い、中断時は終了コード 130 / 143 を返す。`SIGKILL` や OS の強制終了では JavaScript の終了処理は実行できない。
 
-## 新規コミット
+## ステージと新規コミット
 
-[commit.ts](../scripts/commit.ts)は `--message <コミットメッセージ>` だけを受け取り、リポジトリルート、置換 ref、partial clone、適用される filter を確認してからステージ済みの内容をコミットする。メッセージを一つの値として渡し、amend や追加オプションを受け付けない。現在の HEAD を親にした新規コミットを作成し、未ステージ・未追跡の変更を保全する。hook と署名プログラムは実行しない。起動時の環境変数除去と固定 Node.js は [Skill](../SKILL.md) に従う。
+[stage.ts](../scripts/stage.ts)は `-- <レビュー済みパス>...` だけを受け取り、リポジトリ内の個別ファイルまたは追跡済み submodule を literal path としてステージする。削除済みの追跡ファイルも指定できる。置換 ref、partial clone、追跡ファイルと指定した新規ファイルに適用される実行可能な filter を検査してから `add` を実行する。hook は実行しない。検査に失敗した場合は索引・作業ファイル・ref を変更しない。
+
+[commit.ts](../scripts/commit.ts)は `--message <コミットメッセージ>` だけを受け取り、リポジトリルート、置換 ref、partial clone、適用される filter を確認してからステージ済みの内容をコミットする。merge・cherry-pick・revert・rebase・am・sequencer の進行中状態を、worktree ごとの Git ディレクトリで検査して拒否する。メッセージを一つの値として渡し、amend や追加オプションを受け付けない。現在の HEAD を親にした新規コミットを作成し、未ステージ・未追跡の変更を保全する。hook と署名プログラムは実行しない。起動時の環境変数除去と固定 Node.js は [Skill](../SKILL.md) に従う。
 
 ## 失敗時
 
@@ -44,7 +46,7 @@ Git の terminal prompt・askpass と credential helper の対話設定を無効
 
 ## Codex Rules
 
-[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules)が直接の Push、worktree 作成・削除、`git commit`、`git rm`、`git mv`、`git branch`、`git switch`、`git tag`、`git checkout-index`、`git read-tree`、`git update-index`、`git replace`、`git submodule`、`git merge`、`git am`、`git cherry-pick`、`git revert`、`git fetch`、`git pull`、`git fast-import` を含む破壊的な Git コマンドを `forbidden` にする。上書き・削除オプションの位置・短縮表記にかかわらず拒否するため、これらはコマンド全体を禁止する。commit は amend による履歴の書き換え、update-index はステージ内容の破棄・置換、replace は検証対象の偽装を防ぐ。`git refs` の `create` / `update` / `delete` / `rename` も禁止し、`list` / `exists` / `verify` は利用できる。merge・am・cherry-pick・revert は中断による競合解消の破棄、fetch・pull は refspec・設定によるブランチやタグの強制更新・削除、fast-import はブランチ ref の強制更新、worktree add は明示・暗黙のブランチ作成と強制更新を防ぐ。worktree の準備は専用ツールの detached 作成を使い、一覧は `git worktree list` で確認する。submodule の作業状態は対象ディレクトリを cwd にした `git status` などの読み取りで確認する。ブランチ・タグの一覧は `git for-each-ref refs/heads/` / `refs/tags/`、ブランチ・コミットの新規作成は [Skill](../SKILL.md) の `create-branch.ts` / `commit.ts` を使う。ブランチの新規作成は現在の HEAD に限定し、既存 ref と作業変更・無視ファイルを保全し、checkout hook を実行しない。Git のグローバルオプションでサブコマンドを隠す呼び出しも禁止対象とし、作業ディレクトリはツールの cwd で指定する。
+[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules)が直接の Push、worktree 作成・削除、`git add`、`git commit`、`git rm`、`git mv`、`git branch`、`git switch`、`git tag`、`git checkout-index`、`git read-tree`、`git update-index`、`git replace`、`git submodule`、`git merge`、`git am`、`git cherry-pick`、`git revert`、`git fetch`、`git pull`、`git fast-import` を含む破壊的な Git コマンドを `forbidden` にする。上書き・削除オプションの位置・短縮表記にかかわらず拒否するため、これらはコマンド全体を禁止する。add はステージ前の外部 filter 実行、commit は amend による履歴の書き換え、update-index はステージ内容の破棄・置換、replace は検証対象の偽装を防ぐ。`git refs` の `create` / `update` / `delete` / `rename` も禁止し、`list` / `exists` / `verify` は利用できる。merge・am・cherry-pick・revert は中断による競合解消の破棄、fetch・pull は refspec・設定によるブランチやタグの強制更新・削除、fast-import はブランチ ref の強制更新、worktree add は明示・暗黙のブランチ作成と強制更新を防ぐ。worktree の準備は専用ツールの detached 作成を使い、一覧は `git worktree list` で確認する。submodule の作業状態は対象ディレクトリを cwd にした `git status` などの読み取りで確認する。ブランチ・タグの一覧は `git for-each-ref refs/heads/` / `refs/tags/`、ブランチ・コミットの新規作成は [Skill](../SKILL.md) の `create-branch.ts` / `commit.ts` を使う。ブランチの新規作成は現在の HEAD に限定し、既存 ref と作業変更・無視ファイルを保全し、checkout hook を実行しない。Git のグローバルオプションでサブコマンドを隠す呼び出しも禁止対象とし、作業ディレクトリはツールの cwd で指定する。
 
 プロジェクトの `.codex/` を信頼し、Codex を再起動して読み込む。[公式 Rules 仕様](https://developers.openai.com/codex/rules)に従い、Rules は sandbox 外のコマンド要求に対するリテラルの prefix 判定である。Git 2.56 のオプション解析にある、後続コマンドへ進む独立したグローバルオプションを検査する。別の実行ファイルパス、`--git-dir=<任意値>` 等の値付き単一トークン、複雑な shell やスクリプト内部の子プロセスを網羅する強制境界ではない。Codex は [AGENTS.md](../../../../AGENTS.md) の禁止も守り、Rules を迂回しない。スクリプト実行は通常の sandbox・承認設定に従う。
 

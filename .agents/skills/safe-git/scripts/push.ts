@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, readlinkSync, realpathSync } from 'node:fs';
-import { delimiter, dirname, resolve } from 'node:path';
+import { delimiter, dirname, posix, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runProcess } from './process.ts';
 
@@ -60,11 +60,30 @@ function trustedExecutable(name: 'Git' | 'SSH' | 'Shell') {
   return trustedFile(path, name);
 }
 
-function trustedFile(path: string, name: string) {
+function trustedFile(path: string, name: string, allowProtectedSymlink = false) {
   const executable = realpathSync(path);
   const normalize = (value: string) => (process.platform === 'win32' ? resolve(value).toLowerCase() : resolve(value));
-  if (normalize(executable) !== normalize(path) || !lstatSync(executable).isFile())
+  if ((!allowProtectedSymlink && normalize(executable) !== normalize(path)) || !lstatSync(executable).isFile())
     throw new Error(`信頼する ${name} 実行ファイルの配置が不正です。`);
+  if (allowProtectedSymlink) {
+    const visited = new Set<string>();
+    const check = (entry: string) => {
+      if (visited.has(entry)) return;
+      visited.add(entry);
+      const stat = lstatSync(entry);
+      if (stat.uid !== 0 || (!stat.isSymbolicLink() && (stat.mode & 0o022) !== 0))
+        throw new Error(
+          `${name} の symlink・実体・親ディレクトリは root 所有で、group / other の書き込みを禁止してください。`,
+        );
+      const parent = posix.dirname(entry);
+      if (parent !== entry) check(parent);
+      if (stat.isSymbolicLink()) check(posix.resolve(realpathSync(parent), readlinkSync(entry)));
+    };
+    check(path);
+    check(executable);
+    // multicall 実行ファイルは起動名で helper を選ぶため、固定の helper パスを維持する。
+    return path;
+  }
   if (process.platform !== 'win32') {
     for (let entry = executable; ; entry = dirname(entry)) {
       const stat = lstatSync(entry);
@@ -152,7 +171,7 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
 }
 
 // Git が作業ツリーを読む前に、属性から起動される外部コマンドを拒否する。
-export async function checkedConfigKeys(root: string, run: Run = runGit) {
+export async function checkedConfigKeys(root: string, run: Run = runGit, additionalPaths: string[] = []) {
   const git = async (...args: string[]) => (await run(args, root)).replace(/\r?\n$/, '');
   if (await git('for-each-ref', '--format=%(refname)', 'refs/replace/'))
     throw new Error('置換 ref が存在するため Git の状態を検証できません。');
@@ -162,7 +181,12 @@ export async function checkedConfigKeys(root: string, run: Run = runGit) {
     throw new Error('partial clone の自動 fetch を伴うリポジトリは検証できません。');
   const filters = new Set(configKeys.flatMap((key) => /^filter\.(.+)\.(?:clean|process)$/i.exec(key)?.[1] ?? []));
   if (filters.size) {
-    const paths = (await git('-c', 'core.fsmonitor=false', 'ls-files', '-z')).split('\0').filter(Boolean);
+    const paths = [
+      ...new Set([
+        ...(await git('-c', 'core.fsmonitor=false', 'ls-files', '-z')).split('\0').filter(Boolean),
+        ...additionalPaths,
+      ]),
+    ];
     for (let offset = 0; offset < paths.length; offset += 100) {
       const attributes = (
         await git(
@@ -177,7 +201,7 @@ export async function checkedConfigKeys(root: string, run: Run = runGit) {
       ).split('\0');
       for (let index = 2; index < attributes.length; index += 3) {
         if (filters.has(attributes[index]!))
-          throw new Error('追跡ファイルに実行可能な clean / process filter があるため作業ツリーを検証できません。');
+          throw new Error('対象ファイルに実行可能な clean / process filter があるため Git 操作を実行できません。');
       }
     }
   }
@@ -185,31 +209,38 @@ export async function checkedConfigKeys(root: string, run: Run = runGit) {
 }
 
 async function credentialOptions(root: string, configKeys: string[], run: Run) {
-  const options: string[] = [];
-  for (const key of new Set(configKeys.filter((key) => /^credential(?:\..+)?\.helper$/i.test(key)))) {
-    const values = (await run(['config', '--null', '--get-all', key], root)).split('\0');
-    if (values.at(-1) === '') values.pop();
-    options.push('-c', key + '=');
-    for (const value of values) {
-      if (value === '') {
-        options.push('-c', key + '=');
-        continue;
-      }
-      const paths =
-        process.platform === 'win32' && value === 'manager'
-          ? ['ucrt64', 'mingw64'].map((layout) => `C:/Program Files/Git/${layout}/bin/git-credential-manager.exe`)
-          : process.platform === 'linux' && (value === 'cache' || value === 'store')
-            ? [`/usr/lib/git-core/git-credential-${value}`]
-            : process.platform === 'darwin' && value === 'osxkeychain'
-              ? [
-                  '/Library/Developer/CommandLineTools/usr/libexec/git-core/git-credential-osxkeychain',
-                  '/Applications/Xcode.app/Contents/Developer/usr/libexec/git-core/git-credential-osxkeychain',
-                ]
-              : [];
-      const path = paths.find((path) => lstatSync(path, { throwIfNoEntry: false }));
-      if (!path) throw new Error('信頼する固定配置以外の credential helper は使用できません。');
-      options.push('-c', `${key}=!"${trustedFile(path, 'credential helper').replaceAll('\\', '/')}"`);
+  const keys = new Set(configKeys.filter((key) => /^credential(?:\..+)?\.helper$/i.test(key)));
+  if (!keys.size) return [];
+  // 継承した helper を先にリセットし、設定ファイルをまたぐ元の順序で再生する。
+  const options = [...keys].flatMap((key) => ['-c', key + '=']);
+  const entries = (await run(['config', '--null', '--list'], root)).split('\0');
+  for (const entry of entries) {
+    const separator = entry.indexOf('\n');
+    const key = separator < 0 ? entry : entry.slice(0, separator);
+    if (!/^credential(?:\..+)?\.helper$/i.test(key)) continue;
+    if (separator < 0) throw new Error('credential helper の値が設定されていません。');
+    const value = entry.slice(separator + 1);
+    if (value === '') {
+      options.push('-c', key + '=');
+      continue;
     }
+    const paths =
+      process.platform === 'win32' && value === 'manager'
+        ? ['ucrt64', 'mingw64'].map((layout) => `C:/Program Files/Git/${layout}/bin/git-credential-manager.exe`)
+        : process.platform === 'linux' && (value === 'cache' || value === 'store')
+          ? [`/usr/lib/git-core/git-credential-${value}`]
+          : process.platform === 'darwin' && value === 'osxkeychain'
+            ? [
+                '/Library/Developer/CommandLineTools/usr/libexec/git-core/git-credential-osxkeychain',
+                '/Applications/Xcode.app/Contents/Developer/usr/libexec/git-core/git-credential-osxkeychain',
+              ]
+            : [];
+    const path = paths.find((path) => lstatSync(path, { throwIfNoEntry: false }));
+    if (!path) throw new Error('信頼する固定配置以外の credential helper は使用できません。');
+    options.push(
+      '-c',
+      `${key}=!"${trustedFile(path, 'credential helper', process.platform === 'linux').replaceAll('\\', '/')}"`,
+    );
   }
   return options;
 }

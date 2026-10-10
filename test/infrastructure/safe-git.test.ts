@@ -4,13 +4,14 @@ import fs from 'node:fs';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
-import { delimiter, join } from 'node:path';
+import { delimiter, join, posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test, { type TestContext } from 'node:test';
 import { parseArguments, runGit, safePush } from '../../.agents/skills/safe-git/scripts/push.ts';
 import { runProcess } from '../../.agents/skills/safe-git/scripts/process.ts';
 import { createBranch } from '../../.agents/skills/safe-git/scripts/create-branch.ts';
 import { createCommit } from '../../.agents/skills/safe-git/scripts/commit.ts';
+import { stageFiles } from '../../.agents/skills/safe-git/scripts/stage.ts';
 import { frontmatter, localLinks, read, repository, temporaryDirectory } from '../lib/plugin.ts';
 
 const url = 'https://github.com/shu-matsukubo/matsu-artifact-delivery.git';
@@ -249,6 +250,152 @@ await test('SGT-U34: 新規コミットは親・ステージ内容・作業変�
   assert.equal(f.git('status', '--porcelain=v1'), status);
   assert.deepEqual(fs.readFileSync(indexPath), index);
   assert.equal(fs.existsSync(marker), false);
+});
+
+await test('SGT-U35: merge・sequencer・rebase の途中ではコミットせず、状態と変更を保全する', async (t) => {
+  for (const state of [
+    'MERGE_HEAD',
+    'CHERRY_PICK_HEAD',
+    'REVERT_HEAD',
+    'REBASE_HEAD',
+    'sequencer',
+    'rebase-apply',
+    'rebase-merge',
+    'linked/MERGE_HEAD',
+  ]) {
+    await t.test(state, async (t) => {
+      const f = await gitFixture(t);
+      let cwd = f.cwd;
+      if (state.startsWith('linked/')) {
+        cwd = join(f.cwd, '../linked');
+        f.git('worktree', 'add', '--detach', cwd, f.commit);
+      }
+      const git = (...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+      await writeFile(join(cwd, 'file'), 'reviewed content');
+      git('add', 'file');
+      await writeFile(join(cwd, 'file'), 'local work');
+      await writeFile(join(cwd, 'untracked'), 'new work');
+      const name = state.replace('linked/', '');
+      const statePath = git('rev-parse', '--path-format=absolute', '--git-path', name);
+      const sibling = f.git('commit-tree', f.git('rev-parse', 'HEAD^{tree}'), '-p', f.base, '-m', 'sibling');
+      if (['sequencer', 'rebase-apply', 'rebase-merge'].includes(name)) {
+        await mkdir(statePath);
+        await writeFile(join(statePath, 'todo'), 'unfinished operation');
+      } else await writeFile(statePath, sibling + '\n');
+      const indexPath = git('rev-parse', '--path-format=absolute', '--git-path', 'index');
+      const index = fs.readFileSync(indexPath);
+      const calls: string[][] = [];
+      await assert.rejects(
+        createCommit(['--message', 'change'], cwd, async (args, root) => {
+          calls.push(args);
+          return runGit(args, root);
+        }),
+        /途中|進行中/,
+      );
+      assert.equal(git('rev-parse', 'HEAD'), f.commit);
+      assert.deepEqual(fs.readFileSync(indexPath), index);
+      assert.equal(await read(join(cwd, 'file')), 'local work');
+      assert.equal(await read(join(cwd, 'untracked')), 'new work');
+      assert.equal(
+        await read(['sequencer', 'rebase-apply', 'rebase-merge'].includes(name) ? join(statePath, 'todo') : statePath),
+        ['sequencer', 'rebase-apply', 'rebase-merge'].includes(name) ? 'unfinished operation' : sibling + '\n',
+      );
+      assert.equal(
+        calls.some((args) => args.includes('commit')),
+        false,
+      );
+    });
+  }
+});
+
+await test('SGT-U38: ステージ前に新規ファイルも filter を検査し、索引・作業変更・ref を保全する', async (t) => {
+  const f = await gitFixture(t);
+  const marker = join(f.cwd, '.git/filter-ran');
+  const paths = ['new file.txt', 'file'];
+  await writeFile(join(f.cwd, paths[0]!), 'new work');
+  await writeFile(join(f.cwd, 'file'), 'local work');
+  const indexPath = f.git('rev-parse', '--path-format=absolute', '--git-path', 'index');
+  const index = fs.readFileSync(indexPath);
+  const refs = f.git('show-ref');
+  for (const path of paths) {
+    await writeFile(join(f.cwd, '.git/info/attributes'), `"${path}" filter=unsafe\n`);
+    for (const kind of ['clean', 'process']) {
+      f.git('config', `filter.unsafe.${kind}`, 'echo ran > .git/filter-ran; cat');
+      const calls: string[][] = [];
+      await assert.rejects(
+        stageFiles(['--', ...paths], f.cwd, async (args: string[], root: string) => {
+          calls.push(args);
+          return runGit(args, root);
+        }),
+        /filter/,
+      );
+      assert.equal(
+        calls.some((args) => args.includes('add')),
+        false,
+      );
+      assert.equal(fs.existsSync(marker), false);
+      assert.deepEqual(fs.readFileSync(indexPath), index);
+      assert.equal(f.git('show-ref'), refs);
+      assert.equal(await read(join(f.cwd, paths[0]!)), 'new work');
+      assert.equal(await read(join(f.cwd, 'file')), 'local work');
+      f.git('config', '--unset', `filter.unsafe.${kind}`);
+    }
+  }
+  // 同じ属性を通常の add に適用すると filter が動くことを確認する。
+  await writeFile(join(f.cwd, '.git/info/attributes'), `"${paths[0]}" filter=unsafe\n`);
+  f.git('config', 'filter.unsafe.clean', 'echo ran > .git/filter-ran; cat');
+  f.git('add', '--', paths[0]!);
+  assert.equal(fs.existsSync(marker), true);
+  await fs.promises.unlink(marker);
+  await writeFile(join(f.cwd, '.git/info/attributes'), 'unused filter=unsafe\n');
+  await writeFile(join(f.cwd, '.git/hooks/post-index-change'), '#!/bin/sh\necho ran > .git/filter-ran\n', {
+    mode: 0o755,
+  });
+  const literal = process.platform === 'win32' ? 'literal[1].txt' : ':literal*';
+  await writeFile(join(f.cwd, literal), 'literal path');
+  await writeFile(join(f.cwd, 'unselected'), 'keep untracked');
+  await stageFiles(['--', paths[0]!, literal], f.cwd);
+  assert.equal(f.git('show', `:0:${paths[0]}`), 'new work');
+  assert.equal(f.git('show', `:0:${literal}`), 'literal path');
+  assert.equal(f.git('show', ':0:file'), 'change');
+  assert.equal(f.git('ls-files', '--', 'unselected'), '');
+  assert.equal(fs.existsSync(marker), false);
+  for (const args of [[], ['--'], ['--all'], ['--', ''], ['--', 'bad\0path'], ['--', '../outside'], ['--', '.']])
+    await assert.rejects(stageFiles(args, f.cwd));
+  await assert.rejects(stageFiles(['--', join(f.cwd, 'file')], f.cwd));
+  await mkdir(join(f.cwd, 'directory'));
+  await writeFile(join(f.cwd, 'directory/file'), 'unselected work');
+  await assert.rejects(stageFiles(['--', 'directory'], f.cwd), /ディレクトリ/);
+  await fs.promises.unlink(join(f.cwd, literal));
+  await stageFiles(['--', literal], f.cwd);
+  assert.equal(f.git('ls-files', '--', literal), '');
+  await t.test('追跡済み submodule の更新と作業変更を保全する', async (t) => {
+    const parent = await gitFixture(t);
+    const source = await gitFixture(t);
+    parent.git('-c', 'protocol.file.allow=always', 'submodule', 'add', source.cwd, 'sub');
+    parent.git('commit', '-qm', 'submodule');
+    const child = (...args: string[]) =>
+      execFileSync('git', args, { cwd: join(parent.cwd, 'sub'), encoding: 'utf8', stdio: 'pipe' }).trim();
+    child('config', 'user.name', 'Test');
+    child('config', 'user.email', 'test@example.invalid');
+    child('commit', '--allow-empty', '--no-gpg-sign', '-qm', 'reviewed update');
+    const parentHead = parent.git('rev-parse', 'HEAD');
+    await stageFiles(['--', 'sub'], parent.cwd);
+    assert.equal(parent.git('rev-parse', ':sub'), child('rev-parse', 'HEAD'));
+    assert.equal(parent.git('rev-parse', 'HEAD'), parentHead);
+    const marker = join(parent.cwd, '.git/sub-filter-ran');
+    await writeFile(
+      child('rev-parse', '--path-format=absolute', '--git-path', 'info/attributes'),
+      'file filter=unsafe\n',
+    );
+    child('config', 'filter.unsafe.clean', `echo ran > '${marker.replaceAll('\\', '/')}'; cat`);
+    await writeFile(join(parent.cwd, 'sub/file'), 'local submodule work');
+    const result = await createCommit(['--message', 'submodule update'], parent.cwd);
+    assert.equal(fs.existsSync(marker), false);
+    assert.equal(parent.git('rev-parse', 'HEAD'), result.commit);
+    assert.equal(parent.git('rev-parse', 'HEAD^'), parentHead);
+    assert.equal(await read(join(parent.cwd, 'sub/file')), 'local submodule work');
+  });
 });
 
 await test('SGT-U03: 実 Git で新規・fast-forward の単一ブランチを Push し、他の ref を保つ', async (t) => {
@@ -1059,6 +1206,25 @@ await test('SGT-U06: CLI は未知の引数・別 cwd・Git 設定の環境変�
     assert.equal(result.status, 1);
     assert.match(result.stderr, options.message);
   }
+  const stage = join(repository, '.agents/skills/safe-git/scripts/stage.ts');
+  for (const options of [
+    { args: ['--all'], cwd: repository, env: process.env, message: /引数/ },
+    { args: ['--', 'AGENTS.md'], cwd: join(repository, 'plugins'), env: process.env, message: /ルートから/ },
+    {
+      args: ['--', 'AGENTS.md'],
+      cwd: repository,
+      env: { ...process.env, GIT_EXEC_PATH: repository },
+      message: /環境変数/,
+    },
+  ]) {
+    const result = spawnSync(process.execPath, [stage, ...options.args], {
+      cwd: options.cwd,
+      env: options.env,
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, options.message);
+  }
 });
 
 await test('SGT-U07: 確認後に同名ブランチが作成された場合は Push を拒否する', async (t) => {
@@ -1313,6 +1479,11 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
       [git, 'commit', '--no-edit', '--amend'],
       [git, 'commit', '-m', 'change', '--amend'],
       [git, 'commit', '--am'],
+      [git, 'add', 'file'],
+      [git, 'add', '--all'],
+      [git, 'add', '--', 'file'],
+      [git, 'add', '-p', 'file'],
+      [git, 'add', '--renormalize', 'file'],
       [git, 'update-index', '--force-remove', 'file'],
       [git, 'update-index', 'file', '--force-remove'],
       [git, 'update-index', '--cacheinfo', `100644,${head},file`],
@@ -1426,7 +1597,6 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['git', 'for-each-ref', 'refs/heads/'],
     ['git', 'for-each-ref', 'refs/tags/'],
     ['git', 'diff'],
-    ['git', 'add', 'file'],
     ['git', 'refs', 'list'],
     ['git', 'refs', 'exists', 'refs/heads/topic'],
     ['git', 'refs', 'verify'],
@@ -1435,6 +1605,7 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/push.ts', '--branch', branch],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/create-branch.ts', '--branch', branch],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/commit.ts', '--message', 'change'],
+    ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/stage.ts', '--', 'file'],
   ];
   for (const args of [...forbidden, ...allowed]) {
     const result = JSON.parse(
@@ -1470,6 +1641,19 @@ await test('SGT-U29: 任意の credential helper を通常・URL 別設定で通
       assert.equal(fs.existsSync(marker), false);
       f.git('config', '--unset-all', key);
     }
+    const missing = fixture();
+    missing.replies.set('config --name-only --list', key);
+    missing.replies.set('config --null --list', key + '\0');
+    await assert.rejects(
+      safePush({ branch, dryRun: false }, repository, (args, cwd) =>
+        missing.run(args.includes('ls-remote') ? args.slice(args.indexOf('ls-remote')) : args, cwd),
+      ),
+      /credential helper/,
+    );
+    assert.equal(
+      missing.calls.some((args) => args.includes('ls-remote') || args.includes('push')),
+      false,
+    );
   }
 });
 
@@ -1593,12 +1777,154 @@ await test('SGT-U32: 許可した helper は固定パスで起動し、HTTPS と
   const https = fixture();
   https.replies.set('remote get-url --all origin', sshUrl);
   https.replies.set('config --name-only --list', 'credential.helper');
-  https.replies.set('config --null --get-all credential.helper', '!untrusted\0');
+  https.replies.set('config --null --list', 'credential.helper\n!untrusted\0');
   await assert.rejects(safePush({ branch, dryRun: false }, repository, https.run), /credential helper/);
   assert.equal(
     https.calls.some((args) => args.includes('ls-remote') || args.includes('push')),
     false,
   );
+});
+
+await test('SGT-U36: Linux の helper は保護された symlink と経由先を検証し、元の名前で起動する', async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+  Object.defineProperty(process, 'platform', { ...platform, value: 'linux' });
+  const helper = '/usr/lib/git-core/git-credential-store';
+  const intermediate = '/usr/lib/git-core/git';
+  const target = '/usr/bin/git';
+  const realpath = fs.realpathSync;
+  const lstat = fs.lstatSync;
+  const readlink = fs.readlinkSync;
+  const stat = lstat(process.execPath);
+  const modes = new Map<string, { uid: number; mode: number }>();
+  for (const file of [helper, intermediate, target]) {
+    for (let dir = posix.dirname(file); ; dir = posix.dirname(dir)) {
+      modes.set(dir, { uid: 0, mode: 0o040755 });
+      if (dir === '/') break;
+    }
+    modes.set(file, { uid: 0, mode: file === target ? 0o100755 : 0o120777 });
+  }
+  t.after(() => {
+    Object.defineProperty(process, 'platform', platform);
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  t.mock.method(fs, 'realpathSync', (path: string) =>
+    path === helper || path === intermediate ? target : modes.has(path) ? path : realpath(path),
+  );
+  t.mock.method(fs, 'lstatSync', (path: string, options?: { throwIfNoEntry?: boolean }) =>
+    modes.has(path) ? Object.assign(Object.create(stat), modes.get(path)) : lstat(path, options),
+  );
+  t.mock.method(fs, 'readlinkSync', (path: string) =>
+    path === helper ? 'git' : path === intermediate ? target : readlink(path),
+  );
+  syncBuiltinESMExports();
+  const f = fixture();
+  f.replies.set('config --name-only --list', 'credential.helper');
+  f.replies.set('config --null --list', 'credential.helper\nstore\0');
+  const run: Run = (args, cwd) => f.run(args.includes('ls-remote') ? args.slice(args.indexOf('ls-remote')) : args, cwd);
+  // multicall Git が helper 名を識別できることを確認する。
+  const remote: string[][] = [];
+  await safePush({ branch, dryRun: true }, repository, (args, cwd) => {
+    if (args.includes('ls-remote')) remote.push(args);
+    return run(args, cwd);
+  });
+  assert.ok(remote[0]!.includes(`credential.helper=!"${helper}"`));
+  assert.ok(!remote[0]!.includes(`credential.helper=!"${target}"`));
+  for (const [path, unsafe] of [
+    [helper, { uid: 1000, mode: 0o120777 }],
+    [intermediate, { uid: 1000, mode: 0o120777 }],
+    [target, { uid: 0, mode: 0o100777 }],
+    ['/usr/lib/git-core', { uid: 0, mode: 0o040777 }],
+    ['/usr/bin', { uid: 1000, mode: 0o040755 }],
+  ] as const) {
+    const original = modes.get(path)!;
+    modes.set(path, unsafe);
+    await assert.rejects(safePush({ branch, dryRun: true }, repository, run), /root|credential helper/);
+    modes.set(path, original);
+  }
+});
+
+await test('SGT-U37: helper の通常・URL 別設定と空値リセットを設定順に再生する', async (t) => {
+  const f = await gitFixture(t);
+  const configPath = join(f.cwd, '.git/config');
+  const initialConfig = await read(configPath);
+  const script = join(f.cwd, '.git/test-helper');
+  const marker = join(f.cwd, '.git/helper-ran');
+  await writeFile(script, '#!/bin/sh\necho ran >> .git/helper-ran\nprintf "username=test\\npassword=test\\n\\n"\n', {
+    mode: 0o755,
+  });
+  const helper = process.platform === 'win32' ? 'manager' : process.platform === 'darwin' ? 'osxkeychain' : 'store';
+  const path =
+    process.platform === 'win32'
+      ? 'C:/Program Files/Git/ucrt64/bin/git-credential-manager.exe'
+      : process.platform === 'darwin'
+        ? '/Library/Developer/CommandLineTools/usr/libexec/git-core/git-credential-osxkeychain'
+        : '/usr/lib/git-core/git-credential-store';
+  const realpath = fs.realpathSync;
+  const lstat = fs.lstatSync;
+  const stat = lstat(script);
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  t.mock.method(fs, 'realpathSync', (value: string) => (value === path ? path : realpath(value)));
+  t.mock.method(fs, 'lstatSync', (value: string, options?: { throwIfNoEntry?: boolean }) =>
+    value === path
+      ? Object.assign(Object.create(stat), { uid: 0, mode: 0o100755 })
+      : process.platform !== 'win32' && path.startsWith(value + '/')
+        ? Object.assign(Object.create(lstat(f.cwd)), { uid: 0, mode: 0o040755 })
+        : lstat(value, options),
+  );
+  syncBuiltinESMExports();
+  for (const [values, expected] of [
+    [
+      [
+        ['credential', helper],
+        ['credential "https://github.com"', ''],
+        ['credential', helper],
+      ],
+      true,
+    ],
+    [
+      [
+        ['credential', ''],
+        ['credential "https://github.com"', helper],
+        ['credential', ''],
+      ],
+      false,
+    ],
+  ] as const) {
+    await writeFile(
+      configPath,
+      initialConfig + values.map(([section, value]) => `\n[${section}]\nhelper = ${value}\n`).join(''),
+    );
+    if (fs.existsSync(marker)) await fs.promises.unlink(marker);
+    let reached = false;
+    const run = (args: string[], cwd: string, transport = false) =>
+      runGit(args, cwd, transport, async (file, actual, options) => {
+        const index = actual.indexOf('ls-remote');
+        if (index < 0) return runProcess(file, actual, options);
+        reached = true;
+        const credentialArgs = [
+          ...actual.slice(0, index).map((value) => value.replaceAll(path, script.replaceAll('\\', '/'))),
+          'credential',
+          'fill',
+        ];
+        if (expected)
+          assert.match(
+            await runProcess(file, credentialArgs, { ...options, input: 'protocol=https\nhost=github.com\n\n' }),
+            /username=test/,
+          );
+        else
+          await assert.rejects(
+            runProcess(file, credentialArgs, { ...options, input: 'protocol=https\nhost=github.com\n\n' }),
+          );
+        assert.equal(fs.existsSync(marker), expected);
+        return `ref: refs/heads/main\tHEAD\n${head}\tHEAD\n`;
+      });
+    await safePush({ branch, dryRun: true }, f.cwd, run);
+    assert.ok(reached);
+  }
 });
 
 await test('SGT-U31: Node と外部プロセスの起動前に native loader の環境変数を除去する', async (t) => {
