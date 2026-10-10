@@ -175,7 +175,7 @@ async function gitFixture(t: TestContext) {
       'git',
       args.map((arg) => (arg === url && (args[0] === 'ls-remote' || args.includes('push')) ? remote : arg)),
       { cwd: commandRoot, encoding: 'utf8', stdio: 'pipe' },
-    ).trim();
+    );
   return { cwd, remote, git, base, commit, run };
 }
 
@@ -361,6 +361,74 @@ await test('SGT-U21: clean / process filter を作業ツリー検査より先に
       false,
     );
     f.git('config', '--unset', `filter.unsafe.${kind}`);
+  }
+});
+
+await test('SGT-U27: プロセス出力の空白・改行・NUL をそのまま返す', async () => {
+  const output = ' \tfirst\0last \n\0 \t\n';
+  assert.equal(
+    await runProcess(process.execPath, ['-e', `process.stdout.write(${JSON.stringify(output)})`], {
+      cwd: repository,
+      env: process.env,
+    }),
+    output,
+  );
+});
+
+await test('SGT-U28: 空白を含むパスの filter を実 Git の出力から検出し、実行前に拒否する', async (t) => {
+  for (const nested of [false, true]) {
+    await t.test(nested ? '入れ子の submodule' : 'ルート', async (t) => {
+      const f = await gitFixture(t);
+      const source = nested ? await gitFixture(t) : f;
+      const paths = [' a', ' a b.txt', ...(process.platform === 'win32' ? [] : ['\ta', '\na', 'z \n'])];
+      for (const path of paths) await writeFile(join(source.cwd, path), 'content');
+      source.git('add', '--', ...paths);
+      source.git('commit', '-qm', 'whitespace paths');
+      if (nested) {
+        const parent = await gitFixture(t);
+        parent.git('-c', 'protocol.file.allow=always', 'submodule', 'add', source.cwd, 'nested');
+        parent.git('commit', '-qm', 'nested submodule');
+        f.git('-c', 'protocol.file.allow=always', 'submodule', 'add', parent.cwd, 'sub');
+        f.git('commit', '-qm', 'submodule');
+        f.git('-c', 'protocol.file.allow=always', 'submodule', 'update', '--init', '--recursive');
+      }
+      const cwd = nested ? join(f.cwd, 'sub/nested') : f.cwd;
+      const git = (...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+      const marker = join(git('rev-parse', '--absolute-git-dir'), 'filter-ran');
+      const attributes = git('rev-parse', '--path-format=absolute', '--git-path', 'info/attributes');
+      const calls: string[][] = [];
+      const run = async (args: string[], root: string) => {
+        calls.push(args);
+        return args.includes('ls-remote') || args.includes('push') ? f.run(args, root) : runGit(args, root);
+      };
+      await safePush({ branch, dryRun: true }, f.cwd, run);
+      for (const path of paths) {
+        await writeFile(attributes, `${JSON.stringify(path)} filter=unsafe\n`);
+        for (const kind of ['clean', 'process']) {
+          git('config', `filter.unsafe.${kind}`, `echo ran > "${marker.replaceAll('\\', '/')}"; cat`);
+          const operations: (() => Promise<unknown>)[] = [() => safePush({ branch, dryRun: false }, f.cwd, run)];
+          if (!nested) operations.push(() => createBranch(['--branch', 'codex/new-work'], f.cwd, run));
+          for (const operation of operations) {
+            calls.length = 0;
+            await assert.rejects(operation, /filter/);
+            assert.equal(fs.existsSync(marker), false, path);
+            assert.equal(
+              calls.some((args) =>
+                ['switch', 'update-index', 'status', 'hash-object', 'ls-remote', 'push'].some((arg) =>
+                  args.includes(arg),
+                ),
+              ),
+              false,
+              path,
+            );
+          }
+          git('config', '--unset', `filter.unsafe.${kind}`);
+        }
+      }
+      await writeFile(attributes, '');
+      if (!nested) await createBranch(['--branch', 'codex/new-work'], f.cwd, run);
+      await safePush({ branch: nested ? branch : 'codex/new-work', dryRun: true }, f.cwd, run);
+    });
   }
 });
 
@@ -570,10 +638,10 @@ await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失�
           [...args, 'config', '--get-urlmatch', 'http.schannelUseSSLCAInfo', url],
           options,
         );
-        assert.equal(backend, 'schannel');
-        assert.equal(customCA, 'false');
+        assert.equal(backend.trim(), 'schannel');
+        assert.equal(customCA.trim(), 'false');
         assert.equal(
-          await execute(file, [...args, 'config', '--get-urlmatch', 'http.schannelCheckRevoke', url], options),
+          (await execute(file, [...args, 'config', '--get-urlmatch', 'http.schannelCheckRevoke', url], options)).trim(),
           'true',
         );
       }
@@ -1208,6 +1276,26 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['git', 'worktree', 'remove', '--force', 'path'],
     ['git', 'worktree', 'remove', 'path', '--force'],
     ['git', 'worktree', 'remove', '-f', 'path'],
+    ...['git', 'git.exe'].flatMap((git) => [
+      ...['merge', 'am', 'cherry-pick', 'revert'].flatMap((command) => [
+        [git, command, '--abort'],
+        [git, command, '--quiet', '--abort'],
+      ]),
+      [git, 'fetch', 'origin', '+topic:refs/heads/topic'],
+      [git, 'fetch', '--force', 'origin', 'topic:refs/heads/topic'],
+      [git, 'fetch', 'origin', 'topic:refs/tags/v1', '-f'],
+      [git, 'fetch', '--prune', '--prune-tags', 'origin'],
+      [git, 'fetch', 'origin', 'topic:refs/heads/topic'],
+      [git, 'pull', '--force', 'origin', 'topic:refs/heads/topic'],
+      [git, 'pull', 'origin', '+topic:refs/tags/v1'],
+      [git, 'pull', '--rebase'],
+      [git, 'worktree', 'add', '-B', 'topic', 'path', 'HEAD~1'],
+      [git, 'worktree', 'add', 'path', 'HEAD~1', '-B', 'topic'],
+      [git, 'worktree', 'add', '--detach', 'path', '-B', 'topic', 'HEAD~1'],
+      [git, 'worktree', 'add', '-b', 'topic', 'path'],
+      [git, 'worktree', 'add', '--orphan', '-b', 'topic', 'path'],
+      [git, 'worktree', 'add', 'path'],
+    ]),
   ];
   const allowed = [
     ['git', 'status'],
@@ -1216,6 +1304,8 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['git', 'diff'],
     ['git', 'add', 'file'],
     ['git', 'commit', '-m', 'change'],
+    ['git', 'worktree', 'list', '--porcelain'],
+    ['git', 'ls-remote', 'origin'],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/push.ts', '--branch', branch],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/create-branch.ts', '--branch', branch],
   ];

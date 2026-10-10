@@ -157,7 +157,7 @@ npm run ci:select -- --all
 | PKG-U01〜PKG-U04         | marketplace、Plugin Agent 登録不要とリポジトリ Codex 設定の配布外確認、README 参照、ID 対応                                                                     | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U01                  | 入口の reference 参照、起動・再開・新規選定・環境準備・GitHub とローカルへの反映・clean 確認の契約と担当境界                                                    | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U02                  | プラグイン Issue への対象限定、実装中・merge 済み PR がある Issue の選定除外                                                                                    | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
-| SGT-U01〜SGT-U26         | Push の接続先・祖先・単一 ref、競合・偽装・隠れた変更・実行可能な filter の拒否、submodule の検査、固定 SSH・非対話認証・子孫停止、新規ブランチ作成・CLI・Rules | [安全な Push の試験](../test/infrastructure/safe-git.test.ts)                             |
+| SGT-U01〜SGT-U28         | Push の接続先・祖先・単一 ref、競合・偽装・隠れた変更・実行可能な filter の拒否、submodule の検査、固定 SSH・非対話認証・子孫停止、新規ブランチ作成・CLI・Rules | [安全な Push の試験](../test/infrastructure/safe-git.test.ts)                             |
 
 ### 既存 MCP の対応表
 
@@ -214,6 +214,8 @@ CI-U11 は [GitHub の式評価ライブラリ](https://github.com/actions/langu
 `SGT-U21` は Git 属性に設定された clean / process filter の外部コマンドを作業ツリー検査より先に拒否する。`SGT-U22` は `.gitmodules` とローカルの `ignore=all` がある submodule の追跡・未追跡変更を検出する。`SGT-U23` は呼び出し元の通常終了・SIGINT・SIGTERM による子孫停止とハンドラーの後始末を確認する。POSIX は実シグナルを送り、Windows は IPC で同じシグナルハンドラーを呼ぶ。OS の強制終了は再現しない。`SGT-U24` は新規ブランチ作成が既存 ref・作業変更を保全し、追加オプションと checkout hook を実行しないことを実 Git で確認する。
 
 `SGT-U25` は `http.schannelCheckRevoke` の通常・URL 別設定で失効確認の無効化を通信前に拒否し、有効化は許可する。`SGT-U14` は Windows の実 Git で失効確認を有効にする設定の適用も確認する。失効済みの実証明書との通信は再現しない。`SGT-U26` は直下・入れ子の submodule で `assume-unchanged` / `skip-worktree`、stat 設定と時刻復元による隠れた変更を拒否し、ファイル・索引を保全する。子の filter を親の作業ツリー検査より先に拒否し、fsmonitor も実行しないことを確認する。`SGT-U05` は `checkout-index`、`read-tree`、submodule の強制削除・更新をオプションの前置・後置・短縮形を含め評価する。
+
+`SGT-U27` は実プロセスの出力に含まれる空白・改行・NUL の保全を確認する。`SGT-U28` はルートと入れ子の submodule で空白付きパスを実 Git に追跡させ、適用される clean / process filter を実行前に拒否する。ルートでは新規ブランチ作成も検証する。POSIX ではタブ・改行・末尾空白のあるパスも含める。`SGT-U05` は merge・am・cherry-pick・revert の中断、fetch・pull の強制 ref 更新とタグ削除、worktree add のブランチ新規作成・強制更新・暗黙の作成を、オプションの前置・後置を含め評価する。
 
 契約 ID のガイド掲載確認は、差分 CI の入口が異なるため WF/EX-U02 と PKG-U04 の両方に置く。契約一覧だけの変更では前者、ガイドだけの変更では後者が実行される。単純に片方を削除すると一方の変更経路に検証漏れが生じるため、追加の CI 対象を増やしてまで統合しない。
 

@@ -82,7 +82,7 @@ export function runProcess(file: string, args: string[], options: Options): Prom
       clearTimeout(timer);
       removeHandlers();
       if (stopped) return;
-      if (code === 0) resolve(Buffer.concat(stdout).toString('utf8').trim());
+      if (code === 0) resolve(Buffer.concat(stdout).toString('utf8'));
       else
         reject(
           Object.assign(new Error('コマンドが失敗しました。'), {

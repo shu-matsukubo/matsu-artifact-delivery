@@ -9,7 +9,7 @@ const repository = fileURLToPath(new URL('../../../../', import.meta.url));
 export async function createBranch(args: string[], root = repository, run = runGit) {
   if (args.length !== 2 || args[0] !== '--branch') throw new Error('引数は --branch <新規作業ブランチ> のみです。');
   const { branch } = parseArguments(args);
-  if (realpathSync(await run(['rev-parse', '--show-toplevel'], root)) !== realpathSync(root))
+  if (realpathSync((await run(['rev-parse', '--show-toplevel'], root)).replace(/\r?\n$/, '')) !== realpathSync(root))
     throw new Error('スクリプトと Git リポジトリのルートが一致しません。');
   await checkedConfigKeys(root, run);
   await run(

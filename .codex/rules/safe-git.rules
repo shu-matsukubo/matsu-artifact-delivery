@@ -1,9 +1,9 @@
 # Codex の直接実行を制限する。Push は safe-git Skill のスクリプトを使う。
 prefix_rule(
-    pattern = [["git", "git.exe"], ["push", "send-pack", "receive-pack", "reset", "clean", "checkout", "checkout-index", "read-tree", "restore", "stash", "rebase", "filter-branch", "update-ref", "symbolic-ref", "rm", "mv", "submodule"]],
+    pattern = [["git", "git.exe"], ["push", "send-pack", "receive-pack", "reset", "clean", "checkout", "checkout-index", "read-tree", "restore", "stash", "rebase", "merge", "am", "cherry-pick", "revert", "fetch", "pull", "filter-branch", "update-ref", "symbolic-ref", "rm", "mv", "submodule"]],
     decision = "forbidden",
     justification = "直接の Push・破壊的な Git 操作は禁止です。Push は safe-git の検証付きスクリプトを使い、変更を保全してください。",
-    match = ["git push origin codex/example", "git.exe push --force", "git push --delete origin topic", "git reset --hard", "git clean -fd", "git restore file", "git rm --force file", "git rm file --force", "git rm -rf directory", "git mv -f source target", "git.exe mv --force source target", "git mv source target --force", "git mv -vf source target", "git checkout-index -f -a", "git.exe checkout-index file --force", "git read-tree --reset -u HEAD", "git submodule deinit --force --all", "git submodule update sub --force", "git submodule --quiet update --force --recursive", "git.exe submodule -q deinit -f --all"],
+    match = ["git push origin codex/example", "git.exe push --force", "git push --delete origin topic", "git reset --hard", "git clean -fd", "git restore file", "git rm --force file", "git rm file --force", "git rm -rf directory", "git mv -f source target", "git.exe mv --force source target", "git mv source target --force", "git mv -vf source target", "git checkout-index -f -a", "git.exe checkout-index file --force", "git read-tree --reset -u HEAD", "git submodule deinit --force --all", "git submodule update sub --force", "git submodule --quiet update --force --recursive", "git.exe submodule -q deinit -f --all", "git merge --abort", "git.exe merge --quiet --abort", "git am --abort", "git cherry-pick --abort", "git revert --abort", "git fetch origin +topic:refs/heads/topic", "git fetch origin topic:refs/tags/v1 --force", "git.exe pull --force origin topic:refs/heads/topic"],
     not_match = ["git status", "git diff", "git add file", "git commit -m change", "C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/create-branch.ts --branch codex/example", "C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/push.ts --branch codex/example"],
 )
 
@@ -38,8 +38,8 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = [["git", "git.exe"], "worktree", "remove"],
+    pattern = [["git", "git.exe"], "worktree", ["add", "remove"]],
     decision = "forbidden",
-    justification = "作業ツリーの削除は Codex から直接実行しないでください。既存の変更を保全してください。",
-    match = ["git worktree remove --force path", "git worktree remove path --force", "git worktree remove -f path"],
+    justification = "作業ツリーの直接作成・削除は禁止です。ブランチの新規作成・強制更新と変更の破棄を防ぎ、準備には専用ツールの detached 作成を使ってください。",
+    match = ["git worktree remove --force path", "git worktree remove path --force", "git worktree remove -f path", "git worktree add -B topic path HEAD~1", "git.exe worktree add path HEAD~1 -B topic", "git worktree add --detach path -B topic HEAD~1", "git worktree add -b topic path", "git worktree add path"],
 )

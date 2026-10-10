@@ -133,7 +133,7 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
 
 // Git が作業ツリーを読む前に、属性から起動される外部コマンドを拒否する。
 export async function checkedConfigKeys(root: string, run: Run = runGit) {
-  const git = async (...args: string[]) => (await run(args, root)).trim();
+  const git = async (...args: string[]) => (await run(args, root)).replace(/\r?\n$/, '');
   const configKeys = (await git('config', '--name-only', '--list')).split('\n');
   const filters = new Set(configKeys.flatMap((key) => /^filter\.(.+)\.(?:clean|process)$/i.exec(key)?.[1] ?? []));
   if (filters.size) {
@@ -161,7 +161,7 @@ export async function checkedConfigKeys(root: string, run: Run = runGit) {
 
 // submodule にも同じ索引・内容・外部コマンドの検査を適用する。
 async function checkedWorktree(root: string, run: Run, visited = new Set<string>()) {
-  const git = async (...args: string[]) => (await run(args, root)).trim();
+  const git = async (...args: string[]) => (await run(args, root)).replace(/\r?\n$/, '');
   const canonicalRoot = realpathSync(root);
   if (visited.has(canonicalRoot)) throw new Error('submodule の作業ツリーが循環しています。');
   visited.add(canonicalRoot);
@@ -183,10 +183,10 @@ async function checkedWorktree(root: string, run: Run, visited = new Set<string>
     if (mode !== '160000') continue;
     const sub = resolve(root, path);
     if (!lstatSync(resolve(sub, '.git'), { throwIfNoEntry: false })) continue;
-    if (realpathSync(await run(['rev-parse', '--show-toplevel'], sub)) !== realpathSync(sub))
+    if (realpathSync((await run(['rev-parse', '--show-toplevel'], sub)).replace(/\r?\n$/, '')) !== realpathSync(sub))
       throw new Error('submodule の Git リポジトリと作業ツリーが一致しません。');
     await checkedWorktree(sub, run, visited);
-    if ((await run(['rev-parse', '--verify', 'HEAD^{commit}'], sub)).trim() !== hash)
+    if ((await run(['rev-parse', '--verify', 'HEAD^{commit}'], sub)).replace(/\r?\n$/, '') !== hash)
       throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。');
   }
   try {
@@ -233,7 +233,7 @@ async function checkedWorktree(root: string, run: Run, visited = new Set<string>
 
 export async function safePush(options: Options, root = repository, run: Run = runGit) {
   checkBranch(options.branch);
-  const git = async (...args: string[]) => (await run(args, root)).trim();
+  const git = async (...args: string[]) => (await run(args, root)).replace(/\r?\n$/, '');
   if (realpathSync(await git('rev-parse', '--show-toplevel')) !== realpathSync(root))
     throw new Error('スクリプトと Git リポジトリのルートが一致しません。');
   const grafts = await git('rev-parse', '--path-format=absolute', '--git-path', 'info/grafts');
@@ -286,7 +286,7 @@ export async function safePush(options: Options, root = repository, run: Run = r
     }
     if (!bundledCA) throw new Error('独自 CA の設定があるため Push できません。');
   }
-  const remoteGit = async (...args: string[]) => (await run(args, root, sshTransport)).trim();
+  const remoteGit = async (...args: string[]) => (await run(args, root, sshTransport)).replace(/\r?\n$/, '');
   const refs = await remoteGit('ls-remote', '--symref', pushUrl, 'HEAD', 'refs/heads/' + options.branch);
   const defaultBranch = /^ref: refs\/heads\/([^\s]+)\tHEAD$/m.exec(refs)?.[1];
   if (!defaultBranch || defaultBranch.toLowerCase() === options.branch.toLowerCase())
