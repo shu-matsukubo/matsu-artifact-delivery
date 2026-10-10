@@ -157,7 +157,7 @@ npm run ci:select -- --all
 | PKG-U01〜PKG-U04         | marketplace、Plugin Agent 登録不要とリポジトリ Codex 設定の配布外確認、README 参照、ID 対応                                                                                                     | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U01                  | 入口の reference 参照、起動・再開・新規選定・環境準備・GitHub とローカルへの反映・clean 確認の契約と担当境界                                                                                    | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U02                  | プラグイン Issue への対象限定、実装中・merge 済み PR がある Issue の選定除外                                                                                                                    | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
-| SGT-U01〜SGT-U40         | Push の接続先・祖先・単一 ref、競合・偽装・隠れた変更・filter・helper・partial clone の拒否、submodule の検査、固定 SSH・非対話認証・環境除去・子孫停止、新規ブランチ・コミット作成・CLI・Rules | [安全な Git 操作の試験](../test/infrastructure/safe-git.test.ts)                          |
+| SGT-U01〜SGT-U43         | Push の接続先・祖先・単一 ref、競合・偽装・隠れた変更・filter・helper・partial clone の拒否、submodule の検査、固定 SSH・非対話認証・環境除去・子孫停止、新規ブランチ・コミット作成・CLI・Rules | [安全な Git 操作の試験](../test/infrastructure/safe-git.test.ts)                          |
 
 ### 既存 MCP の対応表
 
@@ -226,6 +226,8 @@ CI-U11 は [GitHub の式評価ライブラリ](https://github.com/actions/langu
 契約 ID のガイド掲載確認は、差分 CI の入口が異なるため WF/EX-U02 と PKG-U04 の両方に置く。契約一覧だけの変更では前者、ガイドだけの変更では後者が実行される。単純に片方を削除すると一方の変更経路に検証漏れが生じるため、追加の CI 対象を増やしてまで統合しない。
 
 `SGT-U39` は実 Git で HTTPS の TLS 検証の既定値・boolean 表記・URL 別設定・重複設定の実効値を確認し、有効化を許可、無効化と不正値を通信前に拒否する。設定ファイル・ref の保全とローカルの Push も検証する。`SGT-U40` は `GIT_ATTR_SOURCE` が属性の参照元を変えることを確認し、Push・ステージ・コミット・ブランチ作成が Git を起動する前に拒否され、索引・作業変更・ref が保全されることを検証する。`SGT-U05` は reflog の更新・削除の禁止と読み取りの許可も評価する。
+
+`SGT-U41` は実 Bash の起動ファイルが実行される負例と、Skill の起動手順および Git の子環境で `BASH_ENV`・`ENV` が除去されることを確認する。`SGT-U42` は消失したディレクトリと未追跡パスを add 前に拒否し、索引・ref・作業変更を保全する。個別ファイルの削除と新規追加も検証する。`SGT-U43` はルートと入れ子 submodule の索引更新・status で post-index-change hook が実行されず、通常の Push が成功することを確認する。`SGT-U05` は notes の作成・更新・削除の禁止と読み取りの許可も評価する。
 
 1. 該当コンポーネントの契約一覧に ID・観点・対象を追加する。文言の意図的な変更では旧契約の削除理由もレビューする。
 2. metadata・権限・参照は構文解析と実ファイルで検証する。参照を追加したら配布グラフ E2E でも到達を確認する。

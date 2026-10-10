@@ -26,8 +26,11 @@ function fixture(root = repository) {
     ['rev-parse --path-format=absolute --git-path info/grafts', join(root, '.git/info/grafts')],
     ['symbolic-ref --quiet --short HEAD', branch],
     ['-c core.fsmonitor=false ls-files -v -z', 'H file'],
-    ['-c core.fsmonitor=false update-index --really-refresh', ''],
-    ['-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all --ignore-submodules=none', ''],
+    ['-c core.fsmonitor=false -c core.hooksPath=/dev/null update-index --really-refresh', ''],
+    [
+      '-c core.fsmonitor=false -c core.hooksPath=/dev/null status --porcelain=v1 --untracked-files=all --ignore-submodules=none',
+      '',
+    ],
     ['-c core.fsmonitor=false ls-files --stage -z', `100644 ${head} 0\tfile\0`],
     ['hash-object -- file', head],
     ['rev-parse --verify HEAD^{commit}', head],
@@ -103,9 +106,12 @@ await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不�
     ['rev-parse --show-toplevel', join(repository, 'plugins')],
     ['symbolic-ref --quiet --short HEAD', 'other-branch'],
     ['symbolic-ref --quiet --short HEAD', new Error('detached HEAD')],
-    ['-c core.fsmonitor=false update-index --really-refresh', new Error('index refresh failure')],
     [
-      '-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all --ignore-submodules=none',
+      '-c core.fsmonitor=false -c core.hooksPath=/dev/null update-index --really-refresh',
+      new Error('index refresh failure'),
+    ],
+    [
+      '-c core.fsmonitor=false -c core.hooksPath=/dev/null status --porcelain=v1 --untracked-files=all --ignore-submodules=none',
       '?? unreviewed.ts',
     ],
     ['hash-object -- file', 'b'.repeat(40)],
@@ -1637,6 +1643,13 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
       [git, 'reflog', 'expire', 'refs/heads/topic', '--updateref', '--expire=all'],
       [git, 'reflog', 'drop', '--all'],
       [git, 'reflog', 'write', 'refs/heads/topic', head, head, 'change'],
+      ...['add', 'copy', 'append', 'edit', 'merge', 'remove', 'prune'].map((command) => [git, 'notes', command]),
+      [git, 'notes', 'add', '-f', '-m', 'replacement', 'HEAD'],
+      [git, 'notes', 'add', 'HEAD', '--force', '-m', 'replacement'],
+      [git, 'notes', 'copy', '--force', 'HEAD~1', 'HEAD'],
+      [git, 'notes', 'merge', '--abort'],
+      [git, 'notes', 'merge', '--commit'],
+      [git, 'notes', '--ref', 'review', 'remove', 'HEAD'],
       ...['refs/heads/topic', 'refs/tags/v1'].flatMap((ref) => [
         [git, 'refs', 'update', ref, head],
         [git, 'refs', 'update', '--no-deref', ref, head],
@@ -1754,6 +1767,13 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['git.exe', 'reflog', 'show', '--all'],
     ['git', 'reflog', 'exists', 'refs/heads/topic'],
     ['git', 'reflog', 'list'],
+    ...['git', 'git.exe'].flatMap((git) => [
+      [git, 'notes'],
+      [git, 'notes', 'list'],
+      [git, 'notes', 'list', 'HEAD'],
+      [git, 'notes', 'show', 'HEAD'],
+      [git, 'notes', 'get-ref'],
+    ]),
     ['git', 'worktree', 'list', '--porcelain'],
     ['git', 'ls-remote', 'origin'],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/push.ts', '--branch', branch],
@@ -2148,5 +2168,147 @@ await test('SGT-U31: Node と外部プロセスの起動前に native loader の
     });
   } finally {
     process.env = env;
+  }
+});
+
+await test('SGT-U41: 起動手順と Git の子環境で shell の起動ファイルを除去する', async (t) => {
+  const root = await temporaryDirectory(t);
+  const marker = join(root, 'startup-ran');
+  const startup = join(root, 'startup.sh');
+  const bash = process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : '/bin/bash';
+  const quote = (value: string) => "'" + value.replaceAll('\\', '/').replaceAll("'", "'\\''") + "'";
+  await writeFile(startup, 'printf ran > ' + quote(marker) + '\n');
+  const baseline = spawnSync(bash, ['-c', ':'], {
+    env: { ...process.env, BASH_ENV: startup },
+    encoding: 'utf8',
+  });
+  assert.equal(baseline.status, 0, baseline.stderr);
+  assert.equal(await read(marker), 'ran');
+  await fs.promises.unlink(marker);
+  const inherited = { ...process.env };
+  try {
+    process.env.BASH_ENV = startup;
+    process.env.ENV = startup;
+    for (const transport of [false, true]) {
+      await runGit(['ls-remote', '--symref', url, 'HEAD'], repository, transport, async (_file, _args, options) => {
+        const result = spawnSync(bash, ['-c', ':'], { env: options.env, encoding: 'utf8' });
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(fs.existsSync(marker), false, 'Git が使う shell で起動ファイルを実行しない');
+        assert.equal(options.env?.BASH_ENV, undefined);
+        assert.equal(options.env?.ENV, undefined);
+        return '';
+      });
+    }
+  } finally {
+    process.env = inherited;
+  }
+  const skill = await read(join(repository, '.agents/skills/safe-git/SKILL.md'));
+  for (const language of ['sh', 'powershell']) {
+    if (language === 'powershell' && process.platform !== 'win32') continue;
+    const block = new RegExp('```' + language + '\\r?\\n([\\s\\S]*?)```').exec(skill)?.[1];
+    assert.ok(block);
+    const node = language === 'sh' ? '/usr/bin/node' : "& 'C:/Program Files/nodejs/node.exe'";
+    const clean = block.slice(0, block.indexOf(node));
+    const probe = join(root, 'environment.ts');
+    await writeFile(probe, 'console.log(JSON.stringify([process.env.BASH_ENV ?? null, process.env.ENV ?? null]));');
+    const polluted =
+      language === 'sh'
+        ? 'export BASH_ENV=' + quote(startup) + ' ENV=' + quote(startup) + '\n'
+        : "$env:BASH_ENV = '" + startup.replaceAll("'", "''") + "'\n$env:ENV = $env:BASH_ENV\n";
+    const command =
+      polluted +
+      clean +
+      (language === 'sh'
+        ? quote(process.execPath) + ' ' + quote(probe)
+        : "& '" + process.execPath.replaceAll("'", "''") + "' '" + probe.replaceAll("'", "''") + "'");
+    const result = spawnSync(
+      language === 'sh' ? bash : 'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe',
+      language === 'sh' ? ['-c', command] : ['-NoProfile', '-NonInteractive', '-Command', command],
+      { encoding: 'utf8' },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), [null, null], language);
+    assert.equal(fs.existsSync(marker), false);
+  }
+});
+
+await test('SGT-U42: 消失したディレクトリと未追跡パスをステージ前に拒否し、個別削除を保全する', async (t) => {
+  const f = await gitFixture(t);
+  await mkdir(join(f.cwd, 'gone'));
+  for (const path of ['gone/one.txt', 'gone/two.txt']) await writeFile(join(f.cwd, path), path);
+  f.git('add', 'gone');
+  f.git('commit', '-qm', 'tracked files');
+  for (const path of ['gone/one.txt', 'gone/two.txt']) await fs.promises.unlink(join(f.cwd, path));
+  await fs.promises.rmdir(join(f.cwd, 'gone'));
+  await writeFile(join(f.cwd, 'new.txt'), 'untracked work');
+  const indexPath = f.git('rev-parse', '--path-format=absolute', '--git-path', 'index');
+  const index = fs.readFileSync(indexPath);
+  const refs = f.git('show-ref');
+  for (const path of ['gone', './gone/', 'absent.txt']) {
+    const calls: string[][] = [];
+    await assert.rejects(
+      stageFiles(['--', 'new.txt', path], f.cwd, async (args, cwd) => {
+        calls.push(args);
+        return runGit(args, cwd);
+      }),
+      /個別ファイル|追跡/,
+    );
+    assert.equal(
+      calls.some((args) => args.includes('add')),
+      false,
+    );
+    assert.deepEqual(fs.readFileSync(indexPath), index);
+    assert.equal(f.git('show-ref'), refs);
+    assert.equal(await read(join(f.cwd, 'new.txt')), 'untracked work');
+  }
+  await stageFiles(['--', './gone/one.txt', 'new.txt'], f.cwd);
+  assert.equal(f.git('ls-files', '--', 'gone/one.txt'), '');
+  assert.equal(f.git('ls-files', '--', 'gone/two.txt'), 'gone/two.txt');
+  assert.equal(f.git('show', ':new.txt'), 'untracked work');
+});
+
+await test('SGT-U43: Push の索引更新と status はルートと入れ子 submodule の hook を実行しない', async (t) => {
+  for (const nested of [false, true]) {
+    await t.test(nested ? '入れ子 submodule' : 'ルート', async (t) => {
+      const f = await gitFixture(t);
+      let cwd = f.cwd;
+      if (nested) {
+        const source = await gitFixture(t);
+        const leaf = await gitFixture(t);
+        source.git('-c', 'protocol.file.allow=always', 'submodule', 'add', leaf.cwd, 'nested');
+        source.git('commit', '-qm', 'nested submodule');
+        f.git('-c', 'protocol.file.allow=always', 'submodule', 'add', source.cwd, 'sub');
+        f.git('commit', '-qm', 'submodule');
+        f.git('-c', 'protocol.file.allow=always', 'submodule', 'update', '--init', '--recursive');
+        cwd = join(f.cwd, 'sub/nested');
+      }
+      const git = (...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+      const gitDir = git('rev-parse', '--absolute-git-dir');
+      const marker = join(gitDir, 'hook-ran');
+      const hooks = join(gitDir, 'enabled-hooks');
+      await mkdir(hooks);
+      await writeFile(
+        join(hooks, 'post-index-change'),
+        '#!/bin/sh\nprintf ran > "' + marker.replaceAll('\\', '/') + '"\n',
+        { mode: 0o755 },
+      );
+      git('config', 'core.hooksPath', hooks);
+      const file = join(cwd, 'file');
+      let mtime = Date.parse('2000-01-01T00:00:00Z');
+      const touch = () => fs.utimesSync(file, new Date(), new Date((mtime += 2000)));
+      touch();
+      git('update-index', '--really-refresh');
+      assert.equal(await read(marker), 'ran', '通常の索引更新では hook が動く');
+      await fs.promises.unlink(marker);
+      touch();
+      await safePush({ branch, dryRun: false }, f.cwd, (args, root) => {
+        if (args.includes('status') && root === cwd) touch();
+        return f.run(args, root);
+      });
+      assert.equal(fs.existsSync(marker), false);
+      assert.equal(git('config', 'core.hooksPath'), hooks, '設定を変更しない');
+      assert.equal(await read(file), 'change');
+      assert.equal(f.git('ls-remote', f.remote, 'refs/heads/' + branch).split('\t')[0], f.git('rev-parse', 'HEAD'));
+    });
   }
 });

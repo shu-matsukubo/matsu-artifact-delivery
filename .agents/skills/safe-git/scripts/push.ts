@@ -125,7 +125,10 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
         : {}),
     };
     for (const key of Object.keys(env)) {
-      if (/^(?:LD_|DYLD_|_?RLD_|LDR_)/i.test(key) || /^(?:NODE_OPTIONS|NODE_PATH|GLIBC_TUNABLES)$/i.test(key))
+      if (
+        /^(?:LD_|DYLD_|_?RLD_|LDR_)/i.test(key) ||
+        /^(?:NODE_OPTIONS|NODE_PATH|GLIBC_TUNABLES|BASH_ENV|ENV)$/i.test(key)
+      )
         delete env[key];
     }
     if (process.platform === 'win32' && (sshTransport || args.includes('ls-remote') || args.includes('push'))) {
@@ -276,7 +279,7 @@ async function checkedWorktree(root: string, run: Run, visited = new Set<string>
       throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。');
   }
   try {
-    await git('-c', 'core.fsmonitor=false', 'update-index', '--really-refresh');
+    await git('-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', 'update-index', '--really-refresh');
   } catch (error) {
     throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。', { cause: error });
   }
@@ -284,6 +287,8 @@ async function checkedWorktree(root: string, run: Run, visited = new Set<string>
     await git(
       '-c',
       'core.fsmonitor=false',
+      '-c',
+      'core.hooksPath=/dev/null',
       'status',
       '--porcelain=v1',
       '--untracked-files=all',

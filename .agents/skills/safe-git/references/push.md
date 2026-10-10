@@ -2,7 +2,7 @@
 
 開発用の Node.js 22.19.0 以降と Git を使う。利用者向け Plugin の実行要件や配布物には追加しない。人間が通常のターミナルで行う Git 操作は対象外とする。
 
-Node.js は Windows の `C:/Program Files/nodejs/node.exe`、Linux の `/usr/bin/node`、macOS の `/usr/local/bin/node` に固定し、管理者が実行ファイルと配置先を保護する。信頼する起動済みのシェルで `NODE_OPTIONS`、`NODE_PATH`、`GLIBC_TUNABLES` と `LD_*`、`DYLD_*`、`_RLD_*`、`RLD_*`、`LDR_*` を組み込み機能で除去してから起動する。シェル自体の起動環境は管理者が保護する。Git・SSH・helper の子プロセスにも同じ除去を適用する。固定配置がない場合は実行を止める。起動コマンドは [Skill](../SKILL.md) を参照する。
+Node.js は Windows の `C:/Program Files/nodejs/node.exe`、Linux の `/usr/bin/node`、macOS の `/usr/local/bin/node` に固定し、管理者が実行ファイルと配置先を保護する。信頼する起動済みのシェルで `NODE_OPTIONS`、`NODE_PATH`、`GLIBC_TUNABLES`、`BASH_ENV`、`ENV` と `LD_*`、`DYLD_*`、`_RLD_*`、`RLD_*`、`LDR_*` を組み込み機能で除去してから起動する。シェル自体の起動環境は管理者が保護する。Git・SSH・helper の子プロセスにも同じ除去を適用する。固定配置がない場合は実行を止める。起動コマンドは [Skill](../SKILL.md) を参照する。
 
 Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux / macOS の `/usr/bin/git` に固定する。SSH 接続時は SSH 実行ファイルも Windows の `C:/Program Files/Git/usr/bin/ssh.exe`、Linux / macOS の `/usr/bin/ssh` に固定する。実体がこのパスにある通常ファイルかを検証し、PATH や環境変数で配置先を選ばない。Windows の配置先は管理者権限で保護する。Linux / macOS では実行ファイルと親ディレクトリが root 所有で、group / other が書き込めないことも検証する。Linux の credential helper は、固定パスの symlink・経由する symlink・実体・各親ディレクトリを検証し、symlink は root 所有、通常ファイルとディレクトリは root 所有で group / other が書き込めない場合に許可する。helper の選択に使われる起動名を維持する。固定配置に実行ファイルがない場合は検証失敗とする。
 
@@ -22,7 +22,7 @@ Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux
 - 既存のリモートブランチを更新する場合、置換 ref を無効にした判定で、その先端が送信する commit の祖先である。リモートの commit がローカルにない場合は、人間が対象を確認して取得してから検証し直す。
 - 検証時のリモート先端を `--force-with-lease` の期待値に指定する。新規作成時は空値を指定し、検証後にブランチが作成・更新された場合は Push を拒否する。
 
-Push は検証した URL と `<commit SHA>:refs/heads/<作業ブランチ>` 一件だけを指定する。祖先関係の確認と先端の一致を条件とし、強制的な履歴の書き換え、削除、mirror、タグ送信、submodule の Push を行わない。pre-push hook は実行しない。GitHub 側の追加の保護ルールはサーバー側で適用される。
+Push は検証した URL と `<commit SHA>:refs/heads/<作業ブランチ>` 一件だけを指定する。祖先関係の確認と先端の一致を条件とし、強制的な履歴の書き換え、削除、mirror、タグ送信、submodule の Push を行わない。ルートと submodule の索引更新・status では `core.hooksPath=/dev/null` を指定し、Push の pre-push hook も実行しない。GitHub 側の追加の保護ルールはサーバー側で適用される。
 
 `--dry-run` はリモートの読み取りを含む検証を行い、更新せず送信予定を JSON で返す。通常実行は成功時に送信結果を JSON で返す。引数は `--branch` と任意の `--dry-run` に限定する。
 
@@ -38,7 +38,7 @@ Git の terminal prompt・askpass と credential helper の対話設定を無効
 
 ## ステージと新規コミット
 
-[stage.ts](../scripts/stage.ts)は `-- <レビュー済みパス>...` だけを受け取り、リポジトリ内の個別ファイルまたは追跡済み submodule を literal path としてステージする。削除済みの追跡ファイルも指定できる。置換 ref、partial clone、追跡ファイルと指定した新規ファイルに適用される実行可能な filter を検査してから `add` を実行する。hook は実行しない。検査に失敗した場合は索引・作業ファイル・ref を変更しない。
+[stage.ts](../scripts/stage.ts)は `-- <レビュー済みパス>...` だけを受け取り、リポジトリ内の個別ファイルまたは追跡済み submodule を literal path としてステージする。消失したパスは索引の個別エントリーと完全一致するものを受け付け、削除済みディレクトリの一括指定を拒否する。置換 ref、partial clone、追跡ファイルと指定した新規ファイルに適用される実行可能な filter を検査してから `add` を実行する。hook は実行しない。検査に失敗した場合は索引・作業ファイル・ref を変更しない。
 
 [commit.ts](../scripts/commit.ts)は `--message <コミットメッセージ>` だけを受け取り、リポジトリルート、置換 ref、partial clone、適用される filter を確認してからステージ済みの内容をコミットする。merge・cherry-pick・revert・rebase・am・sequencer の進行中状態を、worktree ごとの Git ディレクトリで検査して拒否する。メッセージを一つの値として渡し、amend や追加オプションを受け付けない。現在の HEAD を親にした新規コミットを作成し、未ステージ・未追跡の変更を保全する。hook と署名プログラムは実行しない。起動時の環境変数除去と固定 Node.js は [Skill](../SKILL.md) に従う。
 
@@ -49,6 +49,8 @@ Git の terminal prompt・askpass と credential helper の対話設定を無効
 ## Codex Rules
 
 `reflog` の `delete` / `expire` / `drop` / `write` は、参照の更新と復旧履歴の喪失を防ぐため禁止する。`reflog` の読み取りと `show` / `list` / `exists` は利用できる。
+
+`notes` の `add` / `copy` / `append` / `edit` / `merge` / `remove` / `prune` は、注釈の作成・更新・削除を防ぐため禁止する。`notes` の既定の一覧表示と `list` / `show` / `get-ref` は利用できる。サブコマンド前の独立した `--ref` も拒否する。
 
 [ワークスペースの Rules](../../../../.codex/rules/safe-git.rules)が直接の Push、worktree 作成・削除、`git add`、`git commit`、`git rm`、`git mv`、`git branch`、`git switch`、`git tag`、`git checkout-index`、`git read-tree`、`git update-index`、`git replace`、`git submodule`、`git merge`、`git am`、`git cherry-pick`、`git revert`、`git fetch`、`git pull`、`git fast-import` を含む破壊的な Git コマンドを `forbidden` にする。上書き・削除オプションの位置・短縮表記にかかわらず拒否するため、これらはコマンド全体を禁止する。add はステージ前の外部 filter 実行、commit は amend による履歴の書き換え、update-index はステージ内容の破棄・置換、replace は検証対象の偽装を防ぐ。`git refs` の `create` / `update` / `delete` / `rename` も禁止し、`list` / `exists` / `verify` は利用できる。merge・am・cherry-pick・revert は中断による競合解消の破棄、fetch・pull は refspec・設定によるブランチやタグの強制更新・削除、fast-import はブランチ ref の強制更新、worktree add は明示・暗黙のブランチ作成と強制更新を防ぐ。worktree の準備は専用ツールの detached 作成を使い、一覧は `git worktree list` で確認する。submodule の作業状態は対象ディレクトリを cwd にした `git status` などの読み取りで確認する。ブランチ・タグの一覧は `git for-each-ref refs/heads/` / `refs/tags/`、ブランチ・コミットの新規作成は [Skill](../SKILL.md) の `create-branch.ts` / `commit.ts` を使う。ブランチの新規作成は現在の HEAD に限定し、既存 ref と作業変更・無視ファイルを保全し、checkout hook を実行しない。Git のグローバルオプションでサブコマンドを隠す呼び出しも禁止対象とし、作業ディレクトリはツールの cwd で指定する。
 

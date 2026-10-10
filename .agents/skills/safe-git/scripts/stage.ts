@@ -10,7 +10,7 @@ export async function stageFiles(args: string[], root = repository, run = runGit
   if (args[0] !== '--' || args.length < 2 || args.slice(1).some((path) => !path || path.includes('\0')))
     throw new Error('引数は -- <レビュー済みパス>... のみです。');
   const paths = args.slice(1);
-  const directories: string[] = [];
+  const indexedPaths: { path: string; directory: boolean }[] = [];
   for (const path of paths) {
     const fullPath = resolve(root, path);
     const fromRoot = relative(root, fullPath);
@@ -23,18 +23,27 @@ export async function stageFiles(args: string[], root = repository, run = runGit
       fromRoot.startsWith('../')
     )
       throw new Error('リポジトリ内の個別ファイルを相対パスで指定してください。');
-    if (lstatSync(fullPath, { throwIfNoEntry: false })?.isDirectory()) directories.push(fromRoot.split(sep).join('/'));
+    const stat = lstatSync(fullPath, { throwIfNoEntry: false });
+    if (!stat || stat.isDirectory()) indexedPaths.push({ path: fromRoot.split(sep).join('/'), directory: !!stat });
   }
   if (realpathSync((await run(['rev-parse', '--show-toplevel'], root)).replace(/\r?\n$/, '')) !== realpathSync(root))
     throw new Error('スクリプトと Git リポジトリのルートが一致しません。');
   await checkedConfigKeys(root, run, paths);
-  if (directories.length) {
-    const entries = (await run(['--literal-pathspecs', 'ls-files', '--stage', '-z', '--', ...directories], root)).split(
-      '\0',
-    );
+  if (indexedPaths.length) {
+    const entries = (
+      await run(
+        ['--literal-pathspecs', 'ls-files', '--stage', '-z', '--', ...indexedPaths.map(({ path }) => path)],
+        root,
+      )
+    ).split('\0');
     const gitlinks = new Set(entries.flatMap((entry) => /^160000 [a-f0-9]{40,64} 0\t(.+)$/s.exec(entry)?.[1] ?? []));
-    if (directories.some((path) => !gitlinks.has(path)))
+    if (indexedPaths.some(({ path, directory }) => directory && !gitlinks.has(path)))
       throw new Error('ディレクトリは追跡済み submodule だけを指定できます。');
+    const tracked = new Set(
+      entries.flatMap((entry) => /^[0-7]{6} [a-f0-9]{40,64} [0-3]\t(.+)$/s.exec(entry)?.[1] ?? []),
+    );
+    if (indexedPaths.some(({ path, directory }) => !directory && !tracked.has(path)))
+      throw new Error('消失したパスは追跡済みの個別ファイルまたは submodule だけを指定できます。');
   }
   await run(['--literal-pathspecs', '-c', 'core.hooksPath=/dev/null', 'add', '--', ...paths], root);
   return { paths };

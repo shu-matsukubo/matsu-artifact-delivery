@@ -40,6 +40,14 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = [["git", "git.exe"], "notes", ["add", "copy", "append", "edit", "merge", "remove", "prune", "--ref"]],
+    decision = "forbidden",
+    justification = "notes の作成・更新・削除は禁止です。注釈の確認には notes list・show・get-ref を使ってください。",
+    match = ["git notes remove HEAD", "git.exe notes add -f -m replacement HEAD", "git notes add HEAD --force -m replacement", "git notes copy --force HEAD~1 HEAD", "git notes append -m change HEAD", "git notes edit HEAD", "git notes merge --abort", "git notes merge --commit", "git notes prune", "git notes --ref review remove HEAD"],
+    not_match = ["git notes", "git notes list", "git.exe notes show HEAD", "git notes get-ref"],
+)
+
+prefix_rule(
     pattern = [["git", "git.exe"], ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--bare", "--exec-path", "--config-env", "--shallow-file", "--attr-source", "-p", "-P", "--no-pager", "--paginate", "--no-replace-objects", "--no-lazy-fetch", "--no-optional-locks", "--no-advice", "--literal-pathspecs", "--no-literal-pathspecs", "--glob-pathspecs", "--noglob-pathspecs", "--icase-pathspecs"]],
     decision = "forbidden",
     justification = "グローバルオプションで Git コマンドを迂回しないでください。cwd はツールで指定し、Push は safe-git を使ってください。",
