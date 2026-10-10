@@ -105,7 +105,9 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
       if (pathKey) delete env[pathKey];
       env.PATH = dirname(trustedExecutable('Shell')) + delimiter + (inheritedPath ?? '');
     }
-    return await execute(executable, ['-c', 'core.askPass=', '-c', 'credential.interactive=false', ...args], {
+    const tls =
+      process.platform === 'win32' ? ['-c', 'http.sslBackend=schannel', '-c', 'http.schannelUseSSLCAInfo=false'] : [];
+    return await execute(executable, ['-c', 'core.askPass=', '-c', 'credential.interactive=false', ...tls, ...args], {
       cwd,
       env,
       timeout: 60_000,

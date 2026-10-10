@@ -284,6 +284,16 @@ await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失�
     f.git('config', 'core.askPass', askpass);
     f.setProbe(async (file, args, options) => {
       assert.equal(options.env?.GCM_INTERACTIVE, '0');
+      if (process.platform === 'win32') {
+        const backend = await execute(file, [...args, 'config', '--get-urlmatch', 'http.sslBackend', url], options);
+        const customCA = await execute(
+          file,
+          [...args, 'config', '--get-urlmatch', 'http.schannelUseSSLCAInfo', url],
+          options,
+        );
+        assert.equal(backend, 'schannel');
+        assert.equal(customCA, 'false');
+      }
       await execute(file, [...args, '-c', 'credential.helper=', 'credential', 'fill'], {
         ...options,
         input: 'protocol=https\nhost=safe-git.invalid\n\n',
