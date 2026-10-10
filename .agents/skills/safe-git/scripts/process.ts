@@ -29,6 +29,7 @@ export function runProcess(file: string, args: string[], options: Options): Prom
       if (stopped) return;
       stopped = true;
       clearTimeout(timer);
+      removeHandlers();
       try {
         if (child.pid) {
           if (process.platform === 'win32')
@@ -50,6 +51,21 @@ export function runProcess(file: string, args: string[], options: Options): Prom
       child.stderr?.destroy();
       reject(error);
     };
+    const terminate = (signal: 'SIGINT' | 'SIGTERM') => {
+      stop(new Error(`${signal} により実行を中断しました。`));
+      process.exit(signal === 'SIGINT' ? 130 : 143);
+    };
+    const onInterrupt = () => terminate('SIGINT');
+    const onTerminate = () => terminate('SIGTERM');
+    const onExit = () => stop(new Error('呼び出し元が終了しました。'));
+    const removeHandlers = () => {
+      process.removeListener('SIGINT', onInterrupt);
+      process.removeListener('SIGTERM', onTerminate);
+      process.removeListener('exit', onExit);
+    };
+    process.once('SIGINT', onInterrupt);
+    process.once('SIGTERM', onTerminate);
+    process.once('exit', onExit);
     const timer = setTimeout(
       () => stop(Object.assign(new Error('実行時間の上限を超えました。'), { code: 'ETIMEDOUT' })),
       options.timeout ?? 60_000,
@@ -64,6 +80,7 @@ export function runProcess(file: string, args: string[], options: Options): Prom
     child.on('error', stop);
     child.on('close', (code, signal) => {
       clearTimeout(timer);
+      removeHandlers();
       if (stopped) return;
       if (code === 0) resolve(Buffer.concat(stdout).toString('utf8').trim());
       else

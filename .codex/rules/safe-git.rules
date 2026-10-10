@@ -4,36 +4,37 @@ prefix_rule(
     decision = "forbidden",
     justification = "直接の Push・破壊的な Git 操作は禁止です。Push は safe-git の検証付きスクリプトを使い、変更を保全してください。",
     match = ["git push origin codex/example", "git.exe push --force", "git push --delete origin topic", "git reset --hard", "git clean -fd", "git restore file", "git rm --force file", "git rm file --force", "git rm -rf directory", "git mv -f source target", "git.exe mv --force source target", "git mv source target --force", "git mv -vf source target"],
-    not_match = ["git status", "git diff", "git add file", "git commit -m change", "git switch -c codex/example", "C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/push.ts --branch codex/example"],
+    not_match = ["git status", "git diff", "git add file", "git commit -m change", "C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/create-branch.ts --branch codex/example", "C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/push.ts --branch codex/example"],
 )
 
 prefix_rule(
-    pattern = [["git", "git.exe"], ["-C", "-c", "--git-dir", "--work-tree", "--bare", "--exec-path", "--config-env", "--no-pager", "--paginate"]],
+    pattern = [["git", "git.exe"], ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--bare", "--exec-path", "--config-env", "--shallow-file", "--attr-source", "-p", "-P", "--no-pager", "--paginate", "--no-replace-objects", "--no-lazy-fetch", "--no-optional-locks", "--no-advice", "--literal-pathspecs", "--no-literal-pathspecs", "--glob-pathspecs", "--noglob-pathspecs", "--icase-pathspecs"]],
     decision = "forbidden",
     justification = "グローバルオプションで Git コマンドを迂回しないでください。cwd はツールで指定し、Push は safe-git を使ってください。",
-    match = ["git -C . push", "git -c alias.publish=push publish"],
+    match = ["git -C . push", "git -c alias.publish=push publish", "git --no-replace-objects push origin topic", "git.exe -P reset --hard", "git --literal-pathspecs push origin topic"],
 )
 
 prefix_rule(
     pattern = [["git", "git.exe"], "branch"],
     decision = "forbidden",
-    justification = "オプションの位置によらずブランチの削除・強制更新を防ぐため、branch コマンドは禁止です。一覧は git for-each-ref、作成は git switch -c を使ってください。",
+    justification = "オプションの位置によらずブランチの削除・強制更新を防ぐため、branch コマンドは禁止です。一覧は git for-each-ref、作成は safe-git の create-branch.ts を使ってください。",
     match = ["git branch -D topic", "git branch topic -D", "git.exe branch topic --delete", "git branch topic --force", "git branch --force topic HEAD", "git branch -M source target", "git branch -C source target", "git branch --move --force source target", "git branch --copy --force source target", "git branch --list"],
-    not_match = ["git for-each-ref refs/heads/", "git switch -c codex/example"],
+    not_match = ["git for-each-ref refs/heads/"],
 )
 
 prefix_rule(
-    pattern = [["git", "git.exe"], "tag", ["-d", "--delete", "-f", "--force"]],
+    pattern = [["git", "git.exe"], "tag"],
     decision = "forbidden",
-    justification = "タグの削除・強制更新は禁止です。",
-    match = ["git tag --delete v1", "git tag --force v1"],
+    justification = "オプションの位置によらずタグの削除・強制更新を防ぐため、tag コマンドは禁止です。一覧は git for-each-ref refs/tags/ を使ってください。",
+    match = ["git tag --delete v1", "git tag --force v1", "git tag v1 --delete", "git.exe tag v1 --force HEAD"],
+    not_match = ["git for-each-ref refs/tags/"],
 )
 
 prefix_rule(
-    pattern = [["git", "git.exe"], "switch", ["-f", "--force", "--discard-changes", "-C", "--force-create"]],
+    pattern = [["git", "git.exe"], "switch"],
     decision = "forbidden",
-    justification = "変更を破棄するブランチ切り替えは禁止です。既存の作業を保全してください。",
-    match = ["git switch --discard-changes main", "git switch -C topic"],
+    justification = "オプションの位置によらず変更の破棄・ブランチの強制更新を防ぐため、switch コマンドは禁止です。新規作成は safe-git の create-branch.ts を使ってください。",
+    match = ["git switch --discard-changes main", "git switch -C topic", "git switch main --discard-changes", "git.exe switch main -f", "git switch -c topic --discard-changes", "git switch -c topic"],
 )
 
 prefix_rule(

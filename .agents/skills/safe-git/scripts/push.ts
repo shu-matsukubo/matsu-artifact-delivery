@@ -118,6 +118,26 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
   }
 }
 
+// Git が作業ツリーを読む前に、属性から起動される外部コマンドを拒否する。
+export async function checkedConfigKeys(root: string, run: Run = runGit) {
+  const git = async (...args: string[]) => (await run(args, root)).trim();
+  const configKeys = (await git('config', '--name-only', '--list')).split('\n');
+  const filters = new Set(configKeys.flatMap((key) => /^filter\.(.+)\.(?:clean|process)$/i.exec(key)?.[1] ?? []));
+  if (filters.size) {
+    const paths = (await git('ls-files', '-z')).split('\0').filter(Boolean);
+    for (let offset = 0; offset < paths.length; offset += 100) {
+      const attributes = (await git('check-attr', '-z', 'filter', '--', ...paths.slice(offset, offset + 100))).split(
+        '\0',
+      );
+      for (let index = 2; index < attributes.length; index += 3) {
+        if (filters.has(attributes[index]!))
+          throw new Error('追跡ファイルに実行可能な clean / process filter があるため作業ツリーを検証できません。');
+      }
+    }
+  }
+  return configKeys;
+}
+
 export async function safePush(options: Options, root = repository, run: Run = runGit) {
   checkBranch(options.branch);
   const git = async (...args: string[]) => (await run(args, root)).trim();
@@ -127,6 +147,7 @@ export async function safePush(options: Options, root = repository, run: Run = r
   if (lstatSync(grafts, { throwIfNoEntry: false })) throw new Error('info/grafts が存在するため Push できません。');
   if ((await git('symbolic-ref', '--quiet', '--short', 'HEAD')) !== options.branch)
     throw new Error('現在のブランチと --branch が一致しません。');
+  const configKeys = await checkedConfigKeys(root, run);
   if ((await git('ls-files', '-v', '-z')).split('\0').some((entry) => /^[Ss] /.test(entry)))
     throw new Error('skip-worktree の索引フラグがあるため作業ツリーを検証できません。');
   try {
@@ -134,7 +155,16 @@ export async function safePush(options: Options, root = repository, run: Run = r
   } catch (error) {
     throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。', { cause: error });
   }
-  if (await git('-c', 'core.fsmonitor=false', 'status', '--porcelain=v1', '--untracked-files=all'))
+  if (
+    await git(
+      '-c',
+      'core.fsmonitor=false',
+      'status',
+      '--porcelain=v1',
+      '--untracked-files=all',
+      '--ignore-submodules=none',
+    )
+  )
     throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。');
   // stat が一致しても内容を照合する。hash-object は改行変換などの Git 属性を適用する。
   const files: { path: string; hash: string }[] = [];
@@ -171,7 +201,7 @@ export async function safePush(options: Options, root = repository, run: Run = r
   if (!approvedUrls.has(fetchUrl) || !approvedUrls.has(pushUrl))
     throw new Error('origin の取得先・Push 先は対象 GitHub リポジトリの単一 URL に限定します。');
   const sshTransport = [fetchUrl, pushUrl].some((url) => url.startsWith('git@') || url.startsWith('ssh://'));
-  for (const key of (await git('config', '--name-only', '--list')).split('\n')) {
+  for (const key of configKeys) {
     if (
       key.toLowerCase().startsWith('url.') ||
       /^http(?:\..+)?\.sslverify$/i.test(key) ||

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import test, { type TestContext } from 'node:test';
 import { parseArguments, runGit, safePush } from '../../.agents/skills/safe-git/scripts/push.ts';
 import { runProcess } from '../../.agents/skills/safe-git/scripts/process.ts';
+import { createBranch } from '../../.agents/skills/safe-git/scripts/create-branch.ts';
 import { frontmatter, localLinks, read, repository, temporaryDirectory } from '../lib/plugin.ts';
 
 const url = 'https://github.com/shu-matsukubo/matsu-artifact-delivery.git';
@@ -24,7 +25,7 @@ function fixture(root = repository) {
     ['symbolic-ref --quiet --short HEAD', branch],
     ['ls-files -v -z', 'H file'],
     ['-c core.fsmonitor=false update-index --really-refresh', ''],
-    ['-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all', ''],
+    ['-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all --ignore-submodules=none', ''],
     ['ls-files --stage -z', `100644 ${head} 0\tfile\0`],
     ['hash-object -- file', head],
     ['rev-parse --verify HEAD^{commit}', head],
@@ -99,7 +100,10 @@ await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不�
     ['symbolic-ref --quiet --short HEAD', 'other-branch'],
     ['symbolic-ref --quiet --short HEAD', new Error('detached HEAD')],
     ['-c core.fsmonitor=false update-index --really-refresh', new Error('index refresh failure')],
-    ['-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all', '?? unreviewed.ts'],
+    [
+      '-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all --ignore-submodules=none',
+      '?? unreviewed.ts',
+    ],
     ['hash-object -- file', 'b'.repeat(40)],
     ['ls-files --stage -z', `100644 ${head} 1\tfile\0`],
     ['remote get-url --all origin', 'https://github.com/other/repository.git'],
@@ -170,6 +174,32 @@ async function gitFixture(t: TestContext) {
     git(...args.map((arg) => (arg === url && (args[0] === 'ls-remote' || args.includes('push')) ? remote : arg)));
   return { cwd, remote, git, base, commit, run };
 }
+
+await test('SGT-U24: 新規ブランチ作成は既存 ref・作業変更を保全し、追加オプションと hook を実行しない', async (t) => {
+  const f = await gitFixture(t);
+  const marker = join(f.cwd, '.git/hook-ran');
+  await writeFile(join(f.cwd, '.git/hooks/post-checkout'), '#!/bin/sh\necho ran > .git/hook-ran\n', { mode: 0o755 });
+  await writeFile(join(f.cwd, 'file'), 'local work');
+  await writeFile(join(f.cwd, 'untracked'), 'new work');
+  const status = f.git('status', '--porcelain=v1');
+  const newBranch = 'codex/new-work';
+  assert.deepEqual(await createBranch(['--branch', newBranch], f.cwd), { branch: newBranch });
+  assert.equal(f.git('rev-parse', '--abbrev-ref', 'HEAD'), newBranch);
+  assert.equal(f.git('rev-parse', `refs/heads/${branch}`), f.commit);
+  assert.equal(f.git('status', '--porcelain=v1'), status);
+  assert.equal(fs.existsSync(marker), false);
+  await assert.rejects(createBranch(['--branch', branch], f.cwd));
+  for (const args of [
+    [],
+    ['--branch', 'main'],
+    ['--branch', branch, '--force'],
+    ['--branch', branch, '--dry-run'],
+    ['--branch', '--discard-changes'],
+  ])
+    await assert.rejects(createBranch(args, f.cwd));
+  assert.equal(f.git('rev-parse', '--abbrev-ref', 'HEAD'), newBranch);
+  assert.equal(f.git('status', '--porcelain=v1'), status);
+});
 
 await test('SGT-U03: 実 Git で新規・fast-forward の単一ブランチを Push し、他の ref を保つ', async (t) => {
   const f = await gitFixture(t);
@@ -288,6 +318,80 @@ await test('SGT-U19: stat 検査を弱める設定と復元された mtime が�
   assert.equal(f.git('config', '--get', 'core.trustCtime'), 'false');
   assert.equal(f.git('config', '--get', 'core.checkStat'), 'minimal');
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`), '');
+});
+
+await test('SGT-U21: clean / process filter を作業ツリー検査より先に拒否し、コマンドを実行しない', async (t) => {
+  const f = await gitFixture(t);
+  const marker = join(f.cwd, '.git/filter-ran');
+  await writeFile(join(f.cwd, '.git/info/attributes'), 'file filter=unsafe\n');
+  for (const kind of ['clean', 'process']) {
+    f.git('config', `filter.unsafe.${kind}`, 'echo ran > .git/filter-ran; cat');
+    const calls: string[][] = [];
+    const run: Run = (args, cwd) => {
+      calls.push(args);
+      return f.run(args, cwd);
+    };
+    await assert.rejects(() => safePush({ branch, dryRun: false }, f.cwd, run), /filter/);
+    await assert.rejects(
+      () => createBranch(['--branch', 'codex/new-work'], f.cwd, async (args, cwd) => run(args, cwd)),
+      /filter/,
+    );
+    assert.equal(fs.existsSync(marker), false, 'filter の外部コマンドを起動しない');
+    assert.equal(
+      calls.some(
+        (args) =>
+          args.includes('switch') ||
+          args.includes('update-index') ||
+          args.includes('status') ||
+          args.includes('hash-object') ||
+          args.includes('ls-remote') ||
+          args.includes('push'),
+      ),
+      false,
+    );
+    f.git('config', '--unset', `filter.unsafe.${kind}`);
+  }
+});
+
+await test('SGT-U22: submodule の ignore 設定にかかわらず追跡・未追跡の変更を通信前に拒否する', async (t) => {
+  const f = await gitFixture(t);
+  const source = join(f.cwd, '.git/submodule-source');
+  const sub = join(f.cwd, 'sub');
+  await mkdir(source);
+  const subGit = (...args: string[]) =>
+    execFileSync('git', args, { cwd: source, encoding: 'utf8', stdio: 'pipe' }).trim();
+  subGit('init', '--initial-branch=main');
+  subGit('config', 'user.name', 'Test');
+  subGit('config', 'user.email', 'test@example.invalid');
+  subGit('config', 'commit.gpgsign', 'false');
+  await writeFile(join(source, 'file'), 'base');
+  subGit('add', 'file');
+  subGit('commit', '-qm', 'base');
+  f.git('-c', 'protocol.file.allow=always', 'submodule', 'add', source, 'sub');
+  f.git('config', '-f', '.gitmodules', 'submodule.sub.ignore', 'all');
+  f.git('add', '.gitmodules', 'sub');
+  f.git('commit', '-qm', 'submodule');
+  f.git('config', 'submodule.sub.ignore', 'all');
+  await safePush({ branch, dryRun: true }, f.cwd, f.run);
+  for (const [path, content] of [
+    ['untracked', 'new'],
+    ['file', 'changed'],
+  ]) {
+    await writeFile(join(sub, path!), content!);
+    assert.equal(f.git('status', '--porcelain=v1'), '', 'ignore=all が変更を隠す');
+    const calls: string[][] = [];
+    const run: Run = (args, cwd) => {
+      calls.push(args);
+      return f.run(args, cwd);
+    };
+    await assert.rejects(() => safePush({ branch, dryRun: false }, f.cwd, run), /clean/);
+    assert.equal(
+      calls.some((args) => args.includes('ls-remote') || args.includes('push')),
+      false,
+    );
+    assert.equal(await read(join(sub, path!)), content);
+    if (path === 'untracked') await fs.promises.unlink(join(sub, path));
+  }
 });
 
 await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失敗として返す', async (t) => {
@@ -598,6 +702,70 @@ await test('SGT-U12: SSH 接続のリモート操作だけに固定 SSH 実行�
   await safePush({ branch, dryRun: false }, repository, run);
 });
 
+await test('SGT-U23: launcher の終了・中断で子孫を停止し、完了後に終了ハンドラーを残さない', async (t) => {
+  const cwd = await temporaryDirectory(t);
+  const module = pathToFileURL(join(repository, '.agents/skills/safe-git/scripts/process.ts')).href;
+  for (const signal of ['SIGTERM', 'SIGINT', 'exit'] as const) {
+    const heartbeat = join(cwd, signal);
+    const pids = join(cwd, `${signal}.pids`);
+    const leaf = `import { appendFileSync } from 'node:fs';
+appendFileSync(${JSON.stringify(pids)}, process.pid + '\\n');
+setInterval(() => appendFileSync(${JSON.stringify(heartbeat)}, 'alive\\n'), 20);`;
+    const parent = `import { spawn } from 'node:child_process';
+${leaf}
+spawn(process.execPath, ['--input-type=module', '-e', ${JSON.stringify(leaf)}], { stdio: 'ignore', windowsHide: true });`;
+    const launcher = `import { runProcess } from ${JSON.stringify(module)};
+process.on('message', () => ${signal === 'exit' ? 'process.exit(0)' : `process.emit('${signal}')`});
+await runProcess(process.execPath, ['--input-type=module', '-e', ${JSON.stringify(parent)}], { cwd: ${JSON.stringify(cwd)}, env: process.env }).catch(() => {});`;
+    const child = spawn(process.execPath, ['--input-type=module', '-e', launcher], {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      windowsHide: true,
+    });
+    const ended = new Promise<number | null>((resolve, reject) => {
+      child.on('error', reject);
+      child.on('exit', resolve);
+    });
+    t.after(() => {
+      child.kill('SIGKILL');
+      if (fs.existsSync(pids))
+        for (const pid of fs.readFileSync(pids, 'utf8').trim().split('\n').map(Number)) {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+          }
+        }
+    });
+    for (
+      let attempt = 0;
+      attempt < 100 && (!fs.existsSync(pids) || fs.readFileSync(pids, 'utf8').trim().split('\n').length < 2);
+      attempt++
+    )
+      await delay(20);
+    assert.equal(fs.readFileSync(pids, 'utf8').trim().split('\n').length, 2);
+    if (process.platform === 'win32' || signal === 'exit') child.send('stop');
+    else child.kill(signal);
+    const timeout = setTimeout(() => child.kill('SIGKILL'), 3_000);
+    const code = await ended;
+    clearTimeout(timeout);
+    assert.equal(code, signal === 'exit' ? 0 : signal === 'SIGINT' ? 130 : 143);
+    const stopped = await read(heartbeat);
+    await delay(200);
+    assert.equal(await read(heartbeat), stopped, signal);
+  }
+  const events = ['SIGTERM', 'SIGINT', 'exit'] as const;
+  const listeners = events.map((event) => process.listenerCount(event));
+  await runProcess(process.execPath, ['-e', ''], { cwd, env: process.env });
+  await assert.rejects(
+    runProcess(process.execPath, ['-e', 'setInterval(() => {}, 20)'], { cwd, env: process.env, timeout: 100 }),
+  );
+  assert.deepEqual(
+    events.map((event) => process.listenerCount(event)),
+    listeners,
+  );
+});
+
 await test('SGT-U06: CLI は未知の引数・別 cwd・Git 設定の環境変数を終了コード 1 で拒否する', async () => {
   const script = join(repository, '.agents/skills/safe-git/scripts/push.ts');
   for (const options of [
@@ -863,6 +1031,34 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['git', 'mv', 'source', 'target'],
     ['git', 'mv', '-n', 'source', 'target'],
     ['git', '-C', '.', 'push'],
+    ...[
+      '-p',
+      '-P',
+      '--no-pager',
+      '--paginate',
+      '--no-replace-objects',
+      '--no-lazy-fetch',
+      '--no-optional-locks',
+      '--no-advice',
+      '--literal-pathspecs',
+      '--no-literal-pathspecs',
+      '--glob-pathspecs',
+      '--noglob-pathspecs',
+      '--icase-pathspecs',
+    ].flatMap((option) => [
+      ['git', option, 'push', 'origin', branch],
+      ['git.exe', option, 'reset', '--hard'],
+    ]),
+    ...['--discard-changes', '-f', '--force', '-C', '--force-create'].flatMap((option) => [
+      ['git', 'switch', 'main', option],
+      ['git.exe', 'switch', 'main', option],
+    ]),
+    ['git', 'switch', '-c', branch, '--discard-changes'],
+    ['git', 'switch', '-c', branch],
+    ...['--delete', '-d', '--force', '-f'].flatMap((option) => [
+      ['git', 'tag', 'v1', option],
+      ['git.exe', 'tag', 'v1', option, 'HEAD'],
+    ]),
     ['git', 'send-pack', url],
     ['git', 'worktree', 'remove', '--force', 'path'],
     ['git', 'worktree', 'remove', 'path', '--force'],
@@ -871,11 +1067,12 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
   const allowed = [
     ['git', 'status'],
     ['git', 'for-each-ref', 'refs/heads/'],
+    ['git', 'for-each-ref', 'refs/tags/'],
     ['git', 'diff'],
     ['git', 'add', 'file'],
     ['git', 'commit', '-m', 'change'],
-    ['git', 'switch', '-c', branch],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/push.ts', '--branch', branch],
+    ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/create-branch.ts', '--branch', branch],
   ];
   for (const args of [...forbidden, ...allowed]) {
     const result = JSON.parse(
