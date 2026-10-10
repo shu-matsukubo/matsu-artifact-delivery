@@ -1,10 +1,10 @@
-import { execFileSync } from 'node:child_process';
 import { lstatSync, realpathSync } from 'node:fs';
 import { delimiter, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { runProcess } from './process.ts';
 
 type Options = { branch: string; dryRun: boolean };
-type Run = (args: string[], cwd: string, sshTransport?: boolean) => string;
+type Run = (args: string[], cwd: string, sshTransport?: boolean) => string | Promise<string>;
 const repository = fileURLToPath(new URL('../../../../', import.meta.url));
 const approvedUrls = new Set([
   'https://github.com/shu-matsukubo/matsu-artifact-delivery',
@@ -73,11 +73,11 @@ function trustedExecutable(name: 'Git' | 'SSH' | 'Shell') {
   return executable;
 }
 
-const runGit: Run = (args, cwd, sshTransport = false) => {
+export async function runGit(args: string[], cwd: string, sshTransport = false, execute = runProcess) {
   // Git の探索先・設定を環境変数で差し替えない。認証用変数は維持する。
   if (
     Object.keys(process.env).some((key) =>
-      /^GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG(?:_.*)?|NAMESPACE|REPLACE_REF_BASE|SHALLOW_FILE|EXEC_PATH|SSH(?:_COMMAND|_VARIANT)?|SSL_NO_VERIFY)$/i.test(
+      /^(?:GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG(?:_.*)?|NAMESPACE|REPLACE_REF_BASE|SHALLOW_FILE|EXEC_PATH|SSH(?:_COMMAND|_VARIANT)?|SSL_(?:NO_VERIFY|CAINFO|CAPATH)|PROXY_SSL_CAINFO)|SSL_CERT_(?:FILE|DIR)|CURL_CA_BUNDLE)$/i.test(
         key,
       ),
     )
@@ -93,7 +93,9 @@ const runGit: Run = (args, cwd, sshTransport = false) => {
       SSH_ASKPASS: '',
       SSH_ASKPASS_REQUIRE: 'never',
       ...(sshTransport
-        ? { GIT_SSH_COMMAND: `"${trustedExecutable('SSH').replaceAll('\\', '/')}" -o BatchMode=yes` }
+        ? {
+            GIT_SSH_COMMAND: `"${trustedExecutable('SSH').replaceAll('\\', '/')}" -F none -o BatchMode=yes -o Hostname=github.com -o Port=22 -o ProxyCommand=none -o ProxyJump=none -o StrictHostKeyChecking=yes`,
+          }
         : {}),
     };
     if (sshTransport && process.platform === 'win32') {
@@ -103,56 +105,73 @@ const runGit: Run = (args, cwd, sshTransport = false) => {
       if (pathKey) delete env[pathKey];
       env.PATH = dirname(trustedExecutable('Shell')) + delimiter + (inheritedPath ?? '');
     }
-    return execFileSync(executable, ['-c', 'core.askPass=', '-c', 'credential.interactive=false', ...args], {
+    return await execute(executable, ['-c', 'core.askPass=', '-c', 'credential.interactive=false', ...args], {
       cwd,
       env,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
       timeout: 60_000,
-      killSignal: 'SIGKILL',
-    }).trim();
+    });
   } catch (error) {
     throw new Error('Git の検証または Push に失敗しました。状態を確認してから再実行してください。', { cause: error });
   }
-};
+}
 
-export function safePush(options: Options, root = repository, run: Run = runGit) {
+export async function safePush(options: Options, root = repository, run: Run = runGit) {
   checkBranch(options.branch);
-  const git = (...args: string[]) => run(args, root).trim();
-  if (realpathSync(git('rev-parse', '--show-toplevel')) !== realpathSync(root))
+  const git = async (...args: string[]) => (await run(args, root)).trim();
+  if (realpathSync(await git('rev-parse', '--show-toplevel')) !== realpathSync(root))
     throw new Error('スクリプトと Git リポジトリのルートが一致しません。');
-  const grafts = git('rev-parse', '--path-format=absolute', '--git-path', 'info/grafts');
+  const grafts = await git('rev-parse', '--path-format=absolute', '--git-path', 'info/grafts');
   if (lstatSync(grafts, { throwIfNoEntry: false })) throw new Error('info/grafts が存在するため Push できません。');
-  if (git('symbolic-ref', '--quiet', '--short', 'HEAD') !== options.branch)
+  if ((await git('symbolic-ref', '--quiet', '--short', 'HEAD')) !== options.branch)
     throw new Error('現在のブランチと --branch が一致しません。');
+  if ((await git('ls-files', '-v', '-z')).split('\0').some((entry) => /^[Ss] /.test(entry)))
+    throw new Error('skip-worktree の索引フラグがあるため作業ツリーを検証できません。');
   try {
-    git('-c', 'core.fsmonitor=false', 'update-index', '--really-refresh');
+    await git('-c', 'core.fsmonitor=false', 'update-index', '--really-refresh');
   } catch (error) {
     throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。', { cause: error });
   }
-  if (git('-c', 'core.fsmonitor=false', 'status', '--porcelain=v1', '--untracked-files=all'))
+  if (await git('-c', 'core.fsmonitor=false', 'status', '--porcelain=v1', '--untracked-files=all'))
     throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。');
-  const commit = git('rev-parse', '--verify', 'HEAD^{commit}');
+  const commit = await git('rev-parse', '--verify', 'HEAD^{commit}');
   if (!/^[a-f0-9]{40,64}$/.test(commit)) throw new Error('HEAD の commit SHA を確認できません。');
-  const fetchUrl = git('remote', 'get-url', '--all', 'origin');
-  const pushUrl = git('remote', 'get-url', '--push', '--all', 'origin');
+  const fetchUrl = await git('remote', 'get-url', '--all', 'origin');
+  const pushUrl = await git('remote', 'get-url', '--push', '--all', 'origin');
   if (!approvedUrls.has(fetchUrl) || !approvedUrls.has(pushUrl))
     throw new Error('origin の取得先・Push 先は対象 GitHub リポジトリの単一 URL に限定します。');
   const sshTransport = [fetchUrl, pushUrl].some((url) => url.startsWith('git@') || url.startsWith('ssh://'));
-  if (
-    git('config', '--name-only', '--list')
-      .split('\n')
-      .some(
-        (key) =>
-          key.toLowerCase().startsWith('url.') ||
-          /^http(?:\..+)?\.sslverify$/i.test(key) ||
-          (sshTransport && key.toLowerCase() === 'core.sshcommand'),
-      )
-  )
-    throw new Error('URL・TLS 検証・SSH コマンドの設定が上書きされているため Push できません。');
-  const remoteGit = (...args: string[]) => run(args, root, sshTransport).trim();
-  const refs = remoteGit('ls-remote', '--symref', pushUrl, 'HEAD', 'refs/heads/' + options.branch);
+  for (const key of (await git('config', '--name-only', '--list')).split('\n')) {
+    if (
+      key.toLowerCase().startsWith('url.') ||
+      /^http(?:\..+)?\.sslverify$/i.test(key) ||
+      (sshTransport && key.toLowerCase() === 'core.sshcommand')
+    )
+      throw new Error('URL・TLS 検証・SSH コマンドの設定が上書きされているため Push できません。');
+    if (!/^http(?:\..+)?\.(?:sslcainfo|sslcapath|proxysslcainfo)$/i.test(key)) continue;
+    // Git for Windows 同梱 CA の system 設定だけを許可する。ユーザー・リポジトリの指定は拒否する。
+    let bundledCA = false;
+    if (process.platform === 'win32' && key.toLowerCase() === 'http.sslcainfo') {
+      const entries = (
+        await git('config', '--null', '--show-origin', '--show-scope', '--get-all', 'http.sslcainfo')
+      ).split('\0');
+      if (entries.at(-1) === '') entries.pop();
+      const configFile = 'C:/Program Files/Git/etc/gitconfig';
+      const bundle = 'C:/Program Files/Git/ucrt64/etc/ssl/certs/ca-bundle.crt';
+      const normalize = (value: string) => value.replaceAll('\\', '/').toLowerCase();
+      bundledCA =
+        entries.length > 0 &&
+        entries.length % 3 === 0 &&
+        entries.every(
+          (value, index) => normalize(value) === normalize(['system', 'file:' + configFile, bundle][index % 3]!),
+        ) &&
+        normalize(realpathSync(configFile)) === normalize(configFile) &&
+        normalize(realpathSync(bundle)) === normalize(bundle) &&
+        lstatSync(bundle).isFile();
+    }
+    if (!bundledCA) throw new Error('独自 CA の設定があるため Push できません。');
+  }
+  const remoteGit = async (...args: string[]) => (await run(args, root, sshTransport)).trim();
+  const refs = await remoteGit('ls-remote', '--symref', pushUrl, 'HEAD', 'refs/heads/' + options.branch);
   const defaultBranch = /^ref: refs\/heads\/([^\s]+)\tHEAD$/m.exec(refs)?.[1];
   if (!defaultBranch || defaultBranch.toLowerCase() === options.branch.toLowerCase())
     throw new Error('default branch を確認できない、または Push 先が default branch です。');
@@ -161,13 +180,13 @@ export function safePush(options: Options, root = repository, run: Run = runGit)
   if (remoteLine) {
     const remoteCommit = remoteLine.split('\t')[0]!;
     if (!/^[a-f0-9]{40,64}$/.test(remoteCommit)) throw new Error('リモートの commit SHA が不正です。');
-    git('--no-replace-objects', 'merge-base', '--is-ancestor', remoteCommit, commit);
+    await git('--no-replace-objects', 'merge-base', '--is-ancestor', remoteCommit, commit);
     expectedRemoteCommit = remoteCommit;
   }
   const plan = { remote: 'origin', url: pushUrl, branch: options.branch, commit };
   if (!options.dryRun) {
     // 検証後に先端が変わった場合は拒否する。URL と単一 refspec を明示する。
-    remoteGit(
+    await remoteGit(
       '-c',
       'push.gpgSign=false',
       'push',
@@ -189,7 +208,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const options = parseArguments(process.argv.slice(2));
     if (realpathSync(process.cwd()) !== realpathSync(repository))
       throw new Error('リポジトリルートから実行してください。');
-    const plan = safePush(options);
+    const plan = await safePush(options);
     console.log(JSON.stringify({ ...plan, dryRun: options.dryRun }));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

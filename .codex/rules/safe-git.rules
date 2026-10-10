@@ -1,9 +1,9 @@
 # Codex の直接実行を制限する。Push は safe-git Skill のスクリプトを使う。
 prefix_rule(
-    pattern = [["git", "git.exe"], ["push", "send-pack", "receive-pack", "reset", "clean", "checkout", "restore", "stash", "rebase", "filter-branch", "update-ref", "symbolic-ref"]],
+    pattern = [["git", "git.exe"], ["push", "send-pack", "receive-pack", "reset", "clean", "checkout", "restore", "stash", "rebase", "filter-branch", "update-ref", "symbolic-ref", "rm"]],
     decision = "forbidden",
     justification = "直接の Push・破壊的な Git 操作は禁止です。Push は safe-git の検証付きスクリプトを使い、変更を保全してください。",
-    match = ["git push origin codex/example", "git.exe push --force", "git push --delete origin topic", "git reset --hard", "git clean -fd", "git restore file"],
+    match = ["git push origin codex/example", "git.exe push --force", "git push --delete origin topic", "git reset --hard", "git clean -fd", "git restore file", "git rm --force file", "git rm file --force", "git rm -rf directory"],
     not_match = ["git status", "git diff", "git add file", "git commit -m change", "git switch -c codex/example", "node .agents/skills/safe-git/scripts/push.ts --branch codex/example"],
 )
 
@@ -15,10 +15,10 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = [["git", "git.exe"], "branch", ["-d", "-D", "--delete", "-f", "--force", "-M", "-C"]],
+    pattern = [["git", "git.exe"], "branch", ["-d", "-D", "--delete", "-f", "--force", "-M", "-C", "-m", "--move", "-c", "--copy"]],
     decision = "forbidden",
     justification = "ブランチの削除・強制更新は禁止です。既存の作業を保全してください。",
-    match = ["git branch -D topic", "git branch --force topic HEAD", "git branch -M source target", "git branch -C source target"],
+    match = ["git branch -D topic", "git branch --force topic HEAD", "git branch -M source target", "git branch -C source target", "git branch --move --force source target", "git branch --copy --force source target"],
 )
 
 prefix_rule(

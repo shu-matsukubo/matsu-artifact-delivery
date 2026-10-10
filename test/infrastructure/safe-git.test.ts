@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import childProcess, { execFileSync, spawnSync, type ExecFileSyncOptionsWithStringEncoding } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
-import { syncBuiltinESMExports } from 'node:module';
+import { setTimeout as delay } from 'node:timers/promises';
 import { delimiter, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test, { type TestContext } from 'node:test';
-import { parseArguments, safePush } from '../../.agents/skills/safe-git/scripts/push.ts';
+import { parseArguments, runGit, safePush } from '../../.agents/skills/safe-git/scripts/push.ts';
+import { runProcess } from '../../.agents/skills/safe-git/scripts/process.ts';
 import { frontmatter, localLinks, read, repository, temporaryDirectory } from '../lib/plugin.ts';
 
 const url = 'https://github.com/shu-matsukubo/matsu-artifact-delivery.git';
@@ -19,12 +20,17 @@ function fixture(root = repository) {
     ['rev-parse --show-toplevel', root],
     ['rev-parse --path-format=absolute --git-path info/grafts', join(root, '.git/info/grafts')],
     ['symbolic-ref --quiet --short HEAD', branch],
+    ['ls-files -v -z', 'H file'],
     ['-c core.fsmonitor=false update-index --really-refresh', ''],
     ['-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all', ''],
     ['rev-parse --verify HEAD^{commit}', head],
     ['remote get-url --all origin', url],
     ['remote get-url --push --all origin', url],
     ['config --name-only --list', ''],
+    [
+      'config --null --show-origin --show-scope --get-all http.sslcainfo',
+      'global\0file:/untrusted\0/untrusted/ca.crt\0',
+    ],
     [`ls-remote --symref ${url} HEAD refs/heads/${branch}`, `ref: refs/heads/main\tHEAD\n${head}\tHEAD\n`],
   ]);
   const run: Run = (args) => {
@@ -37,16 +43,16 @@ function fixture(root = repository) {
   return { calls, replies, run };
 }
 
-await test('SGT-U01: Push は検証済み URL と単一の commit:branch を使い、dry-run は更新しない', () => {
+await test('SGT-U01: Push は検証済み URL と単一の commit:branch を使い、dry-run は更新しない', async () => {
   const { run, calls } = fixture();
-  const plan = safePush({ branch, dryRun: true }, repository, run);
+  const plan = await safePush({ branch, dryRun: true }, repository, run);
   assert.equal(plan.commit, head);
   assert.equal(plan.branch, branch);
   assert.equal(
     calls.some((args) => args.includes('push')),
     false,
   );
-  safePush({ branch, dryRun: false }, repository, run);
+  await safePush({ branch, dryRun: false }, repository, run);
   const push = calls.find((args) => args.includes('push'))!;
   assert.deepEqual(push.slice(-3), ['--', url, `${head}:refs/heads/${branch}`]);
   for (const option of ['--no-verify', '--no-follow-tags', '--recurse-submodules=no']) assert.ok(push.includes(option));
@@ -58,13 +64,13 @@ await test('SGT-U01: Push は検証済み URL と単一の commit:branch を使�
     `ref: refs/heads/main\tHEAD\n${head}\tHEAD\n${head}\trefs/heads/${branch}`,
   );
   existing.replies.set(`--no-replace-objects merge-base --is-ancestor ${head} ${head}`, '');
-  safePush({ branch, dryRun: false }, repository, existing.run);
+  await safePush({ branch, dryRun: false }, repository, existing.run);
   assert.ok(
     existing.calls.find((args) => args.includes('push'))!.includes(`--force-with-lease=refs/heads/${branch}:${head}`),
   );
 });
 
-await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不一致では Push しない', () => {
+await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不一致では Push しない', async () => {
   assert.deepEqual(parseArguments(['--branch', branch, '--dry-run']), { branch, dryRun: true });
   for (const args of [
     [],
@@ -97,6 +103,10 @@ await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不�
     ['config --name-only --list', 'url.ssh://attacker/.pushinsteadof'],
     ['config --name-only --list', 'http.sslverify'],
     ['config --name-only --list', 'http.https://github.com/.sslverify'],
+    ...['sslCAInfo', 'sslCAPath', 'proxySSLCAInfo'].flatMap((key): [string, string][] => [
+      ['config --name-only --list', `http.${key}`],
+      ['config --name-only --list', `http.https://github.com/.${key}`],
+    ]),
     [`ls-remote --symref ${url} HEAD refs/heads/${branch}`, ''],
     [`ls-remote --symref ${url} HEAD refs/heads/${branch}`, `ref: refs/heads/${branch}\tHEAD\n${head}\tHEAD`],
     [`ls-remote --symref ${url} HEAD refs/heads/${branch}`, new Error('network failure')],
@@ -108,7 +118,7 @@ await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不�
       if (args.join(' ') === command && result instanceof Error) throw result;
       return f.run(args, cwd);
     };
-    assert.throws(() => safePush({ branch, dryRun: false }, repository, run), command);
+    await assert.rejects(() => safePush({ branch, dryRun: false }, repository, run), command);
     assert.equal(
       f.calls.some((args) => args.includes('push')),
       false,
@@ -120,7 +130,7 @@ await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不�
   ssh.replies.set('remote get-url --all origin', sshUrl);
   ssh.replies.set('remote get-url --push --all origin', sshUrl);
   ssh.replies.set('config --name-only --list', 'core.sshCommand');
-  assert.throws(() => safePush({ branch, dryRun: false }, repository, ssh.run), /SSH コマンド/);
+  await assert.rejects(() => safePush({ branch, dryRun: false }, repository, ssh.run), /SSH コマンド/);
   assert.equal(
     ssh.calls.some((args) => args.includes('ls-remote') || args.includes('push')),
     false,
@@ -163,15 +173,15 @@ await test('SGT-U03: 実 Git で新規・fast-forward の単一ブランチを P
   f.git('tag', '-am', 'tag', 'v-test');
   await writeFile(join(f.cwd, '.git/hooks/pre-push'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
   f.git('config', 'core.hooksPath', '.git/hooks');
-  safePush({ branch, dryRun: true }, f.cwd, f.run);
+  await safePush({ branch, dryRun: true }, f.cwd, f.run);
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`), '');
-  safePush({ branch, dryRun: false }, f.cwd, f.run);
+  await safePush({ branch, dryRun: false }, f.cwd, f.run);
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`).split('\t')[0], f.commit);
   assert.equal(f.git('ls-remote', f.remote, 'refs/heads/main').split('\t')[0], f.base);
   assert.equal(f.git('ls-remote', f.remote, 'refs/tags/*'), '');
   await writeFile(join(f.cwd, 'file'), 'next');
   f.git('commit', '-qam', 'next');
-  safePush({ branch, dryRun: false }, f.cwd, f.run);
+  await safePush({ branch, dryRun: false }, f.cwd, f.run);
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`).split('\t')[0], f.git('rev-parse', 'HEAD'));
 });
 
@@ -183,14 +193,14 @@ await test('SGT-U11: 不正な fsmonitor が変更を隠しても Push しない
   f.git('status', '--porcelain=v1');
   await writeFile(join(f.cwd, 'file'), 'unreviewed change');
   assert.equal(f.git('status', '--porcelain=v1'), '');
-  assert.throws(() => safePush({ branch, dryRun: false }, f.cwd, f.run), /clean/);
+  await assert.rejects(() => safePush({ branch, dryRun: false }, f.cwd, f.run), /clean/);
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`), '');
 });
 
 await test('SGT-U13: assume-unchanged の未変更ファイルは許可し、隠れた変更は通信前に拒否する', async (t) => {
   const f = await gitFixture(t);
   f.git('update-index', '--assume-unchanged', 'file');
-  safePush({ branch, dryRun: true }, f.cwd, f.run);
+  await safePush({ branch, dryRun: true }, f.cwd, f.run);
   assert.match(f.git('ls-files', '-v'), /^h file$/);
   await writeFile(join(f.cwd, 'file'), 'unreviewed change');
   assert.equal(f.git('status', '--porcelain=v1'), '');
@@ -199,7 +209,7 @@ await test('SGT-U13: assume-unchanged の未変更ファイルは許可し、隠
     calls.push(args);
     return f.run(args, cwd);
   };
-  assert.throws(() => safePush({ branch, dryRun: false }, f.cwd, run), /clean/);
+  await assert.rejects(() => safePush({ branch, dryRun: false }, f.cwd, run), /clean/);
   assert.equal(
     calls.some((args) => args.includes('ls-remote') || args.includes('push')),
     false,
@@ -208,33 +218,47 @@ await test('SGT-U13: assume-unchanged の未変更ファイルは許可し、隠
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`), '');
 });
 
+await test('SGT-U15: skip-worktree の隠れた変更を通信前に拒否し、索引とファイルを保全する', async (t) => {
+  const f = await gitFixture(t);
+  f.git('update-index', '--skip-worktree', 'file');
+  await writeFile(join(f.cwd, 'file'), 'unreviewed change');
+  assert.equal(f.git('update-index', '--really-refresh'), '');
+  assert.equal(f.git('status', '--porcelain=v1'), '');
+  const calls: string[][] = [];
+  const run: Run = (args, cwd) => {
+    calls.push(args);
+    return f.run(args, cwd);
+  };
+  await assert.rejects(() => safePush({ branch, dryRun: false }, f.cwd, run), /skip-worktree/);
+  assert.equal(
+    calls.some((args) => args.includes('ls-remote') || args.includes('push')),
+    false,
+  );
+  assert.equal(await read(join(f.cwd, 'file')), 'unreviewed change');
+  assert.match(f.git('ls-files', '-v'), /^S file$/);
+  assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`), '');
+});
+
 await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失敗として返す', async (t) => {
-  const execute = childProcess.execFileSync;
+  const execute = runProcess;
   // 通信だけをローカルの認証・SSH 設定検査に置換し、runGit の設定で実プロセスを動かす。
   async function intercept(t: TestContext) {
     const f = await gitFixture(t);
     const replies = fixture(f.cwd).replies;
-    let probe: (file: string, args: readonly string[], options: ExecFileSyncOptionsWithStringEncoding) => void;
-    t.mock.method(childProcess, 'execFileSync', ((
-      file: string,
-      args: readonly string[],
-      options: ExecFileSyncOptionsWithStringEncoding,
-    ) => {
-      const index = args.indexOf('ls-remote');
-      if (index >= 0) {
-        probe(file, args.slice(0, index), options);
-        return replies.get(`ls-remote --symref ${url} HEAD refs/heads/${branch}`)!;
-      }
-      assert.ok(!args.includes('push'), '失敗した認証の後に Push しない');
-      return execute(file, args, options);
-    }) as typeof execFileSync);
-    syncBuiltinESMExports();
-    t.after(() => {
-      t.mock.restoreAll();
-      syncBuiltinESMExports();
-    });
+    let probe: (file: string, args: string[], options: Parameters<typeof runProcess>[2]) => Promise<void>;
+    const run = (args: string[], cwd: string, sshTransport = false) =>
+      runGit(args, cwd, sshTransport, async (file, args, options) => {
+        const index = args.indexOf('ls-remote');
+        if (index >= 0) {
+          await probe(file, args.slice(0, index), options);
+          return replies.get(`ls-remote --symref ${url} HEAD refs/heads/${branch}`)!;
+        }
+        assert.ok(!args.includes('push'), '失敗した認証の後に Push しない');
+        return execute(file, args, options);
+      });
     return {
       ...f,
+      run,
       setProbe: (value: typeof probe) => {
         probe = value;
       },
@@ -258,16 +282,15 @@ await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失�
     process.env.GIT_ASKPASS = askpass;
     process.env.SSH_ASKPASS = askpass;
     f.git('config', 'core.askPass', askpass);
-    f.setProbe((file, args, options) => {
+    f.setProbe(async (file, args, options) => {
       assert.equal(options.env?.GCM_INTERACTIVE, '0');
-      execute(file, [...args, '-c', 'credential.helper=', 'credential', 'fill'], {
+      await execute(file, [...args, '-c', 'credential.helper=', 'credential', 'fill'], {
         ...options,
-        stdio: ['pipe', 'pipe', 'pipe'],
         input: 'protocol=https\nhost=safe-git.invalid\n\n',
       });
     });
-    assert.throws(
-      () => safePush({ branch, dryRun: true }, f.cwd),
+    await assert.rejects(
+      () => safePush({ branch, dryRun: true }, f.cwd, f.run),
       (error: unknown) => {
         assert.ok(error instanceof Error);
         assert.match(error.message, /Git の検証または Push に失敗/);
@@ -281,8 +304,8 @@ await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失�
     assert.equal(await read(marker), '');
     const helper = join(f.cwd, '.git/credential-helper');
     await writeFile(helper, '#!/bin/sh\nprintf "username=test\\npassword=test\\n\\n"\n', { mode: 0o755 });
-    f.setProbe((file, args, options) => {
-      const output = execute(
+    f.setProbe(async (file, args, options) => {
+      const output = await execute(
         file,
         [
           ...args,
@@ -295,13 +318,12 @@ await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失�
         ],
         {
           ...options,
-          stdio: ['pipe', 'pipe', 'pipe'],
           input: 'protocol=https\nhost=safe-git.invalid\n\n',
         },
       );
       assert.match(output, /username=test/);
     });
-    safePush({ branch, dryRun: true }, f.cwd);
+    await safePush({ branch, dryRun: true }, f.cwd, f.run);
     assert.equal(await read(marker), '');
   });
 
@@ -309,7 +331,10 @@ await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失�
     const f = await intercept(t);
     f.git('remote', 'set-url', 'origin', 'git@github.com:shu-matsukubo/matsu-artifact-delivery.git');
     const config = join(f.cwd, '.git/ssh-config');
-    await writeFile(config, 'Host *\n  BatchMode no\n');
+    await writeFile(
+      config,
+      'Host *\n  BatchMode no\n  HostName attacker.invalid\n  ProxyCommand false\n  StrictHostKeyChecking no\n',
+    );
     const bin = join(f.cwd, '.git/bin');
     await mkdir(bin);
     const marker = join(bin, 'executed');
@@ -327,41 +352,43 @@ await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失�
     const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
     process.env[pathKey] = bin + delimiter + process.env[pathKey];
     process.env.NODE_OPTIONS = '--import=' + pathToFileURL(fakeScript).href;
-    f.setProbe((file, args, options) => {
+    f.setProbe(async (file, args, options) => {
       const command = options.env?.GIT_SSH_COMMAND ?? options.env?.GIT_SSH ?? '';
       const match = /^(?:"([^"]+)"|([^ ]+))(.*)$/.exec(command);
       assert.ok(match, '固定 SSH 実行ファイルが指定されている');
-      const output = execute(
+      const output = await execute(
         match[1] ?? match[2]!,
-        [...match[3]!.trim().split(/\s+/).filter(Boolean), '-G', '-F', config, 'github.com'],
+        ['-F', config, ...match[3]!.trim().split(/\s+/).filter(Boolean), '-G', 'github.com'],
         options,
       );
       assert.match(output, /^batchmode yes$/m);
+      assert.match(output, /^hostname github.com$/m);
+      assert.match(output, /^stricthostkeychecking (?:yes|true)$/m);
+      assert.doesNotMatch(output, /^proxycommand false$/m);
       // 実 Git に SSH コマンドを起動させ、PATH の偽 sh を呼ばないことも確認する。
-      assert.throws(() =>
+      await assert.rejects(() =>
         execute(file, [...args, 'ls-remote', 'ssh://git@127.0.0.1:1/unreachable'], {
           ...options,
           env: {
             ...options.env,
-            GIT_SSH_COMMAND: `${command} -F "${config.replaceAll('\\', '/')}" -o ConnectTimeout=1`,
+            GIT_SSH_COMMAND: `${command.replace('Hostname=github.com', 'Hostname=127.0.0.1').replace('Port=22', 'Port=1')} -o ConnectTimeout=1`,
           },
         }),
       );
     });
-    safePush({ branch, dryRun: true }, f.cwd);
+    await safePush({ branch, dryRun: true }, f.cwd, f.run);
     assert.equal(await read(marker), '');
   });
 
   await t.test('Git の実行時間を制限し、タイムアウト後に Push しない', async (t) => {
     const f = await intercept(t);
-    f.setProbe((_file, _args, options) => {
+    f.setProbe(async (_file, _args, options) => {
       assert.ok(options.timeout && options.timeout > 0 && options.timeout <= 60_000);
-      assert.equal(options.killSignal, 'SIGKILL');
       // 本番の上限だけを短縮し、終了しない子プロセスを実際に停止する。
-      execute(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { ...options, timeout: 100 });
+      await execute(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { ...options, timeout: 100 });
     });
-    assert.throws(
-      () => safePush({ branch, dryRun: false }, f.cwd),
+    await assert.rejects(
+      () => safePush({ branch, dryRun: false }, f.cwd, f.run),
       (error: unknown) => {
         assert.ok(error instanceof Error);
         assert.match(error.message, /Git の検証または Push に失敗/);
@@ -372,7 +399,67 @@ await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失�
   });
 });
 
-await test('SGT-U12: SSH 接続のリモート操作だけに固定 SSH 実行を指定する', () => {
+await test('SGT-U17: 独自 CA のリポジトリ設定を実 Git で通信前に拒否する', async (t) => {
+  const f = await gitFixture(t);
+  const bundle = 'C:/Program Files/Git/ucrt64/etc/ssl/certs/ca-bundle.crt';
+  for (const [key, value] of [
+    ['http.sslCAInfo', '/untrusted/ca.crt'],
+    ['http.sslCAPath', '/untrusted/certs'],
+    ['http.https://github.com/.sslCAInfo', '/untrusted/ca.crt'],
+    ['http.https://github.com/.sslCAPath', '/untrusted/certs'],
+    ['http.sslCAInfo', bundle],
+    ['http.sslCAInfo', ''],
+  ]) {
+    f.git('config', key!, value!);
+    const calls: string[][] = [];
+    const run: Run = (args, cwd) => {
+      calls.push(args);
+      return f.run(args, cwd);
+    };
+    await assert.rejects(() => safePush({ branch, dryRun: false }, f.cwd, run), /独自 CA/);
+    assert.equal(
+      calls.some((args) => args.includes('ls-remote') || args.includes('push')),
+      false,
+    );
+    f.git('config', '--unset-all', key!);
+  }
+});
+
+await test('SGT-U16: タイムアウト時に子・孫プロセスを停止する', async (t) => {
+  const cwd = await temporaryDirectory(t);
+  const pids = join(cwd, 'pids');
+  const heartbeat = join(cwd, 'heartbeat');
+  await writeFile(pids, '');
+  await writeFile(heartbeat, '');
+  const leaf = `import { appendFileSync } from 'node:fs';
+appendFileSync(${JSON.stringify(pids)}, process.pid + '\\n');
+setInterval(() => appendFileSync(${JSON.stringify(heartbeat)}, 'alive\\n'), 20);`;
+  const parent = `import { spawn } from 'node:child_process';
+${leaf}
+spawn(process.execPath, ['--input-type=module', '-e', ${JSON.stringify(leaf)}], { stdio: 'ignore', windowsHide: true });`;
+  let started: number[] = [];
+  t.after(() => {
+    for (const pid of started) {
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+      }
+    }
+  });
+  await assert.rejects(
+    runProcess(process.execPath, ['--input-type=module', '-e', parent], { cwd, env: process.env, timeout: 2_000 }),
+    { code: 'ETIMEDOUT' },
+  );
+  started = (await read(pids)).trim().split('\n').map(Number);
+  assert.equal(started.length, 2, '子・孫が起動している');
+  const stopped = await read(heartbeat);
+  assert.ok(stopped.length > 0, '孫プロセスが動作していた');
+  await delay(200);
+  assert.equal(await read(heartbeat), stopped, 'タイムアウト後に孫プロセスを残さない');
+});
+
+await test('SGT-U12: SSH 接続のリモート操作だけに固定 SSH 実行を指定する', async () => {
   const f = fixture();
   const sshUrl = 'git@github.com:shu-matsukubo/matsu-artifact-delivery.git';
   f.replies.set('remote get-url --all origin', sshUrl);
@@ -382,10 +469,10 @@ await test('SGT-U12: SSH 接続のリモート操作だけに固定 SSH 実行�
     assert.equal(sshTransport ?? false, args[0] === 'ls-remote' || args.includes('push'));
     return f.run(args, cwd);
   };
-  safePush({ branch, dryRun: false }, repository, run);
+  await safePush({ branch, dryRun: false }, repository, run);
 });
 
-await test('SGT-U06: CLI は未知の引数・別 cwd・Git 設定の環境変数を終了コード 1 で拒否する', () => {
+await test('SGT-U06: CLI は未知の引数・別 cwd・Git 設定の環境変数を終了コード 1 で拒否する', async () => {
   const script = join(repository, '.agents/skills/safe-git/scripts/push.ts');
   for (const options of [
     { args: ['--force'], cwd: repository, env: process.env, message: /引数/ },
@@ -414,6 +501,19 @@ await test('SGT-U06: CLI は未知の引数・別 cwd・Git 設定の環境変�
       env: { ...process.env, GIT_SSL_NO_VERIFY: 'true' },
       message: /環境変数/,
     },
+    ...[
+      'GIT_SSL_CAINFO',
+      'GIT_SSL_CAPATH',
+      'GIT_PROXY_SSL_CAINFO',
+      'SSL_CERT_FILE',
+      'SSL_CERT_DIR',
+      'CURL_CA_BUNDLE',
+    ].map((key) => ({
+      args: ['--branch', branch],
+      cwd: repository,
+      env: { ...process.env, [key]: 'override' },
+      message: /環境変数/,
+    })),
   ]) {
     const result = spawnSync(process.execPath, [script, ...options.args], {
       cwd: options.cwd,
@@ -433,31 +533,31 @@ await test('SGT-U07: 確認後に同名ブランチが作成された場合は P
       execFileSync('git', ['fetch', f.cwd, `main:refs/heads/${branch}`], { cwd: f.remote, stdio: 'pipe' });
     return result;
   };
-  assert.throws(() => safePush({ branch, dryRun: false }, f.cwd, run));
+  await assert.rejects(() => safePush({ branch, dryRun: false }, f.cwd, run));
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`).split('\t')[0], f.base);
 });
 
 await test('SGT-U04: non-fast-forward・Git 失敗は成功扱いせず、remote を変更しない', async (t) => {
   const f = await gitFixture(t);
-  safePush({ branch, dryRun: false }, f.cwd, f.run);
+  await safePush({ branch, dryRun: false }, f.cwd, f.run);
   f.git('switch', '-c', 'diverged', f.base);
   await writeFile(join(f.cwd, 'file'), 'diverged');
   f.git('commit', '-qam', 'diverged');
   f.git('branch', '-f', branch, 'HEAD');
   f.git('switch', branch);
-  assert.throws(() => safePush({ branch, dryRun: false }, f.cwd, f.run));
+  await assert.rejects(() => safePush({ branch, dryRun: false }, f.cwd, f.run));
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`).split('\t')[0], f.commit);
   const run: Run = (args, cwd) => {
     if (args.includes('push')) throw new Error('Push rejected');
     return f.run(args, cwd);
   };
   f.git('switch', '-c', 'fresh-branch');
-  assert.throws(() => safePush({ branch: 'fresh-branch', dryRun: false }, f.cwd, run), /Push rejected/);
+  await assert.rejects(() => safePush({ branch: 'fresh-branch', dryRun: false }, f.cwd, run), /Push rejected/);
 });
 
 await test('SGT-U08: 置換 ref が偽装した祖先関係では Push しない', async (t) => {
   const f = await gitFixture(t);
-  safePush({ branch, dryRun: false }, f.cwd, f.run);
+  await safePush({ branch, dryRun: false }, f.cwd, f.run);
   f.git('switch', '-c', 'diverged', f.base);
   await writeFile(join(f.cwd, 'file'), 'diverged');
   f.git('commit', '-qam', 'diverged');
@@ -466,7 +566,7 @@ await test('SGT-U08: 置換 ref が偽装した祖先関係では Push しない
   f.git('switch', branch);
   f.git('replace', '--graft', divergent, f.commit);
   f.git('merge-base', '--is-ancestor', f.commit, divergent);
-  assert.throws(() => safePush({ branch, dryRun: false }, f.cwd, f.run));
+  await assert.rejects(() => safePush({ branch, dryRun: false }, f.cwd, f.run));
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`).split('\t')[0], f.commit);
 });
 
@@ -510,7 +610,7 @@ if (/[/\\\\]git(?:\\.exe)?$/.test(process.execPath)) {
       '--input-type=module',
       '-e',
       `import { safePush } from ${JSON.stringify(script)};
-try { safePush({ branch: ${JSON.stringify(branch)}, dryRun: true }, ${JSON.stringify(f.cwd)}); }
+try { await safePush({ branch: ${JSON.stringify(branch)}, dryRun: true }, ${JSON.stringify(f.cwd)}); }
 catch (error) { console.error(error.message); process.exitCode = 1; }`,
     ],
     { cwd: f.cwd, env, encoding: 'utf8' },
@@ -522,7 +622,7 @@ catch (error) { console.error(error.message); process.exitCode = 1; }`,
 
 await test('SGT-U10: info/grafts が偽装した祖先関係では通常 checkout と worktree の Push を拒否する', async (t) => {
   const f = await gitFixture(t);
-  safePush({ branch, dryRun: false }, f.cwd, f.run);
+  await safePush({ branch, dryRun: false }, f.cwd, f.run);
   f.git('switch', '-c', 'diverged', f.base);
   await writeFile(join(f.cwd, 'file'), 'diverged');
   f.git('commit', '-qam', 'diverged');
@@ -547,7 +647,7 @@ await test('SGT-U10: info/grafts が偽装した祖先関係では通常 checkou
         { cwd, encoding: 'utf8', stdio: 'pipe' },
       ).trim();
     };
-    assert.throws(() => safePush({ branch: targetBranch!, dryRun: false }, cwd, run), /grafts/);
+    await assert.rejects(() => safePush({ branch: targetBranch!, dryRun: false }, cwd, run), /grafts/);
     assert.equal(
       calls.some((args) => args.includes('ls-remote') || args.includes('push')),
       false,
@@ -572,6 +672,11 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['git', 'branch', '-D', branch],
     ['git', 'branch', '-M', 'source', 'target'],
     ['git', 'branch', '-C', 'source', 'target'],
+    ...['--move', '--copy', '-m', '-c'].map((option) => ['git', 'branch', option, '--force', 'source', 'target']),
+    ['git', 'rm', '--force', 'file'],
+    ['git', 'rm', '-f', 'file'],
+    ['git', 'rm', 'file', '--force'],
+    ['git', 'rm', '-rf', 'directory'],
     ['git', '-C', '.', 'push'],
     ['git', 'send-pack', url],
     ['git', 'worktree', 'remove', '--force', 'path'],
