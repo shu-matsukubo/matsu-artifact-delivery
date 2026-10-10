@@ -1,4 +1,5 @@
-import { lstatSync, realpathSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { lstatSync, readFileSync, readlinkSync, realpathSync } from 'node:fs';
 import { delimiter, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runProcess } from './process.ts';
@@ -135,6 +136,34 @@ export async function safePush(options: Options, root = repository, run: Run = r
   }
   if (await git('-c', 'core.fsmonitor=false', 'status', '--porcelain=v1', '--untracked-files=all'))
     throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。');
+  // stat が一致しても内容を照合する。hash-object は改行変換などの Git 属性を適用する。
+  const files: { path: string; hash: string }[] = [];
+  for (const entry of (await git('ls-files', '--stage', '-z')).split('\0').filter(Boolean)) {
+    const match = /^(100644|100755|120000|160000) ([a-f0-9]{40,64}) 0\t(.+)$/s.exec(entry);
+    if (!match) throw new Error('索引エントリーを検証できません。');
+    const mode = match[1]!;
+    const hash = match[2]!;
+    const path = match[3]!;
+    if (mode === '160000') continue; // submodule の作業状態は status で確認する。
+    if (mode !== '120000') {
+      files.push({ path, hash });
+      continue;
+    }
+    const link = resolve(root, path);
+    // core.symlinks=false の checkout ではリンク先文字列を通常ファイルに保存する。
+    const content = lstatSync(link).isSymbolicLink() ? readlinkSync(link, { encoding: 'buffer' }) : readFileSync(link);
+    const actual = createHash(hash.length === 40 ? 'sha1' : 'sha256')
+      .update(`blob ${content.length}\0`)
+      .update(content)
+      .digest('hex');
+    if (actual !== hash) throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。');
+  }
+  for (let offset = 0; offset < files.length; offset += 100) {
+    const batch = files.slice(offset, offset + 100);
+    const hashes = (await git('hash-object', '--', ...batch.map((file) => file.path))).split('\n');
+    if (hashes.length !== batch.length || hashes.some((hash, index) => hash !== batch[index]!.hash))
+      throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。');
+  }
   const commit = await git('rev-parse', '--verify', 'HEAD^{commit}');
   if (!/^[a-f0-9]{40,64}$/.test(commit)) throw new Error('HEAD の commit SHA を確認できません。');
   const fetchUrl = await git('remote', 'get-url', '--all', 'origin');

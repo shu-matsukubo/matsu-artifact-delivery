@@ -2,6 +2,8 @@
 
 開発用の Node.js 22.19.0 以降と Git を使う。利用者向け Plugin の実行要件や配布物には追加しない。人間が通常のターミナルで行う Git 操作は対象外とする。
 
+Node.js は Windows の `C:/Program Files/nodejs/node.exe`、Linux の `/usr/bin/node`、macOS の `/usr/local/bin/node` に固定し、管理者が実行ファイルと配置先を保護する。起動元のシェルで `NODE_OPTIONS` と `NODE_PATH` を除去してから起動する。固定配置がない場合は実行を止める。起動コマンドは [Skill](../SKILL.md) を参照する。
+
 Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux / macOS の `/usr/bin/git` に固定する。SSH 接続時は SSH 実行ファイルも Windows の `C:/Program Files/Git/usr/bin/ssh.exe`、Linux / macOS の `/usr/bin/ssh` に固定する。実体がこのパスにある通常ファイルかを検証し、PATH や環境変数で配置先を選ばない。Windows の配置先は管理者権限で保護する。Linux / macOS では実行ファイルと親ディレクトリが root 所有で、group / other が書き込めないことも検証する。固定配置に実行ファイルがない場合は検証失敗とする。
 
 ## 検証と更新
@@ -9,7 +11,7 @@ Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux
 [スクリプト](../scripts/push.ts)は次を確認する。
 
 - スクリプトの配置先が Git リポジトリのルートに対応し、そのルートから実行されている。
-- 現在のブランチが `--branch` と一致し、HEAD が commit を指し、staged / unstaged / untracked の変更がない。`skip-worktree` が付いた索引エントリーは sparse-checkout を含め拒否する。`core.fsmonitor` を無効化し、`update-index --really-refresh` で `assume-unchanged` のファイルも検査してから `status` を確認する。
+- 現在のブランチが `--branch` と一致し、HEAD が commit を指し、staged / unstaged / untracked の変更がない。`skip-worktree` が付いた索引エントリーは sparse-checkout を含め拒否する。`core.fsmonitor` を無効化し、`update-index --really-refresh` で `assume-unchanged` のファイルも検査してから `status` を確認する。追跡ファイルは改行変換などの Git 属性を適用した内容のハッシュ、symlink はリンク先文字列の blob ハッシュを索引と照合し、stat 設定や時刻復元による隠れた変更も拒否する。submodule の状態は `status` で確認する。リポジトリの設定値は変更しない。
 - `origin` の取得先と Push 先が、それぞれ `shu-matsukubo/matsu-artifact-delivery` の単一 GitHub URL である。HTTPS または Git SSH の固定形式を許可し、URL 書き換え設定、複数 URL、別リポジトリは拒否する。TLS 検証の無効化・独自 CA の指定と SSH コマンドの差し替えに関わる環境変数・Git 設定も拒否する。HTTPS は既定の信頼ストアを使い、Windows は `schannel` と `schannelUseSSLCAInfo=false` を指定する。Windows の `http.sslCAInfo` は `C:/Program Files/Git/etc/gitconfig` の system 設定が指定する `C:/Program Files/Git/ucrt64/etc/ssl/certs/ca-bundle.crt` または `C:/Program Files/Git/mingw64/etc/ssl/certs/ca-bundle.crt` に限定して許可し、設定ファイルと CA の実体が固定パスにあることを検証する。
 - Push 先が作業ブランチであり、リモートから取得した default branch ではなく、`main`、`master`、`develop`、`development`、`release`、`releases`、`prod`、`production`、`stable` とその配下ではない。
 - Git が参照する `info/grafts` が存在しない。worktree では共通 Git ディレクトリの配置先を確認する。
@@ -28,7 +30,7 @@ Push は検証した URL と `<commit SHA>:refs/heads/<作業ブランチ>` 一�
 
 ## Codex Rules
 
-[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules)が直接の Push、worktree 削除、`git rm`、`git mv`、ブランチの移動・コピーを含む破壊的な Git コマンドを `forbidden` にする。`git mv` は強制上書きオプションの位置・短縮表記にかかわらず拒否するため、コマンド全体を禁止する。Git のグローバルオプションでサブコマンドを隠す呼び出しも禁止対象とし、作業ディレクトリはツールの cwd で指定する。
+[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules)が直接の Push、worktree 削除、`git rm`、`git mv`、`git branch` を含む破壊的な Git コマンドを `forbidden` にする。`git mv` と `git branch` は、上書き・削除オプションの位置・短縮表記にかかわらず拒否するため、コマンド全体を禁止する。ブランチ一覧は `git for-each-ref refs/heads/`、作成は `git switch -c` を使う。Git のグローバルオプションでサブコマンドを隠す呼び出しも禁止対象とし、作業ディレクトリはツールの cwd で指定する。
 
 プロジェクトの `.codex/` を信頼し、Codex を再起動して読み込む。[公式 Rules 仕様](https://developers.openai.com/codex/rules)に従い、Rules は sandbox 外のコマンド要求に対する prefix 判定である。別の実行ファイルパス、任意のオプション順、複雑な shell やスクリプト内部の子プロセスを網羅する強制境界ではない。Codex は [AGENTS.md](../../../../AGENTS.md) の禁止も守り、Rules を迂回しない。スクリプト実行は通常の sandbox・承認設定に従う。
 

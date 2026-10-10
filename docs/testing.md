@@ -157,7 +157,7 @@ npm run ci:select -- --all
 | PKG-U01〜PKG-U04         | marketplace、Plugin Agent 登録不要とリポジトリ Codex 設定の配布外確認、README 参照、ID 対応                    | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U01                  | 入口の reference 参照、起動・再開・新規選定・環境準備・GitHub とローカルへの反映・clean 確認の契約と担当境界   | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U02                  | プラグイン Issue への対象限定、実装中・merge 済み PR がある Issue の選定除外                                   | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
-| SGT-U01〜SGT-U18         | Push の接続先・祖先・単一 ref、競合・偽装・隠れた変更の拒否、固定 SSH・非対話認証・タイムアウト、CLI・Rules    | [安全な Push の試験](../test/infrastructure/safe-git.test.ts)                             |
+| SGT-U01〜SGT-U20         | Push の接続先・祖先・単一 ref、競合・偽装・隠れた変更の拒否、固定 SSH・非対話認証・タイムアウト、CLI・Rules    | [安全な Push の試験](../test/infrastructure/safe-git.test.ts)                             |
 
 ### 既存 MCP の対応表
 
@@ -208,6 +208,8 @@ CI-U11 は [GitHub の式評価ライブラリ](https://github.com/actions/langu
 `SGT-U03` / `SGT-U04` は一時ディレクトリの bare remote を使い、実 Git による新規・fast-forward の Push、他の ref の保全、non-fast-forward の拒否を検証する。`SGT-U07` / `SGT-U08` / `SGT-U10` はブランチ作成の競合、置換 ref と通常 checkout / worktree の grafts による祖先偽装の拒否を検証する。`SGT-U09` は PATH に置いた偽 Git が実行されず、実リポジトリの接続先が検証されることを実プロセスで確認する。`SGT-U11` / `SGT-U13` / `SGT-U15` は不正な fsmonitor と `assume-unchanged` / `skip-worktree` が隠す変更の拒否、`SGT-U12` は SSH 接続時の固定実行ファイル指定を確認する。`SGT-U14` は通信部分をローカルの実 Git 認証・SSH 設定検査に置き換え、askpass を呼ばない認証失敗、`BatchMode=yes` と接続先・ホスト鍵検証の固定、SSH 設定の無効化、短縮した実行時間上限でのタイムアウトを確認する。`SGT-U16` は実際に子・孫プロセスを起動し、タイムアウト後に孫の動作が止まることを検証する。`SGT-U17` は実 Git で独自 CA のリポジトリ設定と URL 別設定を拒否する。GitHub の認証は要求しない。`SGT-U05` の Rules 評価は Codex CLI がある環境で `codex execpolicy check` を使い、CLI がない CI ではその評価だけをスキップする。Rules 内の `match` / `not_match` も Codex の読み込み時に検査される。スキル内の TypeScript スクリプトはルートの型・lint・書式チェックの対象に含む。
 
 `SGT-U18` は Windows の固定された CA 配置を fixture で再現し、`ucrt64` / `mingw64` の許可と、設定元・実体パス・通常ファイルの検査を確認する。両配置の実 Git インストールや HTTPS 通信は再現しない。
+
+`SGT-U19` は stat 検査を弱めた実 Git で、同サイズの変更と復元された mtime により隠れた差分を通信前に拒否することを確認する。改行変換・空白と日本語を含むパス・symlink の未変更状態も許可されることを検証する。`SGT-U20` は Skill の固定 Node パスを確認し、その配置だけを試験用 Node に置換して起動コマンドを実行する。`NODE_OPTIONS` の `--import` / `--require` が起動前に除去され、CLI の検証に到達することを確認する。固定配置の権限や Linux / macOS の実インストールは再現しない。
 
 契約 ID のガイド掲載確認は、差分 CI の入口が異なるため WF/EX-U02 と PKG-U04 の両方に置く。契約一覧だけの変更では前者、ガイドだけの変更では後者が実行される。単純に片方を削除すると一方の変更経路に検証漏れが生じるため、追加の CI 対象を増やしてまで統合しない。
 

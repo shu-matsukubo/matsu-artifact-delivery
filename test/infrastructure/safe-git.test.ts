@@ -25,6 +25,8 @@ function fixture(root = repository) {
     ['ls-files -v -z', 'H file'],
     ['-c core.fsmonitor=false update-index --really-refresh', ''],
     ['-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all', ''],
+    ['ls-files --stage -z', `100644 ${head} 0\tfile\0`],
+    ['hash-object -- file', head],
     ['rev-parse --verify HEAD^{commit}', head],
     ['remote get-url --all origin', url],
     ['remote get-url --push --all origin', url],
@@ -98,6 +100,8 @@ await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不�
     ['symbolic-ref --quiet --short HEAD', new Error('detached HEAD')],
     ['-c core.fsmonitor=false update-index --really-refresh', new Error('index refresh failure')],
     ['-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all', '?? unreviewed.ts'],
+    ['hash-object -- file', 'b'.repeat(40)],
+    ['ls-files --stage -z', `100644 ${head} 1\tfile\0`],
     ['remote get-url --all origin', 'https://github.com/other/repository.git'],
     ['remote get-url --push --all origin', 'https://github.com/attacker/repo.git'],
     ['remote get-url --push --all origin', `${url}\n${url}`],
@@ -238,6 +242,51 @@ await test('SGT-U15: skip-worktree の隠れた変更を通信前に拒否し、
   );
   assert.equal(await read(join(f.cwd, 'file')), 'unreviewed change');
   assert.match(f.git('ls-files', '-v'), /^S file$/);
+  assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`), '');
+});
+
+await test('SGT-U19: stat 検査を弱める設定と復元された mtime が隠す同サイズの変更を通信前に拒否する', async (t) => {
+  const f = await gitFixture(t);
+  const textPath = 'text file 日本語.txt';
+  await writeFile(join(f.cwd, '.gitattributes'), `"${textPath}" text eol=crlf\n`);
+  await writeFile(join(f.cwd, textPath), 'first\r\nsecond\r\n');
+  await writeFile(join(f.cwd, '-leading'), 'same');
+  const link = join(f.cwd, 'link');
+  if (process.platform === 'win32') {
+    f.git('config', 'core.symlinks', 'false');
+    await writeFile(link, textPath);
+    const hash = f.git('hash-object', '-w', '--no-filters', '--', 'link');
+    f.git('update-index', '--add', '--cacheinfo', `120000,${hash},link`);
+  } else {
+    await fs.promises.symlink(textPath, link);
+    f.git('add', 'link');
+  }
+  f.git('add', '--', '.gitattributes', textPath, '-leading');
+  f.git('commit', '-qm', 'content formats');
+  f.git('config', 'core.trustCtime', 'false');
+  f.git('config', 'core.checkStat', 'minimal');
+  const file = join(f.cwd, 'file');
+  const oldTime = new Date('2000-01-01T00:00:00Z');
+  fs.utimesSync(file, oldTime, oldTime);
+  assert.equal(f.git('status', '--porcelain=v1'), '');
+  await safePush({ branch, dryRun: true }, f.cwd, f.run);
+  await writeFile(file, 'hidden');
+  fs.utimesSync(file, oldTime, oldTime);
+  assert.equal(f.git('update-index', '--really-refresh'), '');
+  assert.equal(f.git('status', '--porcelain=v1'), '');
+  const calls: string[][] = [];
+  const run: Run = (args, cwd) => {
+    calls.push(args);
+    return f.run(args, cwd);
+  };
+  await assert.rejects(() => safePush({ branch, dryRun: false }, f.cwd, run), /clean/);
+  assert.equal(
+    calls.some((args) => args.includes('ls-remote') || args.includes('push')),
+    false,
+  );
+  assert.equal(await read(file), 'hidden');
+  assert.equal(f.git('config', '--get', 'core.trustCtime'), 'false');
+  assert.equal(f.git('config', '--get', 'core.checkStat'), 'minimal');
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`), '');
 });
 
@@ -697,6 +746,53 @@ catch (error) { console.error(error.message); process.exitCode = 1; }`,
   assert.equal(await read(marker), before);
 });
 
+await test('SGT-U20: Skill の起動手順が Node の preload を起動前に除去し、固定 Node で CLI を実行する', async (t) => {
+  const root = await temporaryDirectory(t);
+  const marker = join(root, 'preloaded');
+  const bin = join(root, 'bin');
+  await mkdir(bin);
+  await copyFile(process.execPath, join(bin, process.platform === 'win32' ? 'node.exe' : 'node'));
+  const skill = await read(join(repository, '.agents/skills/safe-git/SKILL.md'));
+  const blocks = [...skill.matchAll(/```(powershell|sh)\r?\n([\s\S]*?)```/g)];
+  const block = blocks.find((match) => match[1] === (process.platform === 'win32' ? 'powershell' : 'sh')) ?? blocks[0];
+  assert.ok(block);
+  const node = process.platform === 'win32' ? 'C:/Program Files/nodejs/node.exe' : '/usr/bin/node';
+  assert.ok(block[2]!.includes(node), 'PATH 探索を使わず固定 Node を起動する');
+  let command = block[2]!.replaceAll('<作業ブランチ>', 'invalid..branch');
+  // CI の toolcache を含め、Node の配置だけを試験用 Node に置き換える。
+  const testNode = process.execPath.replaceAll('\\', '/');
+  command = command.replaceAll(
+    node,
+    process.platform === 'win32' ? testNode.replaceAll("'", "''") : "'" + testNode.replaceAll("'", "'\\''") + "'",
+  );
+  const executable =
+    process.platform === 'win32' ? 'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe' : '/bin/sh';
+  const args = process.platform === 'win32' ? ['-NoProfile', '-NonInteractive', '-Command', command] : ['-c', command];
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
+  for (const mode of ['import', 'require']) {
+    const preload = join(root, mode === 'import' ? 'preload.mjs' : 'preload.cjs');
+    await writeFile(
+      preload,
+      `${mode === 'import' ? "import { writeFileSync } from 'node:fs';" : "const { writeFileSync } = require('node:fs');"}\nwriteFileSync(${JSON.stringify(marker)}, 'executed');\nprocess.exit(0);\n`,
+    );
+    const env = {
+      ...process.env,
+      [pathKey]: bin + delimiter + process.env[pathKey],
+      NODE_OPTIONS:
+        mode === 'import' ? '--import=' + pathToFileURL(preload).href : '--require=' + JSON.stringify(preload),
+      NODE_PATH: bin,
+    };
+    const probe = spawnSync(process.execPath, ['-e', ''], { env, encoding: 'utf8' });
+    assert.equal(probe.status, 0, probe.stderr);
+    assert.equal(await read(marker), 'executed');
+    await fs.promises.unlink(marker);
+    const result = spawnSync(executable, args, { cwd: repository, env, encoding: 'utf8' });
+    assert.equal(fs.existsSync(marker), false, `${mode}: preload が実行されない`);
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /作業ブランチ名/);
+  }
+});
+
 await test('SGT-U10: info/grafts が偽装した祖先関係では通常 checkout と worktree の Push を拒否する', async (t) => {
   const f = await gitFixture(t);
   await safePush({ branch, dryRun: false }, f.cwd, f.run);
@@ -747,6 +843,11 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['git', 'reset', '--hard'],
     ['git', 'clean', '-fd'],
     ['git', 'branch', '-D', branch],
+    ['git', 'branch', '--list'],
+    ...['-D', '-d', '--delete', '-f', '--force'].flatMap((option) => [
+      ['git', 'branch', branch, option],
+      ['git.exe', 'branch', branch, option],
+    ]),
     ['git', 'branch', '-M', 'source', 'target'],
     ['git', 'branch', '-C', 'source', 'target'],
     ...['--move', '--copy', '-m', '-c'].map((option) => ['git', 'branch', option, '--force', 'source', 'target']),
@@ -769,11 +870,12 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
   ];
   const allowed = [
     ['git', 'status'],
+    ['git', 'for-each-ref', 'refs/heads/'],
     ['git', 'diff'],
     ['git', 'add', 'file'],
     ['git', 'commit', '-m', 'change'],
     ['git', 'switch', '-c', branch],
-    ['node', '.agents/skills/safe-git/scripts/push.ts', '--branch', branch],
+    ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/push.ts', '--branch', branch],
   ];
   for (const args of [...forbidden, ...allowed]) {
     const result = JSON.parse(
