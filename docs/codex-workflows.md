@@ -19,6 +19,6 @@ Codex のリポジトリ用スキルは `.agents/skills/` に置く。配布す�
 
 定期 Issue 処理 Skill はスケジューラが名前を明示して起動する。`.agents/skills/scheduled-issue-processing/SKILL.md` がプラグイン Issue の選定、順序と停止条件を調整し、実装とレビューはそれぞれ `plugin-maintenance` と `plugin-review` に委ねる。モデルと推論レベルは `.codex/config.toml` と `.codex/agents/` で設定する。
 
-GitHub 操作は [定期 Issue 処理の起動条件](../.agents/skills/scheduled-issue-processing/references/startup.md)に従って利用可能な手段を選ぶ。Codex が Git で Push する場合は、開発専用の [safe-git](../.agents/skills/safe-git/SKILL.md) を呼び出す。スクリプトの検証条件・失敗時の扱い・Rules の適用範囲は [Push の制約](../.agents/skills/safe-git/references/push.md)を参照する。
+GitHub 操作は [定期 Issue 処理の起動条件](../.agents/skills/scheduled-issue-processing/references/startup.md)に従って利用可能な手段を選ぶ。Codex が Git で Push、作業ブランチ・コミットの新規作成を行う場合は、開発専用の [safe-git](../.agents/skills/safe-git/SKILL.md) を呼び出す。スクリプトの検証条件・失敗時の扱い・Rules の適用範囲は [検証の制約](../.agents/skills/safe-git/references/push.md)を参照する。
 
 この構成は[Codex のスキル配置・構成](https://developers.openai.com/codex/skills)、[スキル仕様](https://agentskills.io/specification)、[プラグインのスキル作成ガイド](https://developers.openai.com/plugins/build/skills)に従う。Codex はリポジトリの `.agents/skills/` を探索し、スキルは `SKILL.md` と任意の `references/`、`assets/`、`scripts/` から構成できる。

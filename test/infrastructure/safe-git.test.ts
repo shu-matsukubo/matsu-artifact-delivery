@@ -10,6 +10,7 @@ import test, { type TestContext } from 'node:test';
 import { parseArguments, runGit, safePush } from '../../.agents/skills/safe-git/scripts/push.ts';
 import { runProcess } from '../../.agents/skills/safe-git/scripts/process.ts';
 import { createBranch } from '../../.agents/skills/safe-git/scripts/create-branch.ts';
+import { createCommit } from '../../.agents/skills/safe-git/scripts/commit.ts';
 import { frontmatter, localLinks, read, repository, temporaryDirectory } from '../lib/plugin.ts';
 
 const url = 'https://github.com/shu-matsukubo/matsu-artifact-delivery.git';
@@ -32,6 +33,7 @@ function fixture(root = repository) {
     ['remote get-url --all origin', url],
     ['remote get-url --push --all origin', url],
     ['config --name-only --list', ''],
+    ['for-each-ref --format=%(refname) refs/replace/', ''],
     [
       'config --null --show-origin --show-scope --get-all http.sslcainfo',
       'global\0file:/untrusted\0/untrusted/ca.crt\0',
@@ -203,6 +205,50 @@ await test('SGT-U24: 新規ブランチ作成は既存 ref・作業変更を保�
     await assert.rejects(createBranch(args, f.cwd));
   assert.equal(f.git('rev-parse', '--abbrev-ref', 'HEAD'), newBranch);
   assert.equal(f.git('status', '--porcelain=v1'), status);
+});
+
+await test('SGT-U34: 新規コミットは親・ステージ内容・作業変更を保全し、amend と hook を実行しない', async (t) => {
+  const f = await gitFixture(t);
+  const marker = join(f.cwd, '.git/hook-ran');
+  await writeFile(join(f.cwd, '.git/hooks/pre-commit'), '#!/bin/sh\necho ran > .git/hook-ran\nexit 1\n', {
+    mode: 0o755,
+  });
+  f.git('config', 'core.hooksPath', '.git/hooks');
+  f.git('config', 'commit.gpgsign', 'true');
+  await writeFile(join(f.cwd, 'file'), 'staged content');
+  f.git('add', 'file');
+  const tree = f.git('write-tree');
+  await writeFile(join(f.cwd, 'file'), 'unstaged content');
+  await writeFile(join(f.cwd, 'untracked'), 'new work');
+  const result = await createCommit(['--message', '--amend'], f.cwd);
+  assert.equal(result.commit, f.git('rev-parse', 'HEAD'));
+  assert.equal(f.git('rev-parse', 'HEAD^'), f.commit);
+  assert.equal(f.git('rev-parse', 'HEAD^{tree}'), tree);
+  assert.equal(f.git('show', 'HEAD:file'), 'staged content');
+  assert.equal(f.git('log', '-1', '--format=%s'), '--amend', 'メッセージを Git オプションとして解釈しない');
+  assert.equal(fs.existsSync(marker), false);
+  assert.equal(await read(join(f.cwd, 'file')), 'unstaged content');
+  assert.equal(await read(join(f.cwd, 'untracked')), 'new work');
+  const status = f.git('status', '--porcelain=v1');
+  const indexPath = f.git('rev-parse', '--path-format=absolute', '--git-path', 'index');
+  const index = fs.readFileSync(indexPath);
+  for (const args of [
+    [],
+    ['--message'],
+    ['--message', ' '],
+    ['--message', 'bad\0message'],
+    ['--amend', '--no-edit'],
+    ['--message', 'change', '--amend'],
+    ['--message', 'change', '--message', 'extra'],
+  ])
+    await assert.rejects(createCommit(args, f.cwd), /--message/);
+  const nested = join(f.cwd, '.git/wrong-root');
+  await mkdir(nested);
+  await assert.rejects(createCommit(['--message', 'change'], nested));
+  assert.equal(f.git('rev-parse', 'HEAD'), result.commit);
+  assert.equal(f.git('status', '--porcelain=v1'), status);
+  assert.deepEqual(fs.readFileSync(indexPath), index);
+  assert.equal(fs.existsSync(marker), false);
 });
 
 await test('SGT-U03: 実 Git で新規・fast-forward の単一ブランチを Push し、他の ref を保つ', async (t) => {
@@ -1060,6 +1106,63 @@ await test('SGT-U08: 置換 ref が偽装した祖先関係では Push しない
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`).split('\t')[0], f.commit);
 });
 
+await test('SGT-U33: 置換 ref が HEAD と索引の差分を隠しても通信前に拒否し、変更を保全する', async (t) => {
+  for (const depth of [0, 1, 2]) {
+    await t.test(`submodule の深さ ${depth}`, async (t) => {
+      const f = await gitFixture(t);
+      let source = f;
+      if (depth > 0) {
+        source = await gitFixture(t);
+        if (depth === 2) {
+          const parent = await gitFixture(t);
+          parent.git('-c', 'protocol.file.allow=always', 'submodule', 'add', source.cwd, 'nested');
+          parent.git('commit', '-qm', 'nested submodule');
+          source = parent;
+        }
+        f.git('-c', 'protocol.file.allow=always', 'submodule', 'add', source.cwd, 'sub');
+        f.git('commit', '-qm', 'submodule');
+        f.git('-c', 'protocol.file.allow=always', 'submodule', 'update', '--init', '--recursive');
+      }
+      const cwd = depth === 0 ? f.cwd : join(f.cwd, depth === 1 ? 'sub' : 'sub/nested');
+      const git = (...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+      git('config', 'user.name', 'Test');
+      git('config', 'user.email', 'test@example.invalid');
+      const actualHead = git('rev-parse', 'HEAD');
+      await writeFile(join(cwd, 'file'), 'reviewed content');
+      git('add', 'file');
+      const replacement = git('commit-tree', git('write-tree'), '-m', 'replacement');
+      git('replace', actualHead, replacement);
+      assert.equal(git('status', '--porcelain=v1'), '', '置換 ref が本来の HEAD と索引の差分を隠す');
+      const index = fs.readFileSync(git('rev-parse', '--path-format=absolute', '--git-path', 'index'));
+      const calls: string[][] = [];
+      const run: Run = (args, root) => {
+        calls.push(args);
+        return f.run(args, root);
+      };
+      await assert.rejects(safePush({ branch, dryRun: false }, f.cwd, run), /置換 ref/);
+      if (depth === 0) {
+        await assert.rejects(
+          createBranch(['--branch', 'codex/no-replace'], f.cwd, async (args, root) => run(args, root)),
+          /置換 ref/,
+        );
+        await assert.rejects(
+          createCommit(['--message', 'change'], f.cwd, async (args, root) => run(args, root)),
+          /置換 ref/,
+        );
+      }
+      assert.equal(
+        calls.some((args) => ['ls-remote', 'push', 'switch', 'commit'].some((command) => args.includes(command))),
+        false,
+      );
+      assert.equal(git('rev-parse', 'HEAD'), actualHead);
+      assert.equal(git('for-each-ref', '--format=%(objectname)', 'refs/replace/'), replacement);
+      assert.deepEqual(fs.readFileSync(git('rev-parse', '--path-format=absolute', '--git-path', 'index')), index);
+      assert.equal(await read(join(cwd, 'file')), 'reviewed content');
+      assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`), '');
+    });
+  }
+});
+
 await test('SGT-U09: PATH の偽 Git を実行せず、実リポジトリの接続先を検証する', async (t) => {
   const f = await gitFixture(t);
   f.git('remote', 'set-url', 'origin', 'https://github.com/other/repository.git');
@@ -1206,6 +1309,22 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
       [git, 'fast-import'],
       [git, 'fast-import', '--force'],
       [git, 'fast-import', '--quiet', '--force'],
+      [git, 'commit', '--amend', '--no-edit'],
+      [git, 'commit', '--no-edit', '--amend'],
+      [git, 'commit', '-m', 'change', '--amend'],
+      [git, 'commit', '--am'],
+      [git, 'update-index', '--force-remove', 'file'],
+      [git, 'update-index', 'file', '--force-remove'],
+      [git, 'update-index', '--cacheinfo', `100644,${head},file`],
+      [git, 'update-index', '--index-info'],
+      [git, 'replace', head, 'b'.repeat(40)],
+      ...['refs/heads/topic', 'refs/tags/v1'].flatMap((ref) => [
+        [git, 'refs', 'update', ref, head],
+        [git, 'refs', 'update', '--no-deref', ref, head],
+        [git, 'refs', 'delete', ref],
+        [git, 'refs', 'create', ref, head],
+        [git, 'refs', 'rename', ref, ref + '-new'],
+      ]),
     ]),
     ['git', 'push', 'origin', branch],
     ['git.exe', 'push', '--force'],
@@ -1308,11 +1427,14 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['git', 'for-each-ref', 'refs/tags/'],
     ['git', 'diff'],
     ['git', 'add', 'file'],
-    ['git', 'commit', '-m', 'change'],
+    ['git', 'refs', 'list'],
+    ['git', 'refs', 'exists', 'refs/heads/topic'],
+    ['git', 'refs', 'verify'],
     ['git', 'worktree', 'list', '--porcelain'],
     ['git', 'ls-remote', 'origin'],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/push.ts', '--branch', branch],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/create-branch.ts', '--branch', branch],
+    ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/commit.ts', '--message', 'change'],
   ];
   for (const args of [...forbidden, ...allowed]) {
     const result = JSON.parse(
@@ -1381,6 +1503,7 @@ await test('SGT-U30: partial clone の未検証 remote を Push・ブランチ�
   }
   await runGit(['rev-parse', 'HEAD'], f.cwd, false, async (_file, _args, options) => {
     assert.equal(options.env?.GIT_NO_LAZY_FETCH, '1');
+    assert.equal(options.env?.GIT_NO_REPLACE_OBJECTS, '1');
     return '';
   });
 });

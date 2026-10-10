@@ -93,6 +93,7 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       GIT_NO_LAZY_FETCH: '1',
+      GIT_NO_REPLACE_OBJECTS: '1',
       GIT_TERMINAL_PROMPT: '0',
       GCM_INTERACTIVE: '0',
       GIT_ASKPASS: '',
@@ -153,6 +154,8 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
 // Git が作業ツリーを読む前に、属性から起動される外部コマンドを拒否する。
 export async function checkedConfigKeys(root: string, run: Run = runGit) {
   const git = async (...args: string[]) => (await run(args, root)).replace(/\r?\n$/, '');
+  if (await git('for-each-ref', '--format=%(refname)', 'refs/replace/'))
+    throw new Error('置換 ref が存在するため Git の状態を検証できません。');
   const configKeys = (await git('config', '--name-only', '--list')).split('\n');
   // 古い Git は GIT_NO_LAZY_FETCH を無視するため、partial clone の設定自体も拒否する。
   if (configKeys.some((key) => /^(?:extensions\.partialclone|remote\..+\.promisor)$/i.test(key)))
