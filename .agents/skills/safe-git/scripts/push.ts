@@ -57,6 +57,10 @@ function trustedExecutable(name: 'Git' | 'SSH' | 'Shell') {
             : undefined
         : undefined;
   if (!path) throw new Error(`この OS の信頼する ${name} 実行ファイルが定義されていません。`);
+  return trustedFile(path, name);
+}
+
+function trustedFile(path: string, name: string) {
   const executable = realpathSync(path);
   const normalize = (value: string) => (process.platform === 'win32' ? resolve(value).toLowerCase() : resolve(value));
   if (normalize(executable) !== normalize(path) || !lstatSync(executable).isFile())
@@ -88,6 +92,7 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
     const executable = trustedExecutable('Git');
     const env: NodeJS.ProcessEnv = {
       ...process.env,
+      GIT_NO_LAZY_FETCH: '1',
       GIT_TERMINAL_PROMPT: '0',
       GCM_INTERACTIVE: '0',
       GIT_ASKPASS: '',
@@ -99,8 +104,12 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
           }
         : {}),
     };
-    if (sshTransport && process.platform === 'win32') {
-      // GIT_SSH_COMMAND を解釈する Git for Windows の sh も固定配置から選ぶ。
+    for (const key of Object.keys(env)) {
+      if (/^(?:LD_|DYLD_|_?RLD_|LDR_)/i.test(key) || /^(?:NODE_OPTIONS|NODE_PATH|GLIBC_TUNABLES)$/i.test(key))
+        delete env[key];
+    }
+    if (process.platform === 'win32' && (sshTransport || args.includes('ls-remote') || args.includes('push'))) {
+      // SSH コマンドと credential helper を解釈する sh も固定配置から選ぶ。
       const pathKey = Object.keys(env).find((key) => key.toLowerCase() === 'path');
       const inheritedPath = pathKey ? env[pathKey] : '';
       if (pathKey) delete env[pathKey];
@@ -119,7 +128,17 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
         : [];
     return await execute(
       executable,
-      ['-c', 'core.fsmonitor=false', '-c', 'core.askPass=', '-c', 'credential.interactive=false', ...tls, ...args],
+      [
+        '-c',
+        'core.fsmonitor=false',
+        '-c',
+        'core.askPass=',
+        '-c',
+        'credential.interactive=false',
+        ...(args.includes('ls-remote') || args.includes('push') ? ['-c', 'credential.helper='] : []),
+        ...tls,
+        ...args,
+      ],
       {
         cwd,
         env,
@@ -135,6 +154,9 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
 export async function checkedConfigKeys(root: string, run: Run = runGit) {
   const git = async (...args: string[]) => (await run(args, root)).replace(/\r?\n$/, '');
   const configKeys = (await git('config', '--name-only', '--list')).split('\n');
+  // 古い Git は GIT_NO_LAZY_FETCH を無視するため、partial clone の設定自体も拒否する。
+  if (configKeys.some((key) => /^(?:extensions\.partialclone|remote\..+\.promisor)$/i.test(key)))
+    throw new Error('partial clone の自動 fetch を伴うリポジトリは検証できません。');
   const filters = new Set(configKeys.flatMap((key) => /^filter\.(.+)\.(?:clean|process)$/i.exec(key)?.[1] ?? []));
   if (filters.size) {
     const paths = (await git('-c', 'core.fsmonitor=false', 'ls-files', '-z')).split('\0').filter(Boolean);
@@ -157,6 +179,36 @@ export async function checkedConfigKeys(root: string, run: Run = runGit) {
     }
   }
   return configKeys;
+}
+
+async function credentialOptions(root: string, configKeys: string[], run: Run) {
+  const options: string[] = [];
+  for (const key of new Set(configKeys.filter((key) => /^credential(?:\..+)?\.helper$/i.test(key)))) {
+    const values = (await run(['config', '--null', '--get-all', key], root)).split('\0');
+    if (values.at(-1) === '') values.pop();
+    options.push('-c', key + '=');
+    for (const value of values) {
+      if (value === '') {
+        options.push('-c', key + '=');
+        continue;
+      }
+      const paths =
+        process.platform === 'win32' && value === 'manager'
+          ? ['ucrt64', 'mingw64'].map((layout) => `C:/Program Files/Git/${layout}/bin/git-credential-manager.exe`)
+          : process.platform === 'linux' && (value === 'cache' || value === 'store')
+            ? [`/usr/lib/git-core/git-credential-${value}`]
+            : process.platform === 'darwin' && value === 'osxkeychain'
+              ? [
+                  '/Library/Developer/CommandLineTools/usr/libexec/git-core/git-credential-osxkeychain',
+                  '/Applications/Xcode.app/Contents/Developer/usr/libexec/git-core/git-credential-osxkeychain',
+                ]
+              : [];
+      const path = paths.find((path) => lstatSync(path, { throwIfNoEntry: false }));
+      if (!path) throw new Error('信頼する固定配置以外の credential helper は使用できません。');
+      options.push('-c', `${key}=!"${trustedFile(path, 'credential helper').replaceAll('\\', '/')}"`);
+    }
+  }
+  return options;
 }
 
 // submodule にも同じ索引・内容・外部コマンドの検査を適用する。
@@ -247,7 +299,7 @@ export async function safePush(options: Options, root = repository, run: Run = r
   const pushUrl = await git('remote', 'get-url', '--push', '--all', 'origin');
   if (!approvedUrls.has(fetchUrl) || !approvedUrls.has(pushUrl))
     throw new Error('origin の取得先・Push 先は対象 GitHub リポジトリの単一 URL に限定します。');
-  const sshTransport = [fetchUrl, pushUrl].some((url) => url.startsWith('git@') || url.startsWith('ssh://'));
+  const sshTransport = pushUrl.startsWith('git@') || pushUrl.startsWith('ssh://');
   for (const key of configKeys) {
     if (
       key.toLowerCase().startsWith('url.') ||
@@ -286,7 +338,9 @@ export async function safePush(options: Options, root = repository, run: Run = r
     }
     if (!bundledCA) throw new Error('独自 CA の設定があるため Push できません。');
   }
-  const remoteGit = async (...args: string[]) => (await run(args, root, sshTransport)).replace(/\r?\n$/, '');
+  const credentials = sshTransport ? [] : await credentialOptions(root, configKeys, run);
+  const remoteGit = async (...args: string[]) =>
+    (await run([...credentials, ...args], root, sshTransport)).replace(/\r?\n$/, '');
   const refs = await remoteGit('ls-remote', '--symref', pushUrl, 'HEAD', 'refs/heads/' + options.branch);
   const defaultBranch = /^ref: refs\/heads\/([^\s]+)\tHEAD$/m.exec(refs)?.[1];
   if (!defaultBranch || defaultBranch.toLowerCase() === options.branch.toLowerCase())

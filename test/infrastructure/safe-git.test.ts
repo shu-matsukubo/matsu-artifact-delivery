@@ -173,7 +173,7 @@ async function gitFixture(t: TestContext) {
   const run: Run = (args, commandRoot) =>
     execFileSync(
       'git',
-      args.map((arg) => (arg === url && (args[0] === 'ls-remote' || args.includes('push')) ? remote : arg)),
+      args.map((arg) => (arg === url && (args.includes('ls-remote') || args.includes('push')) ? remote : arg)),
       { cwd: commandRoot, encoding: 'utf8', stdio: 'pipe' },
     );
   return { cwd, remote, git, base, commit, run };
@@ -892,7 +892,7 @@ await test('SGT-U12: SSH 接続のリモート操作だけに固定 SSH 実行�
   f.replies.set('remote get-url --push --all origin', sshUrl);
   f.replies.set(`ls-remote --symref ${sshUrl} HEAD refs/heads/${branch}`, `ref: refs/heads/main\tHEAD\n${head}\tHEAD`);
   const run: Run = (args, cwd, sshTransport) => {
-    assert.equal(sshTransport ?? false, args[0] === 'ls-remote' || args.includes('push'));
+    assert.equal(sshTransport ?? false, args.includes('ls-remote') || args.includes('push'));
     return f.run(args, cwd);
   };
   await safePush({ branch, dryRun: false }, repository, run);
@@ -1019,7 +1019,7 @@ await test('SGT-U07: 確認後に同名ブランチが作成された場合は P
   const f = await gitFixture(t);
   const run: Run = (args, cwd) => {
     const result = f.run(args, cwd);
-    if (args[0] === 'ls-remote')
+    if (args.includes('ls-remote'))
       execFileSync('git', ['fetch', f.cwd, `main:refs/heads/${branch}`], { cwd: f.remote, stdio: 'pipe' });
     return result;
   };
@@ -1130,7 +1130,7 @@ await test('SGT-U20: Skill の起動手順が Node の preload を起動前に�
     process.platform === 'win32' ? testNode.replaceAll("'", "''") : "'" + testNode.replaceAll("'", "'\\''") + "'",
   );
   const executable =
-    process.platform === 'win32' ? 'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe' : '/bin/sh';
+    process.platform === 'win32' ? 'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe' : '/bin/bash';
   const args = process.platform === 'win32' ? ['-NoProfile', '-NonInteractive', '-Command', command] : ['-c', command];
   const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
   for (const mode of ['import', 'require']) {
@@ -1202,6 +1202,11 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
   const probe = spawnSync('codex', ['--version'], { stdio: 'pipe' });
   if (probe.error) return t.skip('Codex CLI がない環境では Rules 内の match/not_match を利用する');
   const forbidden = [
+    ...['git', 'git.exe'].flatMap((git) => [
+      [git, 'fast-import'],
+      [git, 'fast-import', '--force'],
+      [git, 'fast-import', '--quiet', '--force'],
+    ]),
     ['git', 'push', 'origin', branch],
     ['git.exe', 'push', '--force'],
     ['git', 'reset', '--hard'],
@@ -1318,5 +1323,227 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
       ),
     );
     assert.equal(result.decision === 'forbidden', forbidden.includes(args), args.join(' '));
+  }
+});
+
+await test('SGT-U29: 任意の credential helper を通常・URL 別設定で通信前に拒否する', async (t) => {
+  const f = await gitFixture(t);
+  const marker = join(f.cwd, '.git/helper-ran');
+  const command = `!printf ran > '${marker.replaceAll('\\', '/')}'; printf 'username=test\\npassword=test\\n'`;
+  for (const key of ['credential.helper', 'credential.https://github.com.helper']) {
+    for (const value of [command, 'unknown-helper', 'manager --option']) {
+      f.git('config', '--add', key, value);
+      const calls: string[][] = [];
+      await assert.rejects(
+        safePush({ branch, dryRun: false }, f.cwd, (args, cwd) => {
+          calls.push(args);
+          return f.run(args, cwd);
+        }),
+        /credential helper/,
+      );
+      assert.equal(
+        calls.some((args) => args.includes('ls-remote') || args.includes('push')),
+        false,
+      );
+      assert.equal(fs.existsSync(marker), false);
+      f.git('config', '--unset-all', key);
+    }
+  }
+});
+
+await test('SGT-U30: partial clone の未検証 remote を Push・ブランチ作成の前に拒否する', async (t) => {
+  const f = await gitFixture(t);
+  const marker = join(f.cwd, '.git/lazy-ran');
+  const helper = join(f.cwd, '.git/lazy-helper');
+  await writeFile(helper, `#!/bin/sh\nprintf ran > '${marker.replaceAll('\\', '/')}'\nexit 1\n`, { mode: 0o755 });
+  f.git('remote', 'add', 'lazy', 'ext::sh ' + helper.replaceAll('\\', '/').replaceAll(' ', '% '));
+  f.git('config', 'protocol.ext.allow', 'always');
+  const missing = 'b'.repeat(40);
+  for (const [key, value] of [
+    ['remote.lazy.promisor', 'true'],
+    ['extensions.partialClone', 'lazy'],
+  ] as const) {
+    f.git('config', key, value);
+    const calls: string[][] = [];
+    const run = async (args: string[], cwd: string) => {
+      calls.push(args);
+      if (args.includes('ls-remote')) return `ref: refs/heads/main\tHEAD\n${missing}\trefs/heads/${branch}\n`;
+      return runGit(args, cwd);
+    };
+    await assert.rejects(safePush({ branch, dryRun: false }, f.cwd, run), /partial clone/);
+    await assert.rejects(createBranch(['--branch', 'codex/no-lazy'], f.cwd, run), /partial clone/);
+    assert.equal(
+      calls.some((args) => args.includes('ls-remote') || args.includes('push') || args.includes('switch')),
+      false,
+    );
+    assert.equal(fs.existsSync(marker), false);
+    f.git('config', '--unset-all', key);
+  }
+  await runGit(['rev-parse', 'HEAD'], f.cwd, false, async (_file, _args, options) => {
+    assert.equal(options.env?.GIT_NO_LAZY_FETCH, '1');
+    return '';
+  });
+});
+
+await test('SGT-U32: 許可した helper は固定パスで起動し、HTTPS と SSH の認証経路を保つ', async (t) => {
+  const f = await gitFixture(t);
+  const script = join(f.cwd, '.git/test-helper');
+  await writeFile(
+    script,
+    '#!/bin/sh\ngit rev-parse --show-toplevel >/dev/null || exit 1\nprintf "username=test\\npassword=test\\n\\n"\n',
+    { mode: 0o755 },
+  );
+  const helper = process.platform === 'win32' ? 'manager' : process.platform === 'darwin' ? 'osxkeychain' : 'store';
+  const path =
+    process.platform === 'win32'
+      ? 'C:/Program Files/Git/ucrt64/bin/git-credential-manager.exe'
+      : process.platform === 'darwin'
+        ? '/Library/Developer/CommandLineTools/usr/libexec/git-core/git-credential-osxkeychain'
+        : '/usr/lib/git-core/git-credential-store';
+  const realpath = fs.realpathSync;
+  const lstat = fs.lstatSync;
+  const stat = lstat(script);
+  let redirected = false;
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  t.mock.method(fs, 'realpathSync', (value: string) =>
+    value === path ? (redirected ? script : path) : realpath(value),
+  );
+  t.mock.method(fs, 'lstatSync', (value: string, options?: { throwIfNoEntry?: boolean }) =>
+    value === path
+      ? Object.assign(Object.create(stat), { uid: 0, mode: 0o100755 })
+      : process.platform !== 'win32' && path.startsWith(value + '/')
+        ? Object.assign(Object.create(lstat(f.cwd)), { uid: 0, mode: 0o040755 })
+        : lstat(value, options),
+  );
+  syncBuiltinESMExports();
+  f.git('config', '--add', 'credential.helper', '');
+  f.git('config', '--add', 'credential.helper', helper);
+  f.git('config', '--add', 'credential.https://github.com.helper', '');
+  f.git('config', '--add', 'credential.https://github.com.helper', helper);
+  const bin = join(f.cwd, '.git/bin');
+  await mkdir(bin);
+  if (process.platform === 'win32') await copyFile(process.execPath, join(bin, 'git.exe'));
+  else await writeFile(join(bin, 'git'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+  const environment = { ...process.env };
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
+  process.env[pathKey] = bin + delimiter + process.env[pathKey];
+  t.after(() => {
+    process.env = environment;
+  });
+  let authenticated = false;
+  const run = (args: string[], cwd: string, sshTransport = false) =>
+    runGit(args, cwd, sshTransport, async (file, actual, options) => {
+      const index = actual.indexOf('ls-remote');
+      if (index < 0) return runProcess(file, actual, options);
+      const helperOptions = actual.slice(0, index);
+      assert.ok(helperOptions.some((value) => value === `credential.helper=!"${path}"`));
+      assert.ok(helperOptions.some((value) => value === `credential.https://github.com.helper=!"${path}"`));
+      const output = await runProcess(
+        file,
+        [...helperOptions.map((value) => value.replaceAll(path, script.replaceAll('\\', '/'))), 'credential', 'fill'],
+        { ...options, input: 'protocol=https\nhost=github.com\n\n' },
+      );
+      assert.match(output, /username=test/);
+      authenticated = true;
+      return `ref: refs/heads/main\tHEAD\n${head}\tHEAD\n`;
+    });
+  await safePush({ branch, dryRun: true }, f.cwd, run);
+  assert.ok(authenticated);
+  redirected = true;
+  await assert.rejects(safePush({ branch, dryRun: true }, f.cwd, run), /credential helper/);
+  redirected = false;
+  const sshUrl = 'git@github.com:shu-matsukubo/matsu-artifact-delivery.git';
+  const ssh = fixture();
+  ssh.replies.set('config --name-only --list', 'credential.helper');
+  ssh.replies.set('remote get-url --push --all origin', sshUrl);
+  ssh.replies.set(
+    `ls-remote --symref ${sshUrl} HEAD refs/heads/${branch}`,
+    `ref: refs/heads/main\tHEAD\n${head}\tHEAD`,
+  );
+  await safePush({ branch, dryRun: true }, repository, (args, cwd, transport) => {
+    assert.equal(transport ?? false, args.includes('ls-remote'));
+    return ssh.run(args, cwd);
+  });
+  const https = fixture();
+  https.replies.set('remote get-url --all origin', sshUrl);
+  https.replies.set('config --name-only --list', 'credential.helper');
+  https.replies.set('config --null --get-all credential.helper', '!untrusted\0');
+  await assert.rejects(safePush({ branch, dryRun: false }, repository, https.run), /credential helper/);
+  assert.equal(
+    https.calls.some((args) => args.includes('ls-remote') || args.includes('push')),
+    false,
+  );
+});
+
+await test('SGT-U31: Node と外部プロセスの起動前に native loader の環境変数を除去する', async (t) => {
+  const skill = await read(join(repository, '.agents/skills/safe-git/SKILL.md'));
+  const shell = /```sh\r?\n([\s\S]*?)```/.exec(skill)?.[1];
+  assert.ok(shell);
+  assert.doesNotMatch(shell, /\/usr\/bin\/env/);
+  assert.ok(shell.includes('unset NODE_OPTIONS NODE_PATH GLIBC_TUNABLES'));
+  for (const prefix of ['LD_', 'DYLD_', '_RLD_', 'RLD_', 'LDR_'])
+    assert.ok(shell.slice(0, shell.indexOf('/usr/bin/node')).includes('${!' + prefix + '@}'));
+  const root = await temporaryDirectory(t);
+  const probe = join(root, 'environment.ts');
+  await writeFile(
+    probe,
+    `console.log(JSON.stringify(Object.keys(process.env).filter((key) => /^(LD_|DYLD_|_?RLD_|LDR_)|^(NODE_OPTIONS|NODE_PATH|GLIBC_TUNABLES)$/.test(key))));`,
+  );
+  const clean = shell.slice(0, shell.indexOf('/usr/bin/node'));
+  const bash = process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : '/bin/bash';
+  const quote = (value: string) => "'" + value.replaceAll('\\', '/').replaceAll("'", "'\\''") + "'";
+  const polluted =
+    'export LD_PRELOAD=/untrusted LD_LIBRARY_PATH=/untrusted LD_AUDIT=/untrusted LD_OTHER=/untrusted DYLD_INSERT_LIBRARIES=/untrusted DYLD_LIBRARY_PATH=/untrusted DYLD_OTHER=/untrusted _RLD_LIST=/untrusted RLD_LIST=/untrusted LDR_PRELOAD=/untrusted GLIBC_TUNABLES=/untrusted NODE_OPTIONS=--untrusted NODE_PATH=/untrusted\n';
+  const result = spawnSync(bash, ['-c', polluted + clean + quote(process.execPath) + ' ' + quote(probe)], {
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), []);
+  const readonly = spawnSync(
+    bash,
+    ['-c', 'readonly LD_PRELOAD=/untrusted\n' + clean + quote(process.execPath) + ' ' + quote(probe)],
+    { encoding: 'utf8' },
+  );
+  assert.equal(readonly.status, 1, readonly.stderr);
+  assert.equal(readonly.stdout, '', '環境変数を除去できないときは Node を起動しない');
+  if (process.platform === 'linux') {
+    const marker = join(root, 'native-preloaded');
+    const source = join(root, 'preload.c');
+    const library = join(root, 'preload.so');
+    await writeFile(
+      source,
+      `#include <stdio.h>\n__attribute__((constructor)) static void loaded(void) { FILE *f = fopen(${JSON.stringify(marker)}, "w"); if(f) { fputs("executed", f); fclose(f); } }\n`,
+    );
+    const compiled = spawnSync('cc', ['-shared', '-fPIC', '-o', library, source], { encoding: 'utf8' });
+    assert.equal(compiled.status, 0, compiled.stderr);
+    const baseline = spawnSync('/usr/bin/env', ['-u', 'LD_PRELOAD', process.execPath, '-e', ''], {
+      env: { ...process.env, LD_PRELOAD: library },
+      encoding: 'utf8',
+    });
+    assert.equal(baseline.status, 0, baseline.stderr);
+    assert.equal(await read(marker), 'executed');
+    await fs.promises.unlink(marker);
+    const native = spawnSync(
+      bash,
+      ['-c', 'export LD_PRELOAD=' + quote(library) + '\n' + clean + quote(process.execPath) + ' ' + quote(probe)],
+      { encoding: 'utf8' },
+    );
+    assert.equal(native.status, 0, native.stderr);
+    assert.equal(fs.existsSync(marker), false);
+  }
+  const env = { ...process.env };
+  try {
+    process.env.LD_PRELOAD = '/untrusted/library';
+    process.env.DYLD_INSERT_LIBRARIES = '/untrusted/library';
+    await runGit(['rev-parse', '--show-toplevel'], repository, false, async (_file, _args, options) => {
+      assert.equal(options.env?.LD_PRELOAD, undefined);
+      assert.equal(options.env?.DYLD_INSERT_LIBRARIES, undefined);
+      return repository;
+    });
+  } finally {
+    process.env = env;
   }
 });
