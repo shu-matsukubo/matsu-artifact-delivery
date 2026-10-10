@@ -34,6 +34,7 @@ function fixture(root = repository) {
     ['remote get-url --all origin', url],
     ['remote get-url --push --all origin', url],
     ['config --name-only --list', ''],
+    [`config --type=bool --get-urlmatch http.sslVerify ${url}`, 'true'],
     ['for-each-ref --format=%(refname) refs/replace/', ''],
     [
       'config --null --show-origin --show-scope --get-all http.sslcainfo',
@@ -114,8 +115,7 @@ await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不�
     ['remote get-url --push --all origin', `${url}\n${url}`],
     ['remote get-url --push --all origin', 'ext::command'],
     ['config --name-only --list', 'url.ssh://attacker/.pushinsteadof'],
-    ['config --name-only --list', 'http.sslverify'],
-    ['config --name-only --list', 'http.https://github.com/.sslverify'],
+    [`config --type=bool --get-urlmatch http.sslVerify ${url}`, 'false'],
     ...['sslCAInfo', 'sslCAPath', 'proxySSLCAInfo'].flatMap((key): [string, string][] => [
       ['config --name-only --list', `http.${key}`],
       ['config --name-only --list', `http.https://github.com/.${key}`],
@@ -683,6 +683,148 @@ await test('SGT-U25: 証明書失効確認の通常・URL 別設定を通信前�
     f.git('config', key, 'true');
     await safePush({ branch, dryRun: true }, f.cwd, run);
     f.git('config', '--unset', key);
+  }
+});
+
+await test('SGT-U39: HTTPS の実効 TLS 検証設定を判定し、有効化と既定値を許可する', async (t) => {
+  const specific = `http.${url}.sslVerify`;
+  const cases: [string, [string, string][], boolean][] = [
+    ['既定値', [], true],
+    ...['true', 'yes', 'on', '1'].map((value): [string, [string, string][], boolean] => [
+      `有効化 ${value}`,
+      [['http.sslVerify', value]],
+      true,
+    ]),
+    ...['false', 'no', 'off', '0', ''].map((value): [string, [string, string][], boolean] => [
+      `無効化 ${value}`,
+      [['http.sslVerify', value]],
+      false,
+    ]),
+    ['URL 別の有効化', [[specific, 'true']], true],
+    ['URL 別の無効化', [[specific, 'false']], false],
+    [
+      'URL 別設定が通常設定を有効化',
+      [
+        ['http.sslVerify', 'false'],
+        [specific, 'true'],
+      ],
+      true,
+    ],
+    [
+      'URL 別設定が通常設定を無効化',
+      [
+        ['http.sslVerify', 'true'],
+        [specific, 'false'],
+      ],
+      false,
+    ],
+    ['無関係な URL', [['http.https://example.invalid/.sslVerify', 'false']], true],
+    [
+      '具体的な URL の有効化',
+      [
+        ['http.https://github.com/.sslVerify', 'false'],
+        [specific, 'true'],
+      ],
+      true,
+    ],
+    [
+      '同じキーの最終値で有効化',
+      [
+        ['http.sslVerify', 'false'],
+        ['http.sslVerify', 'true'],
+      ],
+      true,
+    ],
+    [
+      '同じキーの最終値で無効化',
+      [
+        ['http.sslVerify', 'true'],
+        ['http.sslVerify', 'false'],
+      ],
+      false,
+    ],
+    ['不正な boolean', [['http.sslVerify', 'invalid']], false],
+  ];
+  const f = await gitFixture(t);
+  for (const [name, settings, allowed] of cases) {
+    await t.test(name, async () => {
+      for (const [key, value] of settings) f.git('config', '--add', key, value);
+      const calls: string[][] = [];
+      const run: Run = (args, cwd) => {
+        calls.push(args);
+        return f.run(args, cwd);
+      };
+      const config = fs.readFileSync(join(f.cwd, '.git/config'));
+      const refs = f.git('show-ref');
+      if (allowed) await safePush({ branch, dryRun: true }, f.cwd, run);
+      else await assert.rejects(safePush({ branch, dryRun: false }, f.cwd, run));
+      assert.equal(
+        calls.some((args) => args.includes('ls-remote')),
+        allowed,
+      );
+      assert.equal(
+        calls.some((args) => args.includes('push')),
+        false,
+      );
+      assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/config')), config);
+      assert.equal(f.git('show-ref'), refs);
+      for (const key of new Set(settings.map(([key]) => key))) f.git('config', '--unset-all', key);
+    });
+  }
+  // 値なしの設定も Git の boolean 規則では有効化になる。
+  fs.appendFileSync(join(f.cwd, '.git/config'), '\n[http]\n\tsslVerify\n');
+  await safePush({ branch, dryRun: false }, f.cwd, f.run);
+  assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`).split('\t')[0], f.commit);
+});
+
+await test('SGT-U40: 属性の参照元を上書きする環境変数を全操作の Git 実行前に拒否する', async (t) => {
+  const f = await gitFixture(t);
+  await writeFile(join(f.cwd, '.gitattributes'), '* text eol=lf\n');
+  assert.match(f.git('check-attr', 'eol', '--', 'file'), /eol: lf/);
+  assert.match(
+    execFileSync('git', ['check-attr', 'eol', '--', 'file'], {
+      cwd: f.cwd,
+      env: { ...process.env, GIT_ATTR_SOURCE: 'HEAD' },
+      encoding: 'utf8',
+    }),
+    /eol: unspecified/,
+  );
+  const refs = f.git('show-ref');
+  const indexPath = f.git('rev-parse', '--path-format=absolute', '--git-path', 'index');
+  const index = fs.readFileSync(indexPath);
+  const status = f.git('status', '--porcelain=v1');
+  for (const [script, operation, args] of [
+    ['push.ts', 'safePush', { branch, dryRun: true }],
+    ['stage.ts', 'stageFiles', ['--', 'file']],
+    ['commit.ts', 'createCommit', ['--message', 'change']],
+    ['create-branch.ts', 'createBranch', ['--branch', 'codex/attribute-source']],
+  ] as const) {
+    const entry = join(f.cwd, `.git/probe-${script}`);
+    await writeFile(
+      entry,
+      `import { runGit } from ${JSON.stringify(pathToFileURL(join(repository, '.agents/skills/safe-git/scripts/push.ts')).href)};
+const { ${operation}: operation } = await import(${JSON.stringify(pathToFileURL(join(repository, '.agents/skills/safe-git/scripts', script)).href)});
+const run = (...args) => runGit(...args, false, async () => { throw new Error('Git が実行されました'); });
+try {
+  await operation(${JSON.stringify(args)}, process.cwd(), run);
+  process.exitCode = 2;
+} catch (error) {
+  console.error(error.message);
+  process.exitCode = 1;
+}
+`,
+    );
+    const result = spawnSync(process.execPath, [entry], {
+      cwd: f.cwd,
+      env: { ...process.env, GIT_ATTR_SOURCE: 'HEAD' },
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 1, script);
+    assert.match(result.stderr, /環境変数/, script);
+    assert.deepEqual(fs.readFileSync(indexPath), index);
+    assert.equal(f.git('show-ref'), refs);
+    assert.equal(f.git('status', '--porcelain=v1'), status);
+    assert.equal(await read(join(f.cwd, '.gitattributes')), '* text eol=lf\n');
   }
 });
 
@@ -1489,6 +1631,12 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
       [git, 'update-index', '--cacheinfo', `100644,${head},file`],
       [git, 'update-index', '--index-info'],
       [git, 'replace', head, 'b'.repeat(40)],
+      [git, 'reflog', 'delete', '--updateref', 'refs/heads/topic@{0}'],
+      [git, 'reflog', 'delete', 'refs/heads/topic@{0}', '--updateref'],
+      [git, 'reflog', 'expire', '--updateref', '--expire=all', 'refs/heads/topic'],
+      [git, 'reflog', 'expire', 'refs/heads/topic', '--updateref', '--expire=all'],
+      [git, 'reflog', 'drop', '--all'],
+      [git, 'reflog', 'write', 'refs/heads/topic', head, head, 'change'],
       ...['refs/heads/topic', 'refs/tags/v1'].flatMap((ref) => [
         [git, 'refs', 'update', ref, head],
         [git, 'refs', 'update', '--no-deref', ref, head],
@@ -1600,6 +1748,12 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['git', 'refs', 'list'],
     ['git', 'refs', 'exists', 'refs/heads/topic'],
     ['git', 'refs', 'verify'],
+    ['git', 'reflog'],
+    ['git', 'reflog', '--all'],
+    ['git', 'reflog', 'show', 'HEAD'],
+    ['git.exe', 'reflog', 'show', '--all'],
+    ['git', 'reflog', 'exists', 'refs/heads/topic'],
+    ['git', 'reflog', 'list'],
     ['git', 'worktree', 'list', '--porcelain'],
     ['git', 'ls-remote', 'origin'],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/push.ts', '--branch', branch],

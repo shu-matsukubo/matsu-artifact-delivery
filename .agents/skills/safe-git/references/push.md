@@ -8,6 +8,8 @@ Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux
 
 ## 検証と更新
 
+`GIT_ATTR_SOURCE` はすべての操作で Git の起動前に拒否し、属性の参照元を作業ツリーから差し替えさせない。HTTPS の `http.sslVerify` は Git が Push 先 URL に適用する実効 boolean を確認し、未設定と有効化を許可、無効化と不正な値を拒否する。
+
 [スクリプト](../scripts/push.ts)は次を確認する。
 
 - スクリプトの配置先が Git リポジトリのルートに対応し、そのルートから実行されている。
@@ -45,6 +47,8 @@ Git の terminal prompt・askpass と credential helper の対話設定を無効
 検証・通信・Push の失敗は終了コード 1 とする。作業を破棄せず、接続先、ブランチ、リモートの先端、ローカル差分を確認する。通信失敗では反映結果が不明な場合があるため、リモートを再取得する。競合は強制 Push で解消しない。履歴の統合が必要な場合は人間に判断を返す。
 
 ## Codex Rules
+
+`reflog` の `delete` / `expire` / `drop` / `write` は、参照の更新と復旧履歴の喪失を防ぐため禁止する。`reflog` の読み取りと `show` / `list` / `exists` は利用できる。
 
 [ワークスペースの Rules](../../../../.codex/rules/safe-git.rules)が直接の Push、worktree 作成・削除、`git add`、`git commit`、`git rm`、`git mv`、`git branch`、`git switch`、`git tag`、`git checkout-index`、`git read-tree`、`git update-index`、`git replace`、`git submodule`、`git merge`、`git am`、`git cherry-pick`、`git revert`、`git fetch`、`git pull`、`git fast-import` を含む破壊的な Git コマンドを `forbidden` にする。上書き・削除オプションの位置・短縮表記にかかわらず拒否するため、これらはコマンド全体を禁止する。add はステージ前の外部 filter 実行、commit は amend による履歴の書き換え、update-index はステージ内容の破棄・置換、replace は検証対象の偽装を防ぐ。`git refs` の `create` / `update` / `delete` / `rename` も禁止し、`list` / `exists` / `verify` は利用できる。merge・am・cherry-pick・revert は中断による競合解消の破棄、fetch・pull は refspec・設定によるブランチやタグの強制更新・削除、fast-import はブランチ ref の強制更新、worktree add は明示・暗黙のブランチ作成と強制更新を防ぐ。worktree の準備は専用ツールの detached 作成を使い、一覧は `git worktree list` で確認する。submodule の作業状態は対象ディレクトリを cwd にした `git status` などの読み取りで確認する。ブランチ・タグの一覧は `git for-each-ref refs/heads/` / `refs/tags/`、ブランチ・コミットの新規作成は [Skill](../SKILL.md) の `create-branch.ts` / `commit.ts` を使う。ブランチの新規作成は現在の HEAD に限定し、既存 ref と作業変更・無視ファイルを保全し、checkout hook を実行しない。Git のグローバルオプションでサブコマンドを隠す呼び出しも禁止対象とし、作業ディレクトリはツールの cwd で指定する。
 

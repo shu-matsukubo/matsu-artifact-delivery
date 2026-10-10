@@ -101,7 +101,7 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
   // Git の探索先・設定を環境変数で差し替えない。認証用変数は維持する。
   if (
     Object.keys(process.env).some((key) =>
-      /^(?:GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG(?:_.*)?|NAMESPACE|REPLACE_REF_BASE|SHALLOW_FILE|EXEC_PATH|SSH(?:_COMMAND|_VARIANT)?|SSL_(?:NO_VERIFY|CAINFO|CAPATH)|PROXY_SSL_CAINFO)|SSL_CERT_(?:FILE|DIR)|CURL_CA_BUNDLE)$/i.test(
+      /^(?:GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG(?:_.*)?|NAMESPACE|REPLACE_REF_BASE|SHALLOW_FILE|EXEC_PATH|ATTR_SOURCE|SSH(?:_COMMAND|_VARIANT)?|SSL_(?:NO_VERIFY|CAINFO|CAPATH)|PROXY_SSL_CAINFO)|SSL_CERT_(?:FILE|DIR)|CURL_CA_BUNDLE)$/i.test(
         key,
       ),
     )
@@ -335,11 +335,7 @@ export async function safePush(options: Options, root = repository, run: Run = r
     throw new Error('origin の取得先・Push 先は対象 GitHub リポジトリの単一 URL に限定します。');
   const sshTransport = pushUrl.startsWith('git@') || pushUrl.startsWith('ssh://');
   for (const key of configKeys) {
-    if (
-      key.toLowerCase().startsWith('url.') ||
-      /^http(?:\..+)?\.sslverify$/i.test(key) ||
-      (sshTransport && key.toLowerCase() === 'core.sshcommand')
-    )
+    if (key.toLowerCase().startsWith('url.') || (sshTransport && key.toLowerCase() === 'core.sshcommand'))
       throw new Error('URL・TLS 検証・SSH コマンドの設定が上書きされているため Push できません。');
     if (/^http(?:\..+)?\.schannelcheckrevoke$/i.test(key)) {
       if ((await git('config', '--type=bool', '--get-all', key)).split('\n').some((value) => value !== 'true'))
@@ -371,6 +367,22 @@ export async function safePush(options: Options, root = repository, run: Run = r
         lstatSync(bundle).isFile();
     }
     if (!bundledCA) throw new Error('独自 CA の設定があるため Push できません。');
+  }
+  if (!sshTransport) {
+    // URL 別設定の優先順位と boolean の表記は Git 自身で判定する。
+    let verify = 'true';
+    try {
+      verify = await git('config', '--type=bool', '--get-urlmatch', 'http.sslVerify', pushUrl);
+    } catch (error) {
+      const failure = (error instanceof Error && error.cause ? error.cause : error) as {
+        code?: number;
+        status?: number;
+        stderr?: string | Buffer;
+      };
+      // 未設定だけを既定の有効化として扱い、不正な値や実行失敗は伝播する。
+      if ((failure.code ?? failure.status) !== 1 || String(failure.stderr ?? 'unknown') !== '') throw error;
+    }
+    if (verify !== 'true') throw new Error('TLS 証明書の検証を無効にする設定があるため Push できません。');
   }
   const credentials = sshTransport ? [] : await credentialOptions(root, configKeys, run);
   const remoteGit = async (...args: string[]) =>

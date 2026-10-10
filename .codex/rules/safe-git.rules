@@ -32,6 +32,14 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = [["git", "git.exe"], "reflog", ["delete", "expire", "drop", "write"]],
+    decision = "forbidden",
+    justification = "reflog の更新・削除は禁止です。--updateref による参照の更新と復旧履歴の喪失を防ぎ、確認には reflog show・list・exists を使ってください。",
+    match = ["git reflog delete --updateref refs/heads/topic@{0}", "git.exe reflog delete refs/heads/topic@{0} --updateref", "git reflog expire --updateref --expire=all refs/heads/topic", "git reflog expire refs/heads/topic --updateref --expire=all", "git reflog drop --all", "git reflog write refs/heads/topic HEAD HEAD message"],
+    not_match = ["git reflog", "git reflog --all", "git reflog show HEAD", "git.exe reflog show --all", "git reflog list", "git reflog exists refs/heads/topic"],
+)
+
+prefix_rule(
     pattern = [["git", "git.exe"], ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--bare", "--exec-path", "--config-env", "--shallow-file", "--attr-source", "-p", "-P", "--no-pager", "--paginate", "--no-replace-objects", "--no-lazy-fetch", "--no-optional-locks", "--no-advice", "--literal-pathspecs", "--no-literal-pathspecs", "--glob-pathspecs", "--noglob-pathspecs", "--icase-pathspecs"]],
     decision = "forbidden",
     justification = "グローバルオプションで Git コマンドを迂回しないでください。cwd はツールで指定し、Push は safe-git を使ってください。",

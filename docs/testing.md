@@ -157,7 +157,7 @@ npm run ci:select -- --all
 | PKG-U01〜PKG-U04         | marketplace、Plugin Agent 登録不要とリポジトリ Codex 設定の配布外確認、README 参照、ID 対応                                                                                                     | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U01                  | 入口の reference 参照、起動・再開・新規選定・環境準備・GitHub とローカルへの反映・clean 確認の契約と担当境界                                                                                    | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U02                  | プラグイン Issue への対象限定、実装中・merge 済み PR がある Issue の選定除外                                                                                                                    | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
-| SGT-U01〜SGT-U38         | Push の接続先・祖先・単一 ref、競合・偽装・隠れた変更・filter・helper・partial clone の拒否、submodule の検査、固定 SSH・非対話認証・環境除去・子孫停止、新規ブランチ・コミット作成・CLI・Rules | [安全な Git 操作の試験](../test/infrastructure/safe-git.test.ts)                          |
+| SGT-U01〜SGT-U40         | Push の接続先・祖先・単一 ref、競合・偽装・隠れた変更・filter・helper・partial clone の拒否、submodule の検査、固定 SSH・非対話認証・環境除去・子孫停止、新規ブランチ・コミット作成・CLI・Rules | [安全な Git 操作の試験](../test/infrastructure/safe-git.test.ts)                          |
 
 ### 既存 MCP の対応表
 
@@ -224,6 +224,8 @@ CI-U11 は [GitHub の式評価ライブラリ](https://github.com/actions/langu
 `SGT-U35` は通常 checkout と worktree で merge・cherry-pick・revert・rebase・sequencer の進行中状態を拒否し、HEAD・索引・ファイル・操作状態を保全する。`SGT-U36` は Linux の固定 helper が symlink である配置を fixture で再現し、経由先を含む所有者・書き込み権限と起動名の維持を確認する。実 Linux インストールは再現しない。`SGT-U37` は通常・URL 別 helper を交互に設定し、空値によるリセットの順序を実 Git の認証で確認する。`SGT-U38` は追跡・新規ファイルの clean / process filter をステージ前に拒否し、索引・作業変更・ref を保全する。個別ファイルの追加・削除、literal path、hook の抑止、追跡済み submodule の更新と作業変更の保全も検証する。`SGT-U05` は直接の add の禁止も評価する。
 
 契約 ID のガイド掲載確認は、差分 CI の入口が異なるため WF/EX-U02 と PKG-U04 の両方に置く。契約一覧だけの変更では前者、ガイドだけの変更では後者が実行される。単純に片方を削除すると一方の変更経路に検証漏れが生じるため、追加の CI 対象を増やしてまで統合しない。
+
+`SGT-U39` は実 Git で HTTPS の TLS 検証の既定値・boolean 表記・URL 別設定・重複設定の実効値を確認し、有効化を許可、無効化と不正値を通信前に拒否する。設定ファイル・ref の保全とローカルの Push も検証する。`SGT-U40` は `GIT_ATTR_SOURCE` が属性の参照元を変えることを確認し、Push・ステージ・コミット・ブランチ作成が Git を起動する前に拒否され、索引・作業変更・ref が保全されることを検証する。`SGT-U05` は reflog の更新・削除の禁止と読み取りの許可も評価する。
 
 1. 該当コンポーネントの契約一覧に ID・観点・対象を追加する。文言の意図的な変更では旧契約の削除理由もレビューする。
 2. metadata・権限・参照は構文解析と実ファイルで検証する。参照を追加したら配布グラフ E2E でも到達を確認する。
