@@ -23,10 +23,10 @@ function fixture(root = repository) {
     ['rev-parse --show-toplevel', root],
     ['rev-parse --path-format=absolute --git-path info/grafts', join(root, '.git/info/grafts')],
     ['symbolic-ref --quiet --short HEAD', branch],
-    ['ls-files -v -z', 'H file'],
+    ['-c core.fsmonitor=false ls-files -v -z', 'H file'],
     ['-c core.fsmonitor=false update-index --really-refresh', ''],
     ['-c core.fsmonitor=false status --porcelain=v1 --untracked-files=all --ignore-submodules=none', ''],
-    ['ls-files --stage -z', `100644 ${head} 0\tfile\0`],
+    ['-c core.fsmonitor=false ls-files --stage -z', `100644 ${head} 0\tfile\0`],
     ['hash-object -- file', head],
     ['rev-parse --verify HEAD^{commit}', head],
     ['remote get-url --all origin', url],
@@ -105,7 +105,7 @@ await test('SGT-U02: 入力・リポジトリ・作業状態・接続先の不�
       '?? unreviewed.ts',
     ],
     ['hash-object -- file', 'b'.repeat(40)],
-    ['ls-files --stage -z', `100644 ${head} 1\tfile\0`],
+    ['-c core.fsmonitor=false ls-files --stage -z', `100644 ${head} 1\tfile\0`],
     ['remote get-url --all origin', 'https://github.com/other/repository.git'],
     ['remote get-url --push --all origin', 'https://github.com/attacker/repo.git'],
     ['remote get-url --push --all origin', `${url}\n${url}`],
@@ -170,8 +170,12 @@ async function gitFixture(t: TestContext) {
   git('commit', '-qam', 'change');
   const commit = git('rev-parse', 'HEAD');
   // 通信先だけを置き換え、検証と Push のオプションは実 Git で評価する。
-  const run: Run = (args) =>
-    git(...args.map((arg) => (arg === url && (args[0] === 'ls-remote' || args.includes('push')) ? remote : arg)));
+  const run: Run = (args, commandRoot) =>
+    execFileSync(
+      'git',
+      args.map((arg) => (arg === url && (args[0] === 'ls-remote' || args.includes('push')) ? remote : arg)),
+      { cwd: commandRoot, encoding: 'utf8', stdio: 'pipe' },
+    ).trim();
   return { cwd, remote, git, base, commit, run };
 }
 
@@ -224,12 +228,19 @@ await test('SGT-U03: 実 Git で新規・fast-forward の単一ブランチを P
 await test('SGT-U11: 不正な fsmonitor が変更を隠しても Push しない', async (t) => {
   const f = await gitFixture(t);
   const hook = join(f.cwd, '.git/hooks/fake-fsmonitor');
-  await writeFile(hook, "#!/bin/sh\nprintf 'token\\0'\n", { mode: 0o755 });
+  const marker = join(f.cwd, '.git/monitor-ran');
+  await writeFile(hook, '#!/bin/sh\nprintf ran >> "' + marker.replaceAll('\\', '/') + '"\nprintf "token\\0"\n', {
+    mode: 0o755,
+  });
   f.git('config', 'core.fsmonitor', hook.replaceAll('\\', '/'));
   f.git('status', '--porcelain=v1');
   await writeFile(join(f.cwd, 'file'), 'unreviewed change');
   assert.equal(f.git('status', '--porcelain=v1'), '');
+  assert.ok(fs.existsSync(marker), '通常の Git は fsmonitor を実行する');
+  await fs.promises.unlink(marker);
+  f.git('config', 'filter.unused.clean', 'cat');
   await assert.rejects(() => safePush({ branch, dryRun: false }, f.cwd, f.run), /clean/);
+  assert.equal(fs.existsSync(marker), false, '索引・属性の読み取りでも fsmonitor を実行しない');
   assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`), '');
 });
 
@@ -394,6 +405,119 @@ await test('SGT-U22: submodule の ignore 設定にかかわらず追跡・未�
   }
 });
 
+await test('SGT-U25: 証明書失効確認の通常・URL 別設定を通信前に拒否する', async (t) => {
+  const f = await gitFixture(t);
+  for (const key of ['http.schannelCheckRevoke', 'http.https://github.com/.schannelCheckRevoke']) {
+    f.git('config', key, 'false');
+    const calls: string[][] = [];
+    const run: Run = (args, cwd) => {
+      calls.push(args);
+      return f.run(args, cwd);
+    };
+    await assert.rejects(() => safePush({ branch, dryRun: false }, f.cwd, run), /TLS/);
+    assert.equal(
+      calls.some((args) => args.includes('ls-remote') || args.includes('push')),
+      false,
+    );
+    f.git('config', key, 'true');
+    await safePush({ branch, dryRun: true }, f.cwd, run);
+    f.git('config', '--unset', key);
+  }
+});
+
+await test('SGT-U26: 入れ子の submodule も索引・stat・filter・fsmonitor を検査し、変更を保全する', async (t) => {
+  for (const nested of [false, true]) {
+    await t.test(nested ? '入れ子の submodule' : '直下の submodule', async (t) => {
+      const f = await gitFixture(t);
+      const source = await gitFixture(t);
+      const leaf = await gitFixture(t);
+      if (nested) {
+        source.git('-c', 'protocol.file.allow=always', 'submodule', 'add', leaf.cwd, 'nested');
+        source.git('commit', '-qm', 'nested submodule');
+      }
+      f.git('-c', 'protocol.file.allow=always', 'submodule', 'add', source.cwd, 'sub');
+      f.git('commit', '-qm', 'submodule');
+      f.git('-c', 'protocol.file.allow=always', 'submodule', 'update', '--init', '--recursive');
+      const sub = join(f.cwd, 'sub', ...(nested ? ['nested'] : []));
+      const subGit = (...args: string[]) =>
+        execFileSync('git', args, { cwd: sub, encoding: 'utf8', stdio: 'pipe' }).trim();
+      const file = join(sub, 'file');
+      // 親の status が子の filter を実行する前に検査されることも確認する。
+      const marker = join(subGit('rev-parse', '--absolute-git-dir'), 'filter-ran');
+      const attributes = subGit('rev-parse', '--path-format=absolute', '--git-path', 'info/attributes');
+      const calls: { args: string[]; cwd: string }[] = [];
+      const run: Run = (args, cwd) => {
+        calls.push({ args, cwd });
+        return f.run(args, cwd);
+      };
+      const rejected = async (message: RegExp) => {
+        calls.length = 0;
+        await assert.rejects(() => safePush({ branch, dryRun: false }, f.cwd, run), message);
+        assert.equal(
+          calls.some(({ args }) => args.includes('ls-remote') || args.includes('push')),
+          false,
+        );
+        assert.equal(f.git('ls-remote', f.remote, `refs/heads/${branch}`), '');
+      };
+      subGit('update-index', '--assume-unchanged', 'file');
+      await safePush({ branch, dryRun: true }, f.cwd, run);
+      await writeFile(file, 'hidden');
+      assert.equal(f.git('status', '--porcelain=v1', '--ignore-submodules=none'), '');
+      await rejected(/clean/);
+      assert.equal(await read(file), 'hidden');
+      subGit('update-index', '--no-assume-unchanged', 'file');
+      await writeFile(file, 'change');
+      subGit('update-index', '--skip-worktree', 'file');
+      await writeFile(file, 'hidden');
+      await rejected(/skip-worktree/);
+      assert.equal(await read(file), 'hidden');
+      assert.match(subGit('ls-files', '-v'), /^S file$/);
+      subGit('update-index', '--no-skip-worktree', 'file');
+      await writeFile(file, 'change');
+      subGit('config', 'core.trustCTime', 'false');
+      subGit('config', 'core.checkStat', 'minimal');
+      const oldTime = new Date('2000-01-01T00:00:00Z');
+      fs.utimesSync(file, oldTime, oldTime);
+      subGit('status', '--porcelain=v1');
+      await writeFile(file, 'hidden');
+      fs.utimesSync(file, oldTime, oldTime);
+      assert.equal(f.git('status', '--porcelain=v1', '--ignore-submodules=none'), '');
+      await rejected(/clean/);
+      assert.equal(await read(file), 'hidden');
+      await writeFile(file, 'change');
+      const monitor = join(subGit('rev-parse', '--absolute-git-dir'), 'monitor');
+      await writeFile(
+        monitor,
+        '#!/bin/sh\nprintf monitor >> "' + marker.replaceAll('\\', '/') + '"\nprintf "token\\0"\n',
+        { mode: 0o755 },
+      );
+      subGit('config', 'core.fsmonitor', monitor.replaceAll('\\', '/'));
+      for (const kind of ['clean', 'process']) {
+        await writeFile(attributes, 'file filter=unsafe\n');
+        subGit('config', `filter.unsafe.${kind}`, 'echo filter > "' + marker.replaceAll('\\', '/') + '"; cat');
+        await rejected(/filter/);
+        assert.equal(fs.existsSync(marker), false);
+        assert.equal(
+          calls.some(
+            ({ args }) => args.includes('status') || args.includes('update-index') || args.includes('hash-object'),
+          ),
+          false,
+        );
+        subGit('config', '--unset', `filter.unsafe.${kind}`);
+      }
+      await writeFile(attributes, '');
+      await safePush({ branch, dryRun: true }, f.cwd, run);
+      assert.equal(fs.existsSync(marker), false, '子の fsmonitor も実行しない');
+      subGit('config', '--unset', 'core.fsmonitor');
+      await writeFile(file, 'hidden');
+      await assert.rejects(() => safePush({ branch, dryRun: true }, f.cwd, run), /clean/);
+      await writeFile(file, 'change');
+      f.git('submodule', 'deinit', '--all');
+      await safePush({ branch, dryRun: true }, f.cwd, run);
+    });
+  }
+});
+
 await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失敗として返す', async (t) => {
   const execute = runProcess;
   // 通信だけをローカルの認証・SSH 設定検査に置換し、runGit の設定で実プロセスを動かす。
@@ -448,6 +572,10 @@ await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失�
         );
         assert.equal(backend, 'schannel');
         assert.equal(customCA, 'false');
+        assert.equal(
+          await execute(file, [...args, 'config', '--get-urlmatch', 'http.schannelCheckRevoke', url], options),
+          'true',
+        );
       }
       await execute(file, [...args, '-c', 'credential.helper=', 'credential', 'fill'], {
         ...options,
@@ -1055,6 +1183,23 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ]),
     ['git', 'switch', '-c', branch, '--discard-changes'],
     ['git', 'switch', '-c', branch],
+    ['git', 'checkout-index', '-f', '-a'],
+    ['git.exe', 'checkout-index', 'file', '--force'],
+    ['git', 'checkout-index', '--all', '--force'],
+    ['git', 'read-tree', '--reset', '-u', 'HEAD'],
+    ['git.exe', 'read-tree', 'HEAD', '--reset', '-u'],
+    ['git', 'read-tree', '--reset', 'HEAD', '-u'],
+    ...(
+      [
+        ['deinit', '--all'],
+        ['update', '--recursive'],
+      ] as const
+    ).flatMap(([command, option]) => [
+      ['git', 'submodule', command, '--force', option],
+      ['git.exe', 'submodule', command, 'sub', '-f'],
+      ['git', 'submodule', '--quiet', command, '--force', option],
+      ['git', 'submodule', '-q', command, '-f'],
+    ]),
     ...['--delete', '-d', '--force', '-f'].flatMap((option) => [
       ['git', 'tag', 'v1', option],
       ['git.exe', 'tag', 'v1', option, 'HEAD'],

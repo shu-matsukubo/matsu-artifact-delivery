@@ -107,12 +107,25 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
       env.PATH = dirname(trustedExecutable('Shell')) + delimiter + (inheritedPath ?? '');
     }
     const tls =
-      process.platform === 'win32' ? ['-c', 'http.sslBackend=schannel', '-c', 'http.schannelUseSSLCAInfo=false'] : [];
-    return await execute(executable, ['-c', 'core.askPass=', '-c', 'credential.interactive=false', ...tls, ...args], {
-      cwd,
-      env,
-      timeout: 60_000,
-    });
+      process.platform === 'win32'
+        ? [
+            '-c',
+            'http.sslBackend=schannel',
+            '-c',
+            'http.schannelUseSSLCAInfo=false',
+            '-c',
+            'http.schannelCheckRevoke=true',
+          ]
+        : [];
+    return await execute(
+      executable,
+      ['-c', 'core.fsmonitor=false', '-c', 'core.askPass=', '-c', 'credential.interactive=false', ...tls, ...args],
+      {
+        cwd,
+        env,
+        timeout: 60_000,
+      },
+    );
   } catch (error) {
     throw new Error('Git の検証または Push に失敗しました。状態を確認してから再実行してください。', { cause: error });
   }
@@ -124,11 +137,19 @@ export async function checkedConfigKeys(root: string, run: Run = runGit) {
   const configKeys = (await git('config', '--name-only', '--list')).split('\n');
   const filters = new Set(configKeys.flatMap((key) => /^filter\.(.+)\.(?:clean|process)$/i.exec(key)?.[1] ?? []));
   if (filters.size) {
-    const paths = (await git('ls-files', '-z')).split('\0').filter(Boolean);
+    const paths = (await git('-c', 'core.fsmonitor=false', 'ls-files', '-z')).split('\0').filter(Boolean);
     for (let offset = 0; offset < paths.length; offset += 100) {
-      const attributes = (await git('check-attr', '-z', 'filter', '--', ...paths.slice(offset, offset + 100))).split(
-        '\0',
-      );
+      const attributes = (
+        await git(
+          '-c',
+          'core.fsmonitor=false',
+          'check-attr',
+          '-z',
+          'filter',
+          '--',
+          ...paths.slice(offset, offset + 100),
+        )
+      ).split('\0');
       for (let index = 2; index < attributes.length; index += 3) {
         if (filters.has(attributes[index]!))
           throw new Error('追跡ファイルに実行可能な clean / process filter があるため作業ツリーを検証できません。');
@@ -138,18 +159,36 @@ export async function checkedConfigKeys(root: string, run: Run = runGit) {
   return configKeys;
 }
 
-export async function safePush(options: Options, root = repository, run: Run = runGit) {
-  checkBranch(options.branch);
+// submodule にも同じ索引・内容・外部コマンドの検査を適用する。
+async function checkedWorktree(root: string, run: Run, visited = new Set<string>()) {
   const git = async (...args: string[]) => (await run(args, root)).trim();
-  if (realpathSync(await git('rev-parse', '--show-toplevel')) !== realpathSync(root))
-    throw new Error('スクリプトと Git リポジトリのルートが一致しません。');
-  const grafts = await git('rev-parse', '--path-format=absolute', '--git-path', 'info/grafts');
-  if (lstatSync(grafts, { throwIfNoEntry: false })) throw new Error('info/grafts が存在するため Push できません。');
-  if ((await git('symbolic-ref', '--quiet', '--short', 'HEAD')) !== options.branch)
-    throw new Error('現在のブランチと --branch が一致しません。');
+  const canonicalRoot = realpathSync(root);
+  if (visited.has(canonicalRoot)) throw new Error('submodule の作業ツリーが循環しています。');
+  visited.add(canonicalRoot);
   const configKeys = await checkedConfigKeys(root, run);
-  if ((await git('ls-files', '-v', '-z')).split('\0').some((entry) => /^[Ss] /.test(entry)))
+  if (
+    (await git('-c', 'core.fsmonitor=false', 'ls-files', '-v', '-z')).split('\0').some((entry) => /^[Ss] /.test(entry))
+  )
     throw new Error('skip-worktree の索引フラグがあるため作業ツリーを検証できません。');
+  const entries = (await git('-c', 'core.fsmonitor=false', 'ls-files', '--stage', '-z'))
+    .split('\0')
+    .filter(Boolean)
+    .map((entry) => {
+      const match = /^(100644|100755|120000|160000) ([a-f0-9]{40,64}) 0\t(.+)$/s.exec(entry);
+      if (!match) throw new Error('索引エントリーを検証できません。');
+      return { mode: match[1]!, hash: match[2]!, path: match[3]! };
+    });
+  // 親の status も子の属性を読むため、初期化済みの子を先に検査する。
+  for (const { mode, hash, path } of entries) {
+    if (mode !== '160000') continue;
+    const sub = resolve(root, path);
+    if (!lstatSync(resolve(sub, '.git'), { throwIfNoEntry: false })) continue;
+    if (realpathSync(await run(['rev-parse', '--show-toplevel'], sub)) !== realpathSync(sub))
+      throw new Error('submodule の Git リポジトリと作業ツリーが一致しません。');
+    await checkedWorktree(sub, run, visited);
+    if ((await run(['rev-parse', '--verify', 'HEAD^{commit}'], sub)).trim() !== hash)
+      throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。');
+  }
   try {
     await git('-c', 'core.fsmonitor=false', 'update-index', '--really-refresh');
   } catch (error) {
@@ -168,13 +207,8 @@ export async function safePush(options: Options, root = repository, run: Run = r
     throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。');
   // stat が一致しても内容を照合する。hash-object は改行変換などの Git 属性を適用する。
   const files: { path: string; hash: string }[] = [];
-  for (const entry of (await git('ls-files', '--stage', '-z')).split('\0').filter(Boolean)) {
-    const match = /^(100644|100755|120000|160000) ([a-f0-9]{40,64}) 0\t(.+)$/s.exec(entry);
-    if (!match) throw new Error('索引エントリーを検証できません。');
-    const mode = match[1]!;
-    const hash = match[2]!;
-    const path = match[3]!;
-    if (mode === '160000') continue; // submodule の作業状態は status で確認する。
+  for (const { mode, hash, path } of entries) {
+    if (mode === '160000') continue;
     if (mode !== '120000') {
       files.push({ path, hash });
       continue;
@@ -194,6 +228,19 @@ export async function safePush(options: Options, root = repository, run: Run = r
     if (hashes.length !== batch.length || hashes.some((hash, index) => hash !== batch[index]!.hash))
       throw new Error('レビュー済みの変更をコミットし、作業ツリーを clean にしてください。');
   }
+  return configKeys;
+}
+
+export async function safePush(options: Options, root = repository, run: Run = runGit) {
+  checkBranch(options.branch);
+  const git = async (...args: string[]) => (await run(args, root)).trim();
+  if (realpathSync(await git('rev-parse', '--show-toplevel')) !== realpathSync(root))
+    throw new Error('スクリプトと Git リポジトリのルートが一致しません。');
+  const grafts = await git('rev-parse', '--path-format=absolute', '--git-path', 'info/grafts');
+  if (lstatSync(grafts, { throwIfNoEntry: false })) throw new Error('info/grafts が存在するため Push できません。');
+  if ((await git('symbolic-ref', '--quiet', '--short', 'HEAD')) !== options.branch)
+    throw new Error('現在のブランチと --branch が一致しません。');
+  const configKeys = await checkedWorktree(root, run);
   const commit = await git('rev-parse', '--verify', 'HEAD^{commit}');
   if (!/^[a-f0-9]{40,64}$/.test(commit)) throw new Error('HEAD の commit SHA を確認できません。');
   const fetchUrl = await git('remote', 'get-url', '--all', 'origin');
@@ -208,6 +255,10 @@ export async function safePush(options: Options, root = repository, run: Run = r
       (sshTransport && key.toLowerCase() === 'core.sshcommand')
     )
       throw new Error('URL・TLS 検証・SSH コマンドの設定が上書きされているため Push できません。');
+    if (/^http(?:\..+)?\.schannelcheckrevoke$/i.test(key)) {
+      if ((await git('config', '--type=bool', '--get-all', key)).split('\n').some((value) => value !== 'true'))
+        throw new Error('TLS 証明書の失効確認を無効にする設定があるため Push できません。');
+    }
     if (!/^http(?:\..+)?\.(?:sslcainfo|sslcapath|proxysslcainfo)$/i.test(key)) continue;
     // Git for Windows 同梱 CA の system 設定だけを許可する。ユーザー・リポジトリの指定は拒否する。
     let bundledCA = false;
