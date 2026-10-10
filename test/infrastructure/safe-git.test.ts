@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 import { delimiter, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -411,13 +413,15 @@ await test('SGT-U14: 認証入力を待たず、Git のタイムアウトも失�
 
 await test('SGT-U17: 独自 CA のリポジトリ設定を実 Git で通信前に拒否する', async (t) => {
   const f = await gitFixture(t);
-  const bundle = 'C:/Program Files/Git/ucrt64/etc/ssl/certs/ca-bundle.crt';
   for (const [key, value] of [
     ['http.sslCAInfo', '/untrusted/ca.crt'],
     ['http.sslCAPath', '/untrusted/certs'],
     ['http.https://github.com/.sslCAInfo', '/untrusted/ca.crt'],
     ['http.https://github.com/.sslCAPath', '/untrusted/certs'],
-    ['http.sslCAInfo', bundle],
+    ...['ucrt64', 'mingw64'].map((layout) => [
+      'http.sslCAInfo',
+      `C:/Program Files/Git/${layout}/etc/ssl/certs/ca-bundle.crt`,
+    ]),
     ['http.sslCAInfo', ''],
   ]) {
     f.git('config', key!, value!);
@@ -432,6 +436,69 @@ await test('SGT-U17: 独自 CA のリポジトリ設定を実 Git で通信前�
       false,
     );
     f.git('config', '--unset-all', key!);
+  }
+});
+
+await test('SGT-U18: Windows の標準 CA の両配置を許可し、設定元・実体の偽装は通信前に拒否する', async (t) => {
+  const root = await temporaryDirectory(t);
+  const configFile = 'C:/Program Files/Git/etc/gitconfig';
+  const bundles = ['ucrt64', 'mingw64'].map((layout) => `C:/Program Files/Git/${layout}/etc/ssl/certs/ca-bundle.crt`);
+  const regularFile = join(root, 'regular-file');
+  await writeFile(regularFile, 'fixture');
+  const realpath = fs.realpathSync;
+  const lstat = fs.lstatSync;
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+  let redirectedPath = '';
+  let directoryPath = '';
+  const protectedPaths = [configFile, ...bundles];
+  t.after(() => {
+    Object.defineProperty(process, 'platform', platform);
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  Object.defineProperty(process, 'platform', { value: 'win32' });
+  t.mock.method(fs, 'realpathSync', (path: string) =>
+    protectedPaths.includes(path) ? (path === redirectedPath ? '/untrusted/file' : path) : realpath(path),
+  );
+  t.mock.method(fs, 'lstatSync', (path: string, options?: { throwIfNoEntry?: boolean }) =>
+    protectedPaths.includes(path) ? lstat(path === directoryPath ? root : regularFile) : lstat(path, options),
+  );
+  syncBuiltinESMExports();
+
+  for (const bundle of bundles) {
+    const f = fixture(root);
+    f.replies.set('config --name-only --list', 'http.sslcainfo');
+    const command = 'config --null --show-origin --show-scope --get-all http.sslcainfo';
+    const standard = `system\0file:${configFile}\0${bundle}\0`;
+    f.replies.set(command, standard);
+    await safePush({ branch, dryRun: true }, root, f.run);
+    assert.ok(
+      f.calls.some((args) => args.includes('ls-remote')),
+      bundle,
+    );
+
+    for (const [config, redirect, directory] of [
+      [standard.replace('system\0', 'global\0'), '', ''],
+      [standard.replace('system\0', 'local\0'), '', ''],
+      [standard.replace(configFile, 'C:/Users/untrusted/gitconfig'), '', ''],
+      [standard.replace(bundle, 'C:/Users/untrusted/ca.crt'), '', ''],
+      [standard + standard.replace('system\0', 'local\0'), '', ''],
+      [standard, configFile, ''],
+      [standard, bundle, ''],
+      [standard, '', bundle],
+    ]) {
+      f.replies.set(command, config!);
+      redirectedPath = redirect!;
+      directoryPath = directory!;
+      f.calls.length = 0;
+      await assert.rejects(() => safePush({ branch, dryRun: false }, root, f.run), /独自 CA/);
+      assert.equal(
+        f.calls.some((args) => args.includes('ls-remote') || args.includes('push')),
+        false,
+      );
+    }
+    redirectedPath = '';
+    directoryPath = '';
   }
 });
 
@@ -687,6 +754,13 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['git', 'rm', '-f', 'file'],
     ['git', 'rm', 'file', '--force'],
     ['git', 'rm', '-rf', 'directory'],
+    ['git', 'mv', '-f', 'source', 'target'],
+    ['git.exe', 'mv', '--force', 'source', 'target'],
+    ['git', 'mv', 'source', 'target', '--force'],
+    ['git', 'mv', '-v', '-f', 'source', 'target'],
+    ['git', 'mv', '-vf', 'source', 'target'],
+    ['git', 'mv', 'source', 'target'],
+    ['git', 'mv', '-n', 'source', 'target'],
     ['git', '-C', '.', 'push'],
     ['git', 'send-pack', url],
     ['git', 'worktree', 'remove', '--force', 'path'],

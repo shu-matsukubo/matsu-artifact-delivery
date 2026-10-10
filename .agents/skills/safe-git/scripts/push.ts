@@ -158,9 +158,13 @@ export async function safePush(options: Options, root = repository, run: Run = r
       ).split('\0');
       if (entries.at(-1) === '') entries.pop();
       const configFile = 'C:/Program Files/Git/etc/gitconfig';
-      const bundle = 'C:/Program Files/Git/ucrt64/etc/ssl/certs/ca-bundle.crt';
+      const bundle = entries[2] ?? '';
+      const bundles = ['ucrt64', 'mingw64'].map(
+        (layout) => `C:/Program Files/Git/${layout}/etc/ssl/certs/ca-bundle.crt`,
+      );
       const normalize = (value: string) => value.replaceAll('\\', '/').toLowerCase();
       bundledCA =
+        bundles.some((path) => normalize(path) === normalize(bundle)) &&
         entries.length > 0 &&
         entries.length % 3 === 0 &&
         entries.every(

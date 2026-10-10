@@ -10,7 +10,7 @@ Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux
 
 - スクリプトの配置先が Git リポジトリのルートに対応し、そのルートから実行されている。
 - 現在のブランチが `--branch` と一致し、HEAD が commit を指し、staged / unstaged / untracked の変更がない。`skip-worktree` が付いた索引エントリーは sparse-checkout を含め拒否する。`core.fsmonitor` を無効化し、`update-index --really-refresh` で `assume-unchanged` のファイルも検査してから `status` を確認する。
-- `origin` の取得先と Push 先が、それぞれ `shu-matsukubo/matsu-artifact-delivery` の単一 GitHub URL である。HTTPS または Git SSH の固定形式を許可し、URL 書き換え設定、複数 URL、別リポジトリは拒否する。TLS 検証の無効化・独自 CA の指定と SSH コマンドの差し替えに関わる環境変数・Git 設定も拒否する。HTTPS は既定の信頼ストアを使い、Windows は `schannel` と `schannelUseSSLCAInfo=false` を指定する。Windows の `http.sslCAInfo` は `C:/Program Files/Git/etc/gitconfig` の system 設定が指定する `C:/Program Files/Git/ucrt64/etc/ssl/certs/ca-bundle.crt` に限定して許可し、両ファイルの実体が固定パスにあることを検証する。
+- `origin` の取得先と Push 先が、それぞれ `shu-matsukubo/matsu-artifact-delivery` の単一 GitHub URL である。HTTPS または Git SSH の固定形式を許可し、URL 書き換え設定、複数 URL、別リポジトリは拒否する。TLS 検証の無効化・独自 CA の指定と SSH コマンドの差し替えに関わる環境変数・Git 設定も拒否する。HTTPS は既定の信頼ストアを使い、Windows は `schannel` と `schannelUseSSLCAInfo=false` を指定する。Windows の `http.sslCAInfo` は `C:/Program Files/Git/etc/gitconfig` の system 設定が指定する `C:/Program Files/Git/ucrt64/etc/ssl/certs/ca-bundle.crt` または `C:/Program Files/Git/mingw64/etc/ssl/certs/ca-bundle.crt` に限定して許可し、設定ファイルと CA の実体が固定パスにあることを検証する。
 - Push 先が作業ブランチであり、リモートから取得した default branch ではなく、`main`、`master`、`develop`、`development`、`release`、`releases`、`prod`、`production`、`stable` とその配下ではない。
 - Git が参照する `info/grafts` が存在しない。worktree では共通 Git ディレクトリの配置先を確認する。
 - 既存のリモートブランチを更新する場合、置換 ref を無効にした判定で、その先端が送信する commit の祖先である。リモートの commit がローカルにない場合は、対象を確認して fetch してから検証し直す。
@@ -28,7 +28,7 @@ Push は検証した URL と `<commit SHA>:refs/heads/<作業ブランチ>` 一�
 
 ## Codex Rules
 
-[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules)が直接の Push、worktree 削除、`git rm`、ブランチの移動・コピーを含む破壊的な Git コマンドを `forbidden` にする。Git のグローバルオプションでサブコマンドを隠す呼び出しも禁止対象とし、作業ディレクトリはツールの cwd で指定する。
+[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules)が直接の Push、worktree 削除、`git rm`、`git mv`、ブランチの移動・コピーを含む破壊的な Git コマンドを `forbidden` にする。`git mv` は強制上書きオプションの位置・短縮表記にかかわらず拒否するため、コマンド全体を禁止する。Git のグローバルオプションでサブコマンドを隠す呼び出しも禁止対象とし、作業ディレクトリはツールの cwd で指定する。
 
 プロジェクトの `.codex/` を信頼し、Codex を再起動して読み込む。[公式 Rules 仕様](https://developers.openai.com/codex/rules)に従い、Rules は sandbox 外のコマンド要求に対する prefix 判定である。別の実行ファイルパス、任意のオプション順、複雑な shell やスクリプト内部の子プロセスを網羅する強制境界ではない。Codex は [AGENTS.md](../../../../AGENTS.md) の禁止も守り、Rules を迂回しない。スクリプト実行は通常の sandbox・承認設定に従う。
 
