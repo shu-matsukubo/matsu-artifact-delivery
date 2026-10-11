@@ -2,7 +2,7 @@
 
 前回作業の特定には、同一スレッドの過去の会話・実行ログ、前回実行時の結果や中断内容、利用可能な Memory 等を補助情報として参照する。これらは状態の正本ではなく、過去ログや Memory 等が利用できないこと自体をエラーや停止理由にしない。GitHub とローカル workspace の現在状態を最終的な判断材料とする。
 
-新規 Issue の処理より前に、利用可能な補助情報と、GitHub Plugin で取得した Issue・PR・branch・commit、ローカル HEAD・branch・worktree・staged / unstaged / untracked の現在状態を照合し、未完了作業の有無を確認する。
+新規 Issue の処理より前に、利用可能な補助情報と、選択した手段で取得した Issue・PR・branch・commit、ローカル HEAD・branch・worktree・staged / unstaged / untracked の現在状態を照合し、未完了作業の有無を確認する。
 
 ## 作業を一意に特定できる場合
 
