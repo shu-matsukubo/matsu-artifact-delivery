@@ -157,7 +157,7 @@ npm run ci:select -- --all
 | PKG-U01〜PKG-U04         | marketplace、Plugin Agent 登録不要とリポジトリ Codex 設定の配布外確認、README 参照、ID 対応                                                                                                                                                                                | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U01                  | 入口の reference 参照、起動・再開・新規選定・環境準備・GitHub とローカルへの反映・clean 確認の契約と担当境界                                                                                                                                                               | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U02                  | プラグイン Issue への対象限定、実装中・merge 済み PR がある Issue の選定除外                                                                                                                                                                                               | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
-| SGT-U01〜SGT-U55         | Push の接続先・祖先・単一 ref、競合・偽装・隠れた変更・filter・helper・partial clone・alternate 外部コマンドの拒否、submodule の検査、固定 SSH・非対話認証・環境除去・標準ハンドル保全・子孫停止、新規ブランチ・コミット・worktree 作成・commit 取得・読み取り・CLI・Rules | [安全な Git 操作の試験](../test/infrastructure/safe-git.test.ts)                          |
+| SGT-U01〜SGT-U57         | Push の接続先・祖先・単一 ref、競合・偽装・隠れた変更・filter・helper・partial clone・alternate 外部コマンドの拒否、submodule の検査、固定 SSH・非対話認証・環境除去・標準ハンドル保全・子孫停止、新規ブランチ・コミット・worktree 作成・commit 取得・読み取り・CLI・Rules | [安全な Git 操作の試験](../test/infrastructure/safe-git.test.ts)                          |
 
 ### 既存 MCP の対応表
 
@@ -231,11 +231,13 @@ CI-U11 は [GitHub の式評価ライブラリ](https://github.com/actions/langu
 
 `SGT-U44` は実 Git で `apply --cached --reverse` が作業ファイルを変更せずステージだけの内容を上書きする負例を再現し、Rules で拒否することを確認する。`SGT-U05` は `apply` の明示・暗黙の索引更新、`http-push` の強制更新・削除、Push に対応する標準 remote helper の直接実行を、オプションの前置・後置・短縮形を含め評価する。
 
-`SGT-U45` は `/usr/bin/git`・`/bin/git` と Windows の `cmd`・`bin`・`ucrt64/bin`・`mingw64/bin` の Git と区切り表記、値付きグローバルオプション、notes の値付き ref、remote の更新を Codex CLI で拒否する。`SGT-U46` は Git 自身の URL 判定で他ホスト・protocol・パスを除外し、対象 URL・親パス・wildcard の helper は引き続き検証する。設定順と空値リセットは `SGT-U37` で確認する。`SGT-U47` は指定 commit の detached worktree、新規配置・ref・作業変更の保全、checkout hook と対象 commit の smudge filter の拒否を実 Git で検証する。`SGT-U48` は参照用入口の notes・remote・差分表示と、更新・外部 diff・出力ファイル指定の拒否を検証する。Linux / macOS の実 worktree 配置と GitHub 認証は再現しない。
+`SGT-U45` は `/usr/bin/git`・`/bin/git` と Windows の `cmd`・`bin`・`ucrt64/bin`・`mingw64/bin` の Git、Linux / macOS / Windows の標準 `git-core` 配置と区切り表記、値付きグローバルオプション、notes の値付き ref、remote の更新を Codex CLI で拒否する。`SGT-U46` は Git 自身の URL 判定で他ホスト・protocol・パスを除外し、対象 URL・親パス・wildcard の helper は引き続き検証する。設定順と空値リセットは `SGT-U37` で確認する。`SGT-U47` は指定 commit の detached worktree、新規配置・ref・作業変更の保全、checkout hook と対象 commit の smudge filter の拒否を実 Git で検証する。`SGT-U48` は参照用入口の notes・remote・差分表示と、更新・外部 diff・出力ファイル指定の拒否を検証する。Linux / macOS の実 worktree 配置と GitHub 認証は再現しない。
 
 `SGT-U49` は署名付き commit と実 verifier で外部実行を再現し、log / show の署名書式、ref の署名 atom、書式の別名・既定設定から起動しないことを確認する。通常書式と設定の参照も保全する。`SGT-U50` は CA と失効確認の設定について host・protocol・port・path・wildcard を実 Git で照合し、対象外の設定を無視、対象に一致する危険な設定を通信前に拒否する。`SGT-U51` はトレース環境変数と Trace2 のグローバル設定によるファイル追記を再現し、全 Git 子環境で無効化されることを確認する。`SGT-U52` は遅れた clone へ指定 commit を取得し、ref・索引・作業変更・FETCH_HEAD・設定・hook を保全して新しい worktree を作る。`SGT-U53` は Fetch の通信先・TLS・helper・置換 ref・partial clone・追加取得先の拒否と、HTTPS / SSH の選択を確認する。通信先は一時リポジトリに置換し、GitHub 認証と Linux / macOS の実インストールは再現しない。
 
 `SGT-U54` は alternate と `core.alternateRefsCommand` を持つ一時リポジトリで raw SHA Fetch による外部実行を再現し、参照・更新の全入口で設定を拒否して ref・索引・作業変更を保全する。submodule の設定も Push の通信前に拒否し、外部コマンドを設定しない alternate は許可する。`SGT-U55` は Windows の実 Git で標準出力のファイル書き換えを再現し、標準入力・出力・エラーのリダイレクト環境変数を全入口で Git 起動前に拒否する。変数名の大小文字と ref・索引・設定・作業内容の保全も確認する。
+
+`SGT-U56` は promisor の実効 boolean を実 Git で確認し、無効な各表記と include 元を上書きした無効設定を許可、有効・不正な値を全入口で拒否する。ref・索引・設定・未ステージ内容の保全も確認する。`SGT-U57` は低い GC 閾値と `gc.recentObjectsHook` による外部実行をコミットで再現し、共通実行経路の自動メンテナンス・自動 GC 無効化で hook と loose object の書き換えを防ぐ。Linux / macOS の実インストール配置は再現しない。
 
 1. 該当コンポーネントの契約一覧に ID・観点・対象を追加する。文言の意図的な変更では旧契約の削除理由もレビューする。
 2. metadata・権限・参照は構文解析と実ファイルで検証する。参照を追加したら配布グラフ E2E でも到達を確認する。

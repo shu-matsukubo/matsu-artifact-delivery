@@ -7,7 +7,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { delimiter, join, posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test, { type TestContext } from 'node:test';
-import { parseArguments, runGit, safePush } from '../../.agents/skills/safe-git/scripts/push.ts';
+import { checkedConfigKeys, parseArguments, runGit, safePush } from '../../.agents/skills/safe-git/scripts/push.ts';
+import { createHash } from 'node:crypto';
 import { runProcess } from '../../.agents/skills/safe-git/scripts/process.ts';
 import { createBranch } from '../../.agents/skills/safe-git/scripts/create-branch.ts';
 import { createCommit } from '../../.agents/skills/safe-git/scripts/commit.ts';
@@ -1897,10 +1898,16 @@ await test('SGT-U45: 固定パス・値付き引数・notes・remote による�
     'git.exe',
     '/usr/bin/git',
     '/bin/git',
-    ...['cmd', 'bin', 'ucrt64/bin', 'mingw64/bin'].flatMap((directory) => {
-      const path = `C:/Program Files/Git/${directory}/git.exe`;
-      return [path, path.replaceAll('/', '\\')];
-    }),
+    '/usr/lib/git-core/git',
+    '/usr/libexec/git-core/git',
+    '/Library/Developer/CommandLineTools/usr/libexec/git-core/git',
+    '/Applications/Xcode.app/Contents/Developer/usr/libexec/git-core/git',
+    ...['cmd', 'bin', 'ucrt64/bin', 'mingw64/bin', 'ucrt64/libexec/git-core', 'mingw64/libexec/git-core'].flatMap(
+      (directory) => {
+        const path = `C:/Program Files/Git/${directory}/git.exe`;
+        return [path, path.replaceAll('/', '\\')];
+      },
+    ),
   ]) {
     await t.test(executable, () => {
       for (const args of commands) {
@@ -3011,4 +3018,140 @@ await test('SGT-U55: 標準ハンドルのリダイレクト環境変数を全�
   assert.equal(f.git('show-ref'), refs);
   assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/index')), index);
   assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/config')), config);
+});
+
+await test('SGT-U56: promisor の実効 boolean が無効なら全入口を許可し、有効・不正なら拒否する', async (t) => {
+  const f = await gitFixture(t);
+  const key = 'remote.origin.promisor';
+  for (const value of ['false', 'no', 'off', '0', '', 'FALSE']) {
+    f.git('config', key, value);
+    await checkedConfigKeys(f.cwd);
+  }
+  const target = join(f.cwd, '../promisor-worktree');
+  const run = (args: string[], cwd: string, ssh?: boolean) =>
+    runGit(
+      args.map((arg) =>
+        arg === url && (args.includes('fetch') || args.includes('push') || args.includes('ls-remote')) ? f.remote : arg,
+      ),
+      cwd,
+      ssh,
+    );
+  const operations = [
+    () => inspectRepository(['status', '--short'], f.cwd),
+    () => stageFiles(['--', 'file'], f.cwd),
+    () => createCommit(['--message', 'change'], f.cwd),
+    () => createBranch(['--branch', 'codex/promisor'], f.cwd),
+    () => createWorktree(['--path', target, '--commit', f.base], f.cwd),
+    () => fetchCommit(['--commit', f.base], f.cwd, run),
+    () => safePush({ branch, dryRun: true }, f.cwd, run),
+  ];
+  const refs = f.git('show-ref');
+  const index = fs.readFileSync(join(f.cwd, '.git/index'));
+  for (const value of ['true', 'yes', 'on', '1', 'invalid']) {
+    f.git('config', key, value);
+    for (const operation of operations) await assert.rejects(operation);
+    assert.equal(f.git('show-ref'), refs);
+    assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/index')), index);
+    assert.equal(fs.existsSync(target), false);
+  }
+  // include 元の有効設定を、後続の無効設定で上書きする。
+  f.git('config', '--unset-all', key);
+  const defaults = join(f.cwd, '.git/promisor-defaults');
+  await writeFile(defaults, '[remote "origin"]\n\tpromisor = true\n');
+  f.git('config', '--add', 'include.path', defaults.replaceAll('\\', '/'));
+  const configPath = join(f.cwd, '.git/config');
+  await writeFile(configPath, (await read(configPath)) + '\n[remote "origin"]\n\tpromisor = false\n');
+  assert.equal(f.git('config', '--type=bool', '--get', key), 'false');
+  const config = fs.readFileSync(join(f.cwd, '.git/config'));
+  await inspectRepository(['status', '--short'], f.cwd);
+  await fetchCommit(['--commit', f.base], f.cwd, run);
+  await safePush({ branch, dryRun: true }, f.cwd, run);
+  await createWorktree(['--path', target, '--commit', f.base], f.cwd);
+  assert.equal(f.git('show-ref'), refs);
+  assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/index')), index);
+  await writeFile(join(f.cwd, 'file'), 'staged');
+  await stageFiles(['--', 'file'], f.cwd);
+  await writeFile(join(f.cwd, 'file'), 'unstaged');
+  const committed = await createCommit(['--message', 'disabled promisor'], f.cwd);
+  assert.equal(f.git('rev-parse', 'HEAD^'), f.commit);
+  assert.equal(f.git('show', 'HEAD:file'), 'staged');
+  assert.equal(await read(join(f.cwd, 'file')), 'unstaged');
+  await createBranch(['--branch', 'codex/promisor'], f.cwd);
+  assert.equal(f.git('rev-parse', 'HEAD'), committed.commit);
+  assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/config')), config);
+  await t.test('submodule の無効設定を許可し、有効設定を親の通信前に拒否する', async (t) => {
+    const parent = await gitFixture(t);
+    parent.git('-c', 'protocol.file.allow=always', 'submodule', 'add', f.cwd, 'sub');
+    parent.git('commit', '-qm', 'submodule');
+    parent.git('-C', 'sub', 'config', key, 'false');
+    await safePush({ branch, dryRun: true }, parent.cwd, parent.run);
+    parent.git('-C', 'sub', 'config', key, 'true');
+    const calls: string[][] = [];
+    await assert.rejects(
+      safePush({ branch, dryRun: true }, parent.cwd, (args, cwd) => {
+        calls.push(args);
+        return parent.run(args, cwd);
+      }),
+      /partial clone/,
+    );
+    assert.ok(!calls.some((args) => args.includes('ls-remote') || args.includes('push')));
+  });
+});
+
+await test('SGT-U57: コミットによる自動 GC の外部実行を再現し、共通実行経路でメンテナンスを無効化する', async (t) => {
+  const f = await gitFixture(t);
+  const marker = join(f.cwd, '.git/maintenance-ran');
+  f.git('config', 'gc.auto', '1');
+  f.git('config', 'gc.autoDetach', 'false');
+  f.git('config', 'maintenance.auto', 'true');
+  f.git('config', 'maintenance.autoDetach', 'false');
+  f.git('config', 'maintenance.gc.enabled', 'true');
+  f.git('config', 'gc.pruneExpire', 'now');
+  f.git('config', 'gc.recentObjectsHook', `printf ran > '${marker.replaceAll('\\', '/')}'; printf '%s\\n' ${f.base}`);
+  const looseObjects = (prefix: string) => {
+    const paths: string[] = [];
+    for (let i = 0; paths.length < 3; i++) {
+      const content = prefix + i;
+      const hash = createHash('sha1')
+        .update(`blob ${Buffer.byteLength(content)}\0${content}`)
+        .digest('hex');
+      if (!hash.startsWith('17')) continue;
+      execFileSync('git', ['hash-object', '-w', '--stdin'], {
+        cwd: f.cwd,
+        input: content,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      paths.push(join(f.cwd, '.git/objects', hash.slice(0, 2), hash.slice(2)));
+    }
+    return paths;
+  };
+  looseObjects('baseline');
+  const baseline = spawnSync(
+    'git',
+    ['-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-qm', 'baseline maintenance'],
+    { cwd: f.cwd, encoding: 'utf8' },
+  );
+  assert.equal(baseline.status, 0, baseline.stderr);
+  assert.equal(fs.existsSync(marker), true, baseline.stderr);
+  fs.unlinkSync(marker);
+  const loose = looseObjects('protected');
+  const parent = f.git('rev-parse', 'HEAD');
+  await writeFile(join(f.cwd, 'file'), 'staged maintenance');
+  f.git('add', 'file');
+  const tree = f.git('write-tree');
+  await writeFile(join(f.cwd, 'file'), 'unstaged maintenance');
+  const config = fs.readFileSync(join(f.cwd, '.git/config'));
+  const result = await createCommit(['--message', 'safe maintenance'], f.cwd);
+  assert.equal(fs.existsSync(marker), false);
+  assert.equal(f.git('rev-parse', 'HEAD^'), parent);
+  assert.equal(f.git('rev-parse', 'HEAD^{tree}'), tree);
+  assert.equal(f.git('rev-parse', 'HEAD'), result.commit);
+  assert.equal(await read(join(f.cwd, 'file')), 'unstaged maintenance');
+  assert.ok(
+    loose.every((path) => fs.existsSync(path)),
+    '自動 GC による object の書き換え・削除も防ぐ',
+  );
+  assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/config')), config);
+  assert.equal((await runGit(['config', '--type=bool', '--get', 'maintenance.auto'], f.cwd)).trim(), 'false');
+  assert.equal((await runGit(['config', '--type=int', '--get', 'gc.auto'], f.cwd)).trim(), '0');
 });

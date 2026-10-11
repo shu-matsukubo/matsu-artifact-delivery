@@ -161,6 +161,10 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
         '-c',
         'core.fsmonitor=false',
         '-c',
+        'maintenance.auto=false',
+        '-c',
+        'gc.auto=0',
+        '-c',
         'core.askPass=',
         '-c',
         'credential.interactive=false',
@@ -193,8 +197,13 @@ export async function checkedConfigKeys(
   if (configKeys.some((key) => /^core\.alternaterefscommand$/i.test(key)))
     throw new Error('外部コマンドを実行する core.alternateRefsCommand が設定されているため Git 操作を実行できません。');
   // 古い Git は GIT_NO_LAZY_FETCH を無視するため、partial clone の設定自体も拒否する。
-  if (configKeys.some((key) => /^(?:extensions\.partialclone|remote\..+\.promisor)$/i.test(key)))
+  if (configKeys.some((key) => /^extensions\.partialclone$/i.test(key)))
     throw new Error('partial clone の自動 fetch を伴うリポジトリは検証できません。');
+  for (const key of new Set(configKeys.filter((key) => /^remote\..+\.promisor$/i.test(key)))) {
+    // 設定の優先順位と boolean の表記は Git に解釈させ、明示的な無効化を許可する。
+    if ((await git('config', '--type=bool', '--get', key)) !== 'false')
+      throw new Error('partial clone の自動 fetch を伴うリポジトリは検証できません。');
+  }
   const filterPattern = source ? /^filter\.(.+)\.(?:clean|smudge|process)$/i : /^filter\.(.+)\.(?:clean|process)$/i;
   const filters = new Set(configKeys.flatMap((key) => filterPattern.exec(key)?.[1] ?? []));
   if (filters.size) {

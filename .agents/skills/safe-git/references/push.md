@@ -4,6 +4,8 @@
 
 Node.js は Windows の `C:/Program Files/nodejs/node.exe`、Linux の `/usr/bin/node`、macOS の `/usr/local/bin/node` に固定し、管理者が実行ファイルと配置先を保護する。信頼する起動済みのシェルで `NODE_OPTIONS`、`NODE_PATH`、`GLIBC_TUNABLES`、`BASH_ENV`、`ENV` と `LD_*`、`DYLD_*`、`_RLD_*`、`RLD_*`、`LDR_*` を組み込み機能で除去してから起動する。シェル自体の起動環境は管理者が保護する。Git・SSH・helper の子プロセスにも同じ除去を適用する。固定配置がない場合は実行を止める。起動コマンドは [Skill](../SKILL.md) を参照する。
 
+すべての Git 呼び出しに `maintenance.auto=false` と `gc.auto=0` を指定し、自動メンテナンスと自動 GC による外部コマンドの実行・object の書き換えを防ぐ。リポジトリの設定値は変更しない。
+
 Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux / macOS の `/usr/bin/git` に固定する。SSH 接続時は SSH 実行ファイルも Windows の `C:/Program Files/Git/usr/bin/ssh.exe`、Linux / macOS の `/usr/bin/ssh` に固定する。実体がこのパスにある通常ファイルかを検証し、PATH や環境変数で配置先を選ばない。Windows の配置先は管理者権限で保護する。Linux / macOS では実行ファイルと親ディレクトリが root 所有で、group / other が書き込めないことも検証する。Linux の credential helper は、固定パスの symlink・経由する symlink・実体・各親ディレクトリを検証し、symlink は root 所有、通常ファイルとディレクトリは root 所有で group / other が書き込めない場合に許可する。helper の選択に使われる起動名を維持する。固定配置に実行ファイルがない場合は検証失敗とする。
 
 ## 検証と更新
@@ -18,7 +20,7 @@ Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux
 - Push 先が作業ブランチであり、リモートから取得した default branch ではなく、`main`、`master`、`develop`、`development`、`release`、`releases`、`prod`、`production`、`stable` とその配下ではない。
 - Git が参照する `info/grafts` が存在しない。worktree では共通 Git ディレクトリの配置先を確認する。
 - 作業ツリーの検査前に `refs/replace/` の置換 ref を拒否する。初期化済み submodule は入れ子を含め同じ検査を行い、ブランチ・コミットの新規作成にも適用する。すべての Git 呼び出しで `GIT_NO_REPLACE_OBJECTS=1` を指定し、本来の object を検証する。
-- `extensions.partialClone` または `remote.<name>.promisor` があるリポジトリは、submodule とブランチ作成を含め拒否する。すべての Git 呼び出しに `GIT_NO_LAZY_FETCH=1` を指定し、未検証 remote から不足 object を自動取得しない。
+- `extensions.partialClone` がある、または `remote.<name>.promisor` の実効 boolean が有効なリポジトリは、submodule とブランチ作成を含め拒否する。promisor の無効設定は許可し、不正な boolean は拒否する。すべての Git 呼び出しに `GIT_NO_LAZY_FETCH=1` を指定し、未検証 remote から不足 object を自動取得しない。
 - 既存のリモートブランチを更新する場合、置換 ref を無効にした判定で、その先端が送信する commit の祖先である。リモートの commit がローカルにない場合は、対象を確認して `fetch.ts` で取得してから検証し直す。
 - 検証時のリモート先端を `--force-with-lease` の期待値に指定する。新規作成時は空値を指定し、検証後にブランチが作成・更新された場合は Push を拒否する。
 
@@ -56,7 +58,7 @@ Git の terminal prompt・askpass と credential helper の対話設定を無効
 
 ## Codex Rules
 
-[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules) は `git`・`git.exe`、`/usr/bin/git`・`/bin/git`、Windows の `C:/Program Files/Git/` 配下の `cmd/git.exe`・`bin/git.exe`・`ucrt64/bin/git.exe`・`mingw64/bin/git.exe`（区切り表記も含む）の直接実行を `forbidden` にする。値付きグローバルオプションや `notes --ref=<値>`、`remote` の操作による更新も同じ入口で拒否する。読み取りは `read.ts`、指定 commit の取得は `fetch.ts`、ステージ・コミット・ブランチ・worktree の新規作成と Push は操作ごとの検証付きスクリプトを使う。固定 Node.js と環境変数の除去手順は [Skill](../SKILL.md) を参照する。人間の通常の Git 操作と、一時リポジトリを使う試験 fixture は対象外とする。
+[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules) は `git`・`git.exe`、`/usr/bin/git`・`/bin/git`、Windows の `C:/Program Files/Git/` 配下の `cmd/git.exe`・`bin/git.exe`・`ucrt64/bin/git.exe`・`mingw64/bin/git.exe`（区切り表記も含む）と、Linux / macOS / Windows の標準 `git-core` 配置の直接実行を `forbidden` にする。値付きグローバルオプションや `notes --ref=<値>`、`remote` の操作による更新も同じ入口で拒否する。読み取りは `read.ts`、指定 commit の取得は `fetch.ts`、ステージ・コミット・ブランチ・worktree の新規作成と Push は操作ごとの検証付きスクリプトを使う。固定 Node.js と環境変数の除去手順は [Skill](../SKILL.md) を参照する。人間の通常の Git 操作と、一時リポジトリを使う試験 fixture は対象外とする。
 
 プロジェクトの `.codex/` を信頼し、Codex を再起動して読み込む。[公式 Rules 仕様](https://developers.openai.com/codex/rules)に従い、Rules は sandbox 外のコマンド要求に対するリテラルの prefix 判定である。任意の値付き引数を個別に判定できないため、Git の直接呼び出しを一律に拒否する。記載外の実行ファイルパス、複雑な shell、スクリプト内部の子プロセスを網羅する強制境界ではない。Codex は [AGENTS.md](../../../../AGENTS.md) の禁止も守り、Rules を迂回しない。スクリプト実行は通常の sandbox・承認設定に従う。
 
