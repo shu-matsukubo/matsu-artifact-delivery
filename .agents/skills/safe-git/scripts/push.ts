@@ -101,7 +101,7 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
   // Git の探索先・設定を環境変数で差し替えない。認証用変数は維持する。
   if (
     Object.keys(process.env).some((key) =>
-      /^(?:GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG(?:_.*)?|NAMESPACE|REPLACE_REF_BASE|SHALLOW_FILE|EXEC_PATH|ATTR_SOURCE|SSH(?:_COMMAND|_VARIANT)?|SSL_(?:NO_VERIFY|CAINFO|CAPATH)|PROXY_SSL_CAINFO)|SSL_CERT_(?:FILE|DIR)|CURL_CA_BUNDLE)$/i.test(
+      /^(?:GIT_(?:DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG(?:_.*)?|NAMESPACE|REPLACE_REF_BASE|SHALLOW_FILE|EXEC_PATH|ATTR_SOURCE|REDIRECT_STD(?:IN|OUT|ERR)|SSH(?:_COMMAND|_VARIANT)?|SSL_(?:NO_VERIFY|CAINFO|CAPATH)|PROXY_SSL_CAINFO)|SSL_CERT_(?:FILE|DIR)|CURL_CA_BUNDLE)$/i.test(
         key,
       ),
     )
@@ -190,6 +190,8 @@ export async function checkedConfigKeys(
   if (await git('for-each-ref', '--format=%(refname)', 'refs/replace/'))
     throw new Error('置換 ref が存在するため Git の状態を検証できません。');
   const configKeys = (await git('config', '--name-only', '--list')).split('\n');
+  if (configKeys.some((key) => /^core\.alternaterefscommand$/i.test(key)))
+    throw new Error('外部コマンドを実行する core.alternateRefsCommand が設定されているため Git 操作を実行できません。');
   // 古い Git は GIT_NO_LAZY_FETCH を無視するため、partial clone の設定自体も拒否する。
   if (configKeys.some((key) => /^(?:extensions\.partialclone|remote\..+\.promisor)$/i.test(key)))
     throw new Error('partial clone の自動 fetch を伴うリポジトリは検証できません。');

@@ -1896,8 +1896,11 @@ await test('SGT-U45: 固定パス・値付き引数・notes・remote による�
     'git',
     'git.exe',
     '/usr/bin/git',
-    'C:/Program Files/Git/cmd/git.exe',
-    'C:\\Program Files\\Git\\cmd\\git.exe',
+    '/bin/git',
+    ...['cmd', 'bin', 'ucrt64/bin', 'mingw64/bin'].flatMap((directory) => {
+      const path = `C:/Program Files/Git/${directory}/git.exe`;
+      return [path, path.replaceAll('/', '\\')];
+    }),
   ]) {
     await t.test(executable, () => {
       for (const args of commands) {
@@ -2893,4 +2896,119 @@ await test('SGT-U53: Fetch も接続先・TLS・helper・置換 ref・partial cl
       return '';
     });
   }
+});
+
+await test('SGT-U54: alternateRefsCommand の外部実行を再現し、共通検証で拒否する', async (t) => {
+  const f = await gitFixture(t);
+  const marker = join(f.cwd, '.git/alternate-ran');
+  await writeFile(join(f.cwd, '.git/objects/info/alternates'), join(f.remote, 'objects').replaceAll('\\', '/') + '\n');
+  f.git('config', 'core.alternateRefsCommand', `echo ran > '${marker.replaceAll('\\', '/')}'; :`);
+  f.git('fetch', '--no-auto-maintenance', '--no-write-fetch-head', '--no-tags', f.remote, f.base);
+  assert.equal((await read(marker)).trim(), 'ran', '通常の raw SHA Fetch は外部コマンドを実行する');
+  fs.unlinkSync(marker);
+  await writeFile(join(f.cwd, 'file'), 'staged work');
+  f.git('add', 'file');
+  await writeFile(join(f.cwd, 'file'), 'local work');
+  await writeFile(join(f.cwd, 'untracked'), 'keep');
+  const refs = f.git('show-ref');
+  const index = fs.readFileSync(join(f.cwd, '.git/index'));
+  const config = fs.readFileSync(join(f.cwd, '.git/config'));
+  const run = (args: string[], cwd: string) =>
+    f.run(
+      args.map((arg) => (arg === url && args.includes('fetch') ? f.remote : arg)),
+      cwd,
+    );
+  const operations = [
+    () => fetchCommit(['--commit', f.base], f.cwd, run),
+    () => safePush({ branch, dryRun: false }, f.cwd, f.run),
+    () => inspectRepository(['status', '--short'], f.cwd),
+    () => stageFiles(['--', 'file'], f.cwd),
+    () => createCommit(['--message', 'change'], f.cwd),
+    () => createBranch(['--branch', 'codex/alternate'], f.cwd),
+    () => createWorktree(['--path', join(f.cwd, '../alternate-worktree'), '--commit', f.base], f.cwd),
+  ];
+  for (const operation of operations) {
+    await assert.rejects(operation, /alternateRefsCommand/);
+    assert.equal(fs.existsSync(marker), false);
+    assert.equal(f.git('show-ref'), refs);
+    assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/index')), index);
+    assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/config')), config);
+    assert.equal(await read(join(f.cwd, 'file')), 'local work');
+    assert.equal(await read(join(f.cwd, 'untracked')), 'keep');
+    assert.equal(fs.existsSync(join(f.cwd, '../alternate-worktree')), false);
+  }
+  f.git('config', '--unset', 'core.alternateRefsCommand');
+  await inspectRepository(['status', '--short'], f.cwd);
+  assert.equal(fs.existsSync(marker), false, '外部コマンドのない alternate は許可する');
+  await t.test('submodule の設定も Push の通信前に拒否する', async (t) => {
+    const parent = await gitFixture(t);
+    parent.git('-c', 'protocol.file.allow=always', 'submodule', 'add', f.cwd, 'sub');
+    parent.git('commit', '-qm', 'submodule');
+    parent.git('-C', 'sub', 'config', 'core.alternateRefsCommand', 'echo unexpected');
+    const calls: string[][] = [];
+    await assert.rejects(
+      safePush({ branch, dryRun: false }, parent.cwd, (args, cwd) => {
+        calls.push(args);
+        return parent.run(args, cwd);
+      }),
+      /alternateRefsCommand/,
+    );
+    assert.equal(
+      calls.some((args) => args.includes('ls-remote') || args.includes('push')),
+      false,
+    );
+  });
+});
+
+await test('SGT-U55: 標準ハンドルのリダイレクト環境変数を全入口で Git 起動前に拒否する', async (t) => {
+  const f = await gitFixture(t);
+  const destination = join(f.cwd, 'file');
+  if (process.platform === 'win32') {
+    const baseline = spawnSync('git', ['rev-parse', 'HEAD'], {
+      cwd: f.cwd,
+      env: { ...process.env, GIT_REDIRECT_STDOUT: destination },
+      encoding: 'utf8',
+    });
+    assert.equal(baseline.status, 0, baseline.stderr);
+    assert.notEqual(await read(destination), 'change', '通常の Git は指定ファイルを書き換える');
+    await writeFile(destination, 'change');
+  }
+  const refs = f.git('show-ref');
+  const index = fs.readFileSync(join(f.cwd, '.git/index'));
+  const config = fs.readFileSync(join(f.cwd, '.git/config'));
+  const inherited = { ...process.env };
+  let executions = 0;
+  const run = (args: string[], cwd: string) =>
+    runGit(args, cwd, false, async () => {
+      executions++;
+      return '';
+    });
+  const operations = [
+    () => fetchCommit(['--commit', f.base], f.cwd, run),
+    () => safePush({ branch, dryRun: false }, f.cwd, run),
+    () => inspectRepository(['status', '--short'], f.cwd, run),
+    () => stageFiles(['--', 'file'], f.cwd, run),
+    () => createCommit(['--message', 'change'], f.cwd, run),
+    () => createBranch(['--branch', 'codex/redirect'], f.cwd, run),
+    () => createWorktree(['--path', join(f.cwd, '../redirect-worktree'), '--commit', f.base], f.cwd, run),
+  ];
+  try {
+    for (const variable of [
+      'GIT_REDIRECT_STDIN',
+      'GIT_REDIRECT_STDOUT',
+      'GIT_REDIRECT_STDERR',
+      'git_redirect_stdout',
+    ]) {
+      process.env[variable] = destination;
+      for (const operation of operations) await assert.rejects(operation, /環境変数/);
+      delete process.env[variable];
+    }
+  } finally {
+    process.env = inherited;
+  }
+  assert.equal(executions, 0);
+  assert.equal(await read(destination), 'change');
+  assert.equal(f.git('show-ref'), refs);
+  assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/index')), index);
+  assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/config')), config);
 });

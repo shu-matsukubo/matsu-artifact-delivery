@@ -8,7 +8,7 @@ Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux
 
 ## 検証と更新
 
-`GIT_ATTR_SOURCE` はすべての操作で Git の起動前に拒否し、属性の参照元を作業ツリーから差し替えさせない。`GIT_TRACE*` はすべての子環境から除去し、Trace2 の3種の出力先は `0` に固定して system / global 設定からのファイル書き込みも防ぐ。HTTPS の `http.sslVerify` は Git が通信先 URL に適用する実効 boolean を確認し、未設定と有効化を許可、無効化と不正な値を拒否する。CA と失効確認の URL 別設定は Git 自身で通信先との一致を判定し、一致する設定だけを検証する。
+`GIT_ATTR_SOURCE` と `GIT_REDIRECT_STDIN`・`GIT_REDIRECT_STDOUT`・`GIT_REDIRECT_STDERR` はすべての操作で Git の起動前に拒否し、属性の参照元や標準ハンドルを差し替えさせない。`GIT_TRACE*` はすべての子環境から除去し、Trace2 の3種の出力先は `0` に固定して system / global 設定からのファイル書き込みも防ぐ。`core.alternateRefsCommand` は参照・更新の共通検証で拒否し、alternate の参照列挙から外部コマンドを実行させない。HTTPS の `http.sslVerify` は Git が通信先 URL に適用する実効 boolean を確認し、未設定と有効化を許可、無効化と不正な値を拒否する。CA と失効確認の URL 別設定は Git 自身で通信先との一致を判定し、一致する設定だけを検証する。
 
 [スクリプト](../scripts/push.ts)は次を確認する。
 
@@ -56,7 +56,7 @@ Git の terminal prompt・askpass と credential helper の対話設定を無効
 
 ## Codex Rules
 
-[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules) は `git`・`git.exe` と、固定配置の `/usr/bin/git`・`C:/Program Files/Git/cmd/git.exe`（Windows の区切り表記も含む）の直接実行を `forbidden` にする。値付きグローバルオプションや `notes --ref=<値>`、`remote` の操作による更新も同じ入口で拒否する。読み取りは `read.ts`、指定 commit の取得は `fetch.ts`、ステージ・コミット・ブランチ・worktree の新規作成と Push は操作ごとの検証付きスクリプトを使う。固定 Node.js と環境変数の除去手順は [Skill](../SKILL.md) を参照する。人間の通常の Git 操作と、一時リポジトリを使う試験 fixture は対象外とする。
+[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules) は `git`・`git.exe`、`/usr/bin/git`・`/bin/git`、Windows の `C:/Program Files/Git/` 配下の `cmd/git.exe`・`bin/git.exe`・`ucrt64/bin/git.exe`・`mingw64/bin/git.exe`（区切り表記も含む）の直接実行を `forbidden` にする。値付きグローバルオプションや `notes --ref=<値>`、`remote` の操作による更新も同じ入口で拒否する。読み取りは `read.ts`、指定 commit の取得は `fetch.ts`、ステージ・コミット・ブランチ・worktree の新規作成と Push は操作ごとの検証付きスクリプトを使う。固定 Node.js と環境変数の除去手順は [Skill](../SKILL.md) を参照する。人間の通常の Git 操作と、一時リポジトリを使う試験 fixture は対象外とする。
 
 プロジェクトの `.codex/` を信頼し、Codex を再起動して読み込む。[公式 Rules 仕様](https://developers.openai.com/codex/rules)に従い、Rules は sandbox 外のコマンド要求に対するリテラルの prefix 判定である。任意の値付き引数を個別に判定できないため、Git の直接呼び出しを一律に拒否する。記載外の実行ファイルパス、複雑な shell、スクリプト内部の子プロセスを網羅する強制境界ではない。Codex は [AGENTS.md](../../../../AGENTS.md) の禁止も守り、Rules を迂回しない。スクリプト実行は通常の sandbox・承認設定に従う。
 
