@@ -1,0 +1,23 @@
+# 任意の値付きオプションで更新コマンドを隠せるため、Git の直接実行は一律に禁止する。
+# 読み取りは safe-git の read.ts、更新は操作ごとの検証付きスクリプトを使う。
+prefix_rule(
+    pattern = [["git", "git.exe", "/usr/bin/git", "C:/Program Files/Git/cmd/git.exe", "C:\\Program Files\\Git\\cmd\\git.exe"]],
+    decision = "forbidden",
+    justification = "Git の直接実行は禁止です。読み取りは safe-git の read.ts、ステージ・コミット・ブランチ・worktree 作成・Push は各検証付きスクリプトを使ってください。",
+    match = [
+        "git push origin topic",
+        "git --git-dir=.git push origin topic",
+        "git --work-tree=. reset --hard",
+        "git -ccore.hooksPath=/tmp push origin topic",
+        "git notes --ref=review remove HEAD",
+        "git remote remove origin",
+        "git remote -v update --prune",
+        ["/usr/bin/git", "push", "origin", "topic"],
+        ["C:/Program Files/Git/cmd/git.exe", "push", "origin", "topic"],
+        ["C:\\Program Files\\Git\\cmd\\git.exe", "push", "origin", "topic"],
+    ],
+    not_match = [
+        ["C:/Program Files/nodejs/node.exe", ".agents/skills/safe-git/scripts/read.ts", "status", "--short"],
+        ["C:/Program Files/nodejs/node.exe", ".agents/skills/safe-git/scripts/push.ts", "--branch", "codex/example"],
+    ],
+)
