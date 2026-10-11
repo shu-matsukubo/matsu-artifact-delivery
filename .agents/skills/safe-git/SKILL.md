@@ -1,6 +1,6 @@
 ---
 name: safe-git
-description: このリポジトリで Codex がレビュー済みの変更をステージ・Push、または作業ブランチ・コミットを新規作成するときに使う。引数と接続先を検証する開発専用の手順。
+description: このリポジトリで Codex が Git の状態を参照し、レビュー済みの変更をステージ・Push、または作業ブランチ・コミット・worktree を新規作成するときに使う。引数と接続先を検証する開発専用の手順。
 ---
 
 # 安全な Git 操作
@@ -38,5 +38,9 @@ done
 現在の HEAD から新規作業ブランチを作成する場合は、同じ環境変数除去と固定 Node.js の起動手順を使い、実行先を [create-branch.ts](scripts/create-branch.ts)、引数を `--branch <新規作業ブランチ>` だけにする。既存ブランチの上書き、追加の Git オプション、任意の基点は受け付けない。作業変更と無視ファイルを保全し、checkout hook は実行しない。
 
 ステージ済みの内容から新規コミットを作成する場合は、同じ環境変数除去と固定 Node.js の起動手順を使い、実行先を [commit.ts](scripts/commit.ts)、引数を `--message <コミットメッセージ>` だけにする。親コミットを維持し、未ステージ・未追跡の変更を保全する。追加の Git オプション、hook、署名プログラムは実行しない。
+
+Git の状態を読む場合も同じ起動手順で [read.ts](scripts/read.ts) を使い、`status --short`、`diff --stat`、`notes list`、`remote get-url origin` など、定義された読み取りコマンドとオプションを渡す。別のリポジトリや submodule は先頭に `--cwd <リポジトリの絶対パス>` を指定する。グローバルオプション、更新コマンド、外部 diff・textconv、出力先ファイルの指定は拒否する。
+
+隔離作業ツリーは同じ起動手順で [create-worktree.ts](scripts/create-worktree.ts) に `--path <未使用の絶対パス> --commit <取得済み commit SHA>` を渡す。元リポジトリの外に、指定したローカル commit の detached worktree を新規作成する。ブランチ・既存の配置・作業変更を保全し、hook と対象 commit の外部 filter を拒否する。commit がローカルにない場合は停止する。
 
 検証失敗時は Git 操作を行わない。拒否を直接の `git add`・`git push`・`git commit`、別スクリプト、Git alias、グローバルオプション、API による強制更新等で回避しない。再試行は現在状態を確認し、原因を解消してから行う。

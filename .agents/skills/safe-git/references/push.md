@@ -26,7 +26,7 @@ Push は検証した URL と `<commit SHA>:refs/heads/<作業ブランチ>` 一�
 
 `--dry-run` はリモートの読み取りを含む検証を行い、更新せず送信予定を JSON で返す。通常実行は成功時に送信結果を JSON で返す。引数は `--branch` と任意の `--dry-run` に限定する。
 
-認証は対話入力を要求せず、固定配置の credential helper・SSH agent 等を使う。HTTPS の `credential.helper` と URL 別の helper は、空値または次の名前だけを許可し、検証した固定パスへ置き換える。任意の shell snippet、実行パス、追加引数、未知の helper は通信前に拒否する。通常・URL 別の設定を設定ファイルの順序で読み、複数 helper と空値によるリセットの順序を維持する。SSH の Push では helper を使用しない。
+認証は対話入力を要求せず、固定配置の credential helper・SSH agent 等を使う。HTTPS の `credential.helper` と URL 別の helper は、空値または次の名前だけを許可し、検証した固定パスへ置き換える。任意の shell snippet、実行パス、追加引数、未知の helper は通信前に拒否する。通常設定と Push 先 URL に一致する URL 別設定だけを Git 自身の URL 判定で選び、設定ファイルをまたぐ複数 helper と空値リセットの順序を維持する。他ホスト・protocol・パスに限定した helper は検証・再生しない。SSH の Push では helper を使用しない。
 
 | OS      | 設定名            | 固定配置                                                                                                                                                                                  |
 | ------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -46,18 +46,18 @@ Git の terminal prompt・askpass と credential helper の対話設定を無効
 
 検証・通信・Push の失敗は終了コード 1 とする。作業を破棄せず、接続先、ブランチ、リモートの先端、ローカル差分を確認する。通信失敗では反映結果が不明な場合があるため、リモートを再取得する。競合は強制 Push で解消しない。履歴の統合が必要な場合は人間に判断を返す。
 
+## 読み取りと worktree 作成
+
+[read.ts](../scripts/read.ts) は `status`・`diff`・`log`・`show`・`for-each-ref`・`rev-parse`・`ls-files`・`ls-tree`・`merge-base` と、`notes`・`remote`・`worktree`・`reflog`・`refs`・`config` の参照用サブコマンドを受け付ける。オプションは実装の許可一覧で検査する。Git のグローバルオプション、更新サブコマンド、出力ファイル、外部 diff・textconv は指定できない。hook・fsmonitor・適用される clean / process filter を抑止または拒否する。
+
+[create-worktree.ts](../scripts/create-worktree.ts) は `--path <未使用の絶対パス> --commit <取得済み commit SHA>` だけを受け取る。ローカルに存在する commit と、元リポジトリの外にある未使用の配置先を確認し、detached worktree を新規作成する。既存の配置・ref・作業変更を保全し、checkout hook と対象 commit に適用される clean / smudge / process filter を実行しない。指定 commit がない場合は自動取得せず失敗する。
+
 ## Codex Rules
 
-`apply` は、オプションの位置や `--3way` による暗黙の索引更新を含め、コマンド全体を禁止する。レビュー済みのファイルをステージするときは `stage.ts` を使う。`http-push` と標準 remote helper（`remote-http`・`remote-https`・`remote-ftp`・`remote-ftps`・`remote-ext`・`remote-fd`）の直接実行も禁止し、Push は検証付きスクリプトを使う。
+[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules) は `git`・`git.exe` と、固定配置の `/usr/bin/git`・`C:/Program Files/Git/cmd/git.exe`（Windows の区切り表記も含む）の直接実行を `forbidden` にする。値付きグローバルオプションや `notes --ref=<値>`、`remote` の操作による更新も同じ入口で拒否する。読み取りは `read.ts`、ステージ・コミット・ブランチ・worktree の新規作成と Push は操作ごとの検証付きスクリプトを使う。固定 Node.js と環境変数の除去手順は [Skill](../SKILL.md) を参照する。人間の通常の Git 操作と、一時リポジトリを使う試験 fixture は対象外とする。
 
-`reflog` の `delete` / `expire` / `drop` / `write` は、参照の更新と復旧履歴の喪失を防ぐため禁止する。`reflog` の読み取りと `show` / `list` / `exists` は利用できる。
-
-`notes` の `add` / `copy` / `append` / `edit` / `merge` / `remove` / `prune` は、注釈の作成・更新・削除を防ぐため禁止する。`notes` の既定の一覧表示と `list` / `show` / `get-ref` は利用できる。サブコマンド前の独立した `--ref` も拒否する。
-
-[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules)が直接の Push、worktree 作成・削除、`git add`、`git commit`、`git rm`、`git mv`、`git branch`、`git switch`、`git tag`、`git checkout-index`、`git read-tree`、`git update-index`、`git replace`、`git submodule`、`git merge`、`git am`、`git cherry-pick`、`git revert`、`git fetch`、`git pull`、`git fast-import` を含む破壊的な Git コマンドを `forbidden` にする。上書き・削除オプションの位置・短縮表記にかかわらず拒否するため、これらはコマンド全体を禁止する。add はステージ前の外部 filter 実行、commit は amend による履歴の書き換え、update-index はステージ内容の破棄・置換、replace は検証対象の偽装を防ぐ。`git refs` の `create` / `update` / `delete` / `rename` も禁止し、`list` / `exists` / `verify` は利用できる。merge・am・cherry-pick・revert は中断による競合解消の破棄、fetch・pull は refspec・設定によるブランチやタグの強制更新・削除、fast-import はブランチ ref の強制更新、worktree add は明示・暗黙のブランチ作成と強制更新を防ぐ。worktree の準備は専用ツールの detached 作成を使い、一覧は `git worktree list` で確認する。submodule の作業状態は対象ディレクトリを cwd にした `git status` などの読み取りで確認する。ブランチ・タグの一覧は `git for-each-ref refs/heads/` / `refs/tags/`、ブランチ・コミットの新規作成は [Skill](../SKILL.md) の `create-branch.ts` / `commit.ts` を使う。ブランチの新規作成は現在の HEAD に限定し、既存 ref と作業変更・無視ファイルを保全し、checkout hook を実行しない。Git のグローバルオプションでサブコマンドを隠す呼び出しも禁止対象とし、作業ディレクトリはツールの cwd で指定する。
-
-プロジェクトの `.codex/` を信頼し、Codex を再起動して読み込む。[公式 Rules 仕様](https://developers.openai.com/codex/rules)に従い、Rules は sandbox 外のコマンド要求に対するリテラルの prefix 判定である。Git 2.56 のオプション解析にある、後続コマンドへ進む独立したグローバルオプションを検査する。別の実行ファイルパス、`--git-dir=<任意値>` 等の値付き単一トークン、複雑な shell やスクリプト内部の子プロセスを網羅する強制境界ではない。Codex は [AGENTS.md](../../../../AGENTS.md) の禁止も守り、Rules を迂回しない。スクリプト実行は通常の sandbox・承認設定に従う。
+プロジェクトの `.codex/` を信頼し、Codex を再起動して読み込む。[公式 Rules 仕様](https://developers.openai.com/codex/rules)に従い、Rules は sandbox 外のコマンド要求に対するリテラルの prefix 判定である。任意の値付き引数を個別に判定できないため、Git の直接呼び出しを一律に拒否する。記載外の実行ファイルパス、複雑な shell、スクリプト内部の子プロセスを網羅する強制境界ではない。Codex は [AGENTS.md](../../../../AGENTS.md) の禁止も守り、Rules を迂回しない。スクリプト実行は通常の sandbox・承認設定に従う。
 
 ```sh
-codex execpolicy check --rules .codex/rules/safe-git.rules -- git push origin codex/example
+codex execpolicy check --rules .codex/rules/safe-git.rules -- git --git-dir=.git push origin codex/example
 ```

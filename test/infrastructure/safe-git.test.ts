@@ -12,6 +12,8 @@ import { runProcess } from '../../.agents/skills/safe-git/scripts/process.ts';
 import { createBranch } from '../../.agents/skills/safe-git/scripts/create-branch.ts';
 import { createCommit } from '../../.agents/skills/safe-git/scripts/commit.ts';
 import { stageFiles } from '../../.agents/skills/safe-git/scripts/stage.ts';
+import { createWorktree } from '../../.agents/skills/safe-git/scripts/create-worktree.ts';
+import { inspectRepository } from '../../.agents/skills/safe-git/scripts/read.ts';
 import { frontmatter, localLinks, read, repository, temporaryDirectory } from '../lib/plugin.ts';
 
 const url = 'https://github.com/shu-matsukubo/matsu-artifact-delivery.git';
@@ -47,6 +49,7 @@ function fixture(root = repository) {
   ]);
   const run: Run = (args) => {
     calls.push(args);
+    if (args.includes('--get-urlmatch') && args.some((arg) => /^safegit[a-f0-9]+\.matches$/.test(arg))) return 'true';
     if (args.includes('push')) return 'ok';
     const reply = replies.get(args.join(' '));
     assert.notEqual(reply, undefined, `Unexpected Git command: ${args.join(' ')}`);
@@ -804,6 +807,12 @@ await test('SGT-U40: 属性の参照元を上書きする環境変数を全操�
     ['stage.ts', 'stageFiles', ['--', 'file']],
     ['commit.ts', 'createCommit', ['--message', 'change']],
     ['create-branch.ts', 'createBranch', ['--branch', 'codex/attribute-source']],
+    ['read.ts', 'inspectRepository', ['status', '--short']],
+    [
+      'create-worktree.ts',
+      'createWorktree',
+      ['--path', join(f.cwd, '../attribute-source-worktree'), '--commit', f.base],
+    ],
   ] as const) {
     const entry = join(f.cwd, `.git/probe-${script}`);
     await writeFile(
@@ -1772,7 +1781,7 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
       [git, 'worktree', 'add', 'path'],
     ]),
   ];
-  const allowed = [
+  const readCommands = [
     ['git', 'status'],
     ['git', 'for-each-ref', 'refs/heads/'],
     ['git', 'for-each-ref', 'refs/tags/'],
@@ -1795,6 +1804,22 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ]),
     ['git', 'worktree', 'list', '--porcelain'],
     ['git', 'ls-remote', 'origin'],
+  ];
+  forbidden.push(...readCommands);
+  const allowed = [
+    ...readCommands.map((args) => [
+      'C:/Program Files/nodejs/node.exe',
+      '.agents/skills/safe-git/scripts/read.ts',
+      ...args.slice(1),
+    ]),
+    [
+      'C:/Program Files/nodejs/node.exe',
+      '.agents/skills/safe-git/scripts/create-worktree.ts',
+      '--path',
+      '/tmp/new-worktree',
+      '--commit',
+      head,
+    ],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/push.ts', '--branch', branch],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/create-branch.ts', '--branch', branch],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/commit.ts', '--message', 'change'],
@@ -1847,6 +1872,228 @@ await test('SGT-U44: cached apply のステージ内容の上書きを再現し�
   assert.equal(f.git('rev-parse', ':file'), staged);
   assert.equal(await read(file), 'worktree-only\n');
   assert.equal(f.git('for-each-ref', '--format=%(refname) %(objectname)'), refs);
+});
+
+await test('SGT-U45: 固定パス・値付き引数・notes・remote による直接更新を Rules で拒否する', async (t) => {
+  if (spawnSync('codex', ['--version'], { stdio: 'pipe' }).error) return t.skip('Codex CLI がない環境');
+  const commands = [
+    ['push', 'origin', branch],
+    ['--git-dir=.git', 'push', 'origin', branch],
+    ['--work-tree=.', 'reset', '--hard'],
+    ['-ccore.hooksPath=/tmp', 'push', 'origin', branch],
+    ['notes', '--ref=review', 'remove', 'HEAD'],
+    ['notes', '--ref=refs/notes/review', 'add', '-f', '-m', 'replacement', 'HEAD'],
+    ['remote', 'remove', 'origin'],
+    ['remote', 'rm', 'origin'],
+    ['remote', 'prune', 'origin'],
+    ['remote', 'update', '--prune'],
+    ['remote', '-v', 'remove', 'origin'],
+  ];
+  for (const executable of [
+    'git',
+    'git.exe',
+    '/usr/bin/git',
+    'C:/Program Files/Git/cmd/git.exe',
+    'C:\\Program Files\\Git\\cmd\\git.exe',
+  ]) {
+    await t.test(executable, () => {
+      for (const args of commands) {
+        const result = JSON.parse(
+          execFileSync(
+            'codex',
+            [
+              'execpolicy',
+              'check',
+              '--rules',
+              join(repository, '.codex/rules/safe-git.rules'),
+              '--',
+              executable,
+              ...args,
+            ],
+            { encoding: 'utf8', stdio: 'pipe' },
+          ),
+        );
+        assert.equal(result.decision, 'forbidden', [executable, ...args].join(' '));
+      }
+    });
+  }
+});
+
+await test('SGT-U46: 無関係なホスト・protocol・パスの helper を検証・再生せず、対象の helper は拒否する', async (t) => {
+  const f = await gitFixture(t);
+  const config = join(f.cwd, '.git/config');
+  const initial = await read(config);
+  for (const [scope, matches] of [
+    ['https://gitlab.com', false],
+    ['http://github.com', false],
+    ['https://github.com/other', false],
+    ['https://github.com/shu-matsukubo/matsu-artifact-delivery.git-extra', false],
+    ['https://github.com', true],
+    ['https://*.com', true],
+    ['https://github.com/shu-matsukubo', true],
+    [url, true],
+  ] as const) {
+    await t.test(scope, async () => {
+      await writeFile(config, initial);
+      const key = `credential.${scope}.helper`;
+      f.git('config', '--add', key, '!untrusted');
+      const calls: string[][] = [];
+      const run = (args: string[], cwd: string) => {
+        calls.push(args);
+        return f.run(args, cwd);
+      };
+      if (matches) await assert.rejects(safePush({ branch, dryRun: true }, f.cwd, run), /credential helper/);
+      else {
+        await safePush({ branch, dryRun: true }, f.cwd, run);
+        assert.ok(calls.some((args) => args.includes('ls-remote')));
+        assert.ok(
+          !calls
+            .filter((args) => args.includes('ls-remote'))
+            .flat()
+            .some((arg) => arg.includes('!untrusted')),
+        );
+      }
+      assert.ok(!calls.some((args) => args.includes('push')));
+    });
+  }
+});
+
+await test('SGT-U47: 指定 commit から detached worktree を新規作成し、既存 ref・変更・hook を保全する', async (t) => {
+  const f = await gitFixture(t);
+  const target = join(await temporaryDirectory(t), 'detached');
+  const marker = join(f.cwd, '.git/checkout-ran');
+  await writeFile(
+    join(f.cwd, '.git/hooks/post-checkout'),
+    `#!/bin/sh\necho ran > '${marker.replaceAll('\\', '/')}'\n`,
+    { mode: 0o755 },
+  );
+  await writeFile(join(f.cwd, 'file'), 'unreviewed');
+  await writeFile(join(f.cwd, 'untracked'), 'keep');
+  const refs = f.git('for-each-ref', '--format=%(refname) %(objectname)');
+  const index = f.git('write-tree');
+  await createWorktree(['--path', target, '--commit', f.base], f.cwd);
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: target, encoding: 'utf8', stdio: 'pipe' }).trim();
+  assert.equal(git('rev-parse', 'HEAD'), f.base);
+  assert.equal(spawnSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: target }).status, 1);
+  assert.equal(await read(join(target, 'file')), 'base');
+  assert.equal(fs.existsSync(marker), false);
+  for (const args of [
+    ['--path', target, '--commit', f.base],
+    ['--path', join(f.cwd, 'nested'), '--commit', f.base],
+    ['--path', target + '-bad', '--commit', 'HEAD'],
+    ['--path', target + '-bad', '--commit', 'b'.repeat(40)],
+    ['--path', target + '-bad', '--commit', f.base, '--force'],
+  ])
+    await assert.rejects(createWorktree(args, f.cwd));
+  assert.equal(f.git('for-each-ref', '--format=%(refname) %(objectname)'), refs);
+  assert.equal(f.git('write-tree'), index);
+  assert.equal(await read(join(f.cwd, 'file')), 'unreviewed');
+  assert.equal(await read(join(f.cwd, 'untracked')), 'keep');
+  assert.equal(fs.existsSync(target + '-bad'), false);
+  await createWorktree(['--path', target + '-with-stale', '--commit', f.base], f.cwd, async (args, root) => {
+    const output = await runGit(args, root);
+    return args.includes('worktree') && args.includes('list')
+      ? output + `worktree ${target}-stale\0prunable missing\0\0`
+      : output;
+  });
+  await assert.rejects(
+    createWorktree(['--path', target + '-race', '--commit', f.base], f.cwd, async (args, root) => {
+      const output = await runGit(args, root);
+      if (args.includes('--verify')) {
+        fs.mkdirSync(target + '-race');
+        fs.writeFileSync(join(target + '-race', 'keep'), 'existing');
+      }
+      return output;
+    }),
+    /EEXIST/,
+  );
+  assert.equal(await read(join(target + '-race', 'keep')), 'existing');
+  for (const path of [join(f.cwd, 'nested-from-linked'), join(f.cwd, '.git/worktrees/new-target')]) {
+    await assert.rejects(createWorktree(['--path', path, '--commit', f.base], target), /既存/);
+    assert.equal(fs.existsSync(path), false);
+  }
+  const filtered = await gitFixture(t);
+  await writeFile(join(filtered.cwd, '.gitattributes'), '* filter=unsafe\n');
+  filtered.git('add', '.gitattributes');
+  filtered.git('commit', '-qm', 'checkout attributes');
+  const filteredCommit = filtered.git('rev-parse', 'HEAD');
+  filtered.git('rm', '.gitattributes');
+  filtered.git('commit', '-qm', 'remove attributes');
+  filtered.git('config', 'filter.unsafe.smudge', `echo ran > '${marker.replaceAll('\\', '/')}'`);
+  await assert.rejects(
+    createWorktree(['--path', target + '-filtered', '--commit', filteredCommit], filtered.cwd),
+    /filter/,
+  );
+  assert.equal(fs.existsSync(marker), false);
+  assert.equal(fs.existsSync(target + '-filtered'), false);
+});
+
+await test('SGT-U48: 読み取り入口は notes・remote・差分を参照し、更新・外部コマンドを実行しない', async (t) => {
+  const f = await gitFixture(t);
+  const marker = join(f.cwd, '.git/read-command-ran');
+  f.git('notes', 'add', '-m', 'keep', f.base);
+  f.git('config', 'diff.external', `echo ran > '${marker.replaceAll('\\', '/')}'`);
+  f.git('config', 'alias.constructor', '!printf ran > .git/read-command-ran');
+  await writeFile(
+    join(f.cwd, '.git/hooks/post-index-change'),
+    `#!/bin/sh\necho ran > '${marker.replaceAll('\\', '/')}'\n`,
+    { mode: 0o755 },
+  );
+  await writeFile(join(f.cwd, 'file'), 'unreviewed');
+  const refs = f.git('for-each-ref', '--format=%(refname) %(objectname)');
+  for (const args of [
+    ['status', '--short'],
+    ['diff', '--stat', 'HEAD'],
+    ['log', '--max-count=1', '--format=%H'],
+    ['show', '--no-patch', '--format=%H', 'HEAD'],
+    ['for-each-ref', '--format=%(refname)', 'refs/heads/'],
+    ['worktree', 'list', '--porcelain'],
+    ['notes', 'list'],
+    ['notes', 'show', f.base],
+    ['notes', '--ref=commits', 'show', f.base],
+    ['notes', '--ref', 'commits', 'list'],
+    ['reflog', '--all'],
+    ['remote', '-v'],
+    ['remote', 'get-url', '--all', 'origin'],
+    ['config', '--get', 'remote.origin.url'],
+  ])
+    assert.ok(await inspectRepository(args, f.cwd), args.join(' '));
+  for (const args of [
+    ['push', 'origin', branch],
+    ['--git-dir=.git', 'push'],
+    ['-ccore.hooksPath=/tmp', 'push'],
+    ['notes', '--ref=review', 'remove', 'HEAD'],
+    ['notes', 'remove', f.base],
+    ['notes', '--ref', 'review', 'remove', 'HEAD'],
+    ['remote', 'remove', 'origin'],
+    ['remote', 'prune', 'origin'],
+    ['remote', 'update', '--prune'],
+    ['remote', '-v', 'remove', 'origin'],
+    ['worktree', 'remove', 'path'],
+    ['reflog', 'expire', '--all'],
+    ['refs', 'delete', 'refs/heads/topic'],
+    ['config', '--unset-all', 'remote.origin.url'],
+    ['diff', '--output=file'],
+    ['diff', '--ext-diff'],
+    ['show', '--textconv'],
+    ['constructor'],
+    ['__proto__'],
+    ['toString'],
+  ]) {
+    const calls: string[][] = [];
+    await assert.rejects(
+      inspectRepository(args, f.cwd, async (args, root) => {
+        calls.push(args);
+        return runGit(args, root);
+      }),
+    );
+    assert.equal(calls.length, 0, args.join(' '));
+  }
+  assert.equal(fs.existsSync(marker), false);
+  assert.equal(f.git('for-each-ref', '--format=%(refname) %(objectname)'), refs);
+  assert.equal(await read(join(f.cwd, 'file')), 'unreviewed');
+  assert.equal(f.git('notes', 'show', f.base), 'keep');
+  assert.equal(f.git('remote', 'get-url', 'origin'), url);
 });
 
 await test('SGT-U29: 任意の credential helper を通常・URL 別設定で通信前に拒否する', async (t) => {

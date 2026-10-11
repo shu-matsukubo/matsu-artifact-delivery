@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { lstatSync, readFileSync, readlinkSync, realpathSync } from 'node:fs';
 import { delimiter, dirname, posix, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -174,7 +174,12 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
 }
 
 // Git が作業ツリーを読む前に、属性から起動される外部コマンドを拒否する。
-export async function checkedConfigKeys(root: string, run: Run = runGit, additionalPaths: string[] = []) {
+export async function checkedConfigKeys(
+  root: string,
+  run: Run = runGit,
+  additionalPaths: string[] = [],
+  source?: string,
+) {
   const git = async (...args: string[]) => (await run(args, root)).replace(/\r?\n$/, '');
   if (await git('for-each-ref', '--format=%(refname)', 'refs/replace/'))
     throw new Error('置換 ref が存在するため Git の状態を検証できません。');
@@ -182,11 +187,18 @@ export async function checkedConfigKeys(root: string, run: Run = runGit, additio
   // 古い Git は GIT_NO_LAZY_FETCH を無視するため、partial clone の設定自体も拒否する。
   if (configKeys.some((key) => /^(?:extensions\.partialclone|remote\..+\.promisor)$/i.test(key)))
     throw new Error('partial clone の自動 fetch を伴うリポジトリは検証できません。');
-  const filters = new Set(configKeys.flatMap((key) => /^filter\.(.+)\.(?:clean|process)$/i.exec(key)?.[1] ?? []));
+  const filterPattern = source ? /^filter\.(.+)\.(?:clean|smudge|process)$/i : /^filter\.(.+)\.(?:clean|process)$/i;
+  const filters = new Set(configKeys.flatMap((key) => filterPattern.exec(key)?.[1] ?? []));
   if (filters.size) {
     const paths = [
       ...new Set([
-        ...(await git('-c', 'core.fsmonitor=false', 'ls-files', '-z')).split('\0').filter(Boolean),
+        ...(
+          await (source
+            ? git('ls-tree', '-r', '--name-only', '-z', source)
+            : git('-c', 'core.fsmonitor=false', 'ls-files', '-z'))
+        )
+          .split('\0')
+          .filter(Boolean),
         ...additionalPaths,
       ]),
     ];
@@ -196,6 +208,7 @@ export async function checkedConfigKeys(root: string, run: Run = runGit, additio
           '-c',
           'core.fsmonitor=false',
           'check-attr',
+          ...(source ? ['--source=' + source] : []),
           '-z',
           'filter',
           '--',
@@ -204,15 +217,43 @@ export async function checkedConfigKeys(root: string, run: Run = runGit, additio
       ).split('\0');
       for (let index = 2; index < attributes.length; index += 3) {
         if (filters.has(attributes[index]!))
-          throw new Error('対象ファイルに実行可能な clean / process filter があるため Git 操作を実行できません。');
+          throw new Error(
+            '対象ファイルに実行可能な clean / smudge / process filter があるため Git 操作を実行できません。',
+          );
       }
     }
   }
   return configKeys;
 }
 
-async function credentialOptions(root: string, configKeys: string[], run: Run) {
-  const keys = new Set(configKeys.filter((key) => /^credential(?:\..+)?\.helper$/i.test(key)));
+async function credentialOptions(root: string, configKeys: string[], run: Run, pushUrl: string) {
+  const allKeys = new Set(configKeys.filter((key) => /^credential(?:\..+)?\.helper$/i.test(key)));
+  const keys = new Set<string>();
+  // 各 URL の一致は Git に判定させ、helper の設定順・空値リセットは維持する。
+  const section = 'safegit' + randomUUID().replaceAll('-', '');
+  for (const key of allKeys) {
+    const scope = /^credential\.(.+)\.helper$/i.exec(key)?.[1];
+    if (
+      !scope ||
+      (
+        await run(
+          [
+            '-c',
+            section + '.matches=false',
+            '-c',
+            `${section}.${scope}.matches=true`,
+            'config',
+            '--type=bool',
+            '--get-urlmatch',
+            section + '.matches',
+            pushUrl,
+          ],
+          root,
+        )
+      ).trim() === 'true'
+    )
+      keys.add(key);
+  }
   if (!keys.size) return [];
   // 継承した helper を先にリセットし、設定ファイルをまたぐ元の順序で再生する。
   const options = [...keys].flatMap((key) => ['-c', key + '=']);
@@ -220,7 +261,7 @@ async function credentialOptions(root: string, configKeys: string[], run: Run) {
   for (const entry of entries) {
     const separator = entry.indexOf('\n');
     const key = separator < 0 ? entry : entry.slice(0, separator);
-    if (!/^credential(?:\..+)?\.helper$/i.test(key)) continue;
+    if (!keys.has(key)) continue;
     if (separator < 0) throw new Error('credential helper の値が設定されていません。');
     const value = entry.slice(separator + 1);
     if (value === '') {
@@ -389,7 +430,7 @@ export async function safePush(options: Options, root = repository, run: Run = r
     }
     if (verify !== 'true') throw new Error('TLS 証明書の検証を無効にする設定があるため Push できません。');
   }
-  const credentials = sshTransport ? [] : await credentialOptions(root, configKeys, run);
+  const credentials = sshTransport ? [] : await credentialOptions(root, configKeys, run, pushUrl);
   const remoteGit = async (...args: string[]) =>
     (await run([...credentials, ...args], root, sshTransport)).replace(/\r?\n$/, '');
   const refs = await remoteGit('ls-remote', '--symref', pushUrl, 'HEAD', 'refs/heads/' + options.branch);

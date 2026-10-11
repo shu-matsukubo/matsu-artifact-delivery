@@ -154,7 +154,7 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
     id: 'SCH-U01',
     ordered: [
       'リポジトリの Open PR',
-      'git status --porcelain=v1 --untracked-files=all',
+      'read.ts status --porcelain=v1 --untracked-files=all',
       '`AI処理可能` ラベル付きの Open Issue',
     ],
   });
@@ -171,6 +171,7 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(workspace, /取得したコミット SHA と一致する新しい隔離作業ツリー/);
   assert.match(workspace, /前回の作業ブランチ、ローカル HEAD、未マージまたは破棄済み作業の変更は引き継がない/);
   assert.match(workspace, /作業ツリーを用意できない場合は停止/);
+  assert.match(workspace, /safe-git.*create-worktree\.ts.*detached worktree/);
   assert.match(workspace, /選択した手段.*取得した SHA から作成する/);
   assert.match(workspace, /同名ブランチが既にある場合は再利用・上書きせず停止/);
   assert.match(workspace, /既存ブランチの再利用は.*正当に特定された再開作業に限る/);
@@ -186,7 +187,7 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
       'コミットを作成',
       'リモートブランチを再取得',
       '対応するローカルコミットを作成',
-      'git status --porcelain=v1 --untracked-files=all',
+      'read.ts status --porcelain=v1 --untracked-files=all',
       '選択した手段で Issue を参照する Open PR を作成',
     ],
   });

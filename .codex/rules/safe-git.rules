@@ -1,85 +1,23 @@
-# Codex の直接実行を制限する。Push は safe-git Skill のスクリプトを使う。
+# 任意の値付きオプションで更新コマンドを隠せるため、Git の直接実行は一律に禁止する。
+# 読み取りは safe-git の read.ts、更新は操作ごとの検証付きスクリプトを使う。
 prefix_rule(
-    pattern = [["git", "git.exe"], ["push", "http-push", "send-pack", "receive-pack", "remote-http", "remote-https", "remote-ftp", "remote-ftps", "remote-ext", "remote-fd", "apply", "reset", "clean", "checkout", "checkout-index", "read-tree", "restore", "stash", "rebase", "merge", "am", "cherry-pick", "revert", "fetch", "pull", "fast-import", "filter-branch", "update-ref", "update-index", "replace", "symbolic-ref", "rm", "mv", "submodule"]],
+    pattern = [["git", "git.exe", "/usr/bin/git", "C:/Program Files/Git/cmd/git.exe", "C:\\Program Files\\Git\\cmd\\git.exe"]],
     decision = "forbidden",
-    justification = "直接の Push・破壊的な Git 操作は禁止です。Push は safe-git の検証付きスクリプトを使い、変更を保全してください。",
-    match = ["git push origin codex/example", "git.exe push --force", "git http-push --force https://example.invalid/repo.git HEAD", "git.exe http-push -D https://example.invalid/repo.git topic", "git remote-http origin", "git.exe remote-https origin https://example.invalid/repo.git", "git remote-ftp origin", "git.exe remote-ftps origin", "git remote-ext origin command", "git.exe remote-fd origin 3", "git apply --cached --reverse patch", "git.exe apply patch --index", "git apply -3 patch", "git push --delete origin topic", "git fast-import --force", "git.exe fast-import --quiet --force", "git reset --hard", "git clean -fd", "git restore file", "git rm --force file", "git rm file --force", "git rm -rf directory", "git mv -f source target", "git.exe mv --force source target", "git mv source target --force", "git mv -vf source target", "git checkout-index -f -a", "git.exe checkout-index file --force", "git read-tree --reset -u HEAD", "git submodule deinit --force --all", "git submodule update sub --force", "git submodule --quiet update --force --recursive", "git.exe submodule -q deinit -f --all", "git merge --abort", "git.exe merge --quiet --abort", "git am --abort", "git cherry-pick --abort", "git revert --abort", "git fetch origin +topic:refs/heads/topic", "git fetch origin topic:refs/tags/v1 --force", "git.exe pull --force origin topic:refs/heads/topic"],
-    not_match = ["git status", "git diff", "C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/create-branch.ts --branch codex/example", "C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/push.ts --branch codex/example"],
-)
-
-prefix_rule(
-    pattern = [["git", "git.exe"], "commit"],
-    decision = "forbidden",
-    justification = "オプションの位置や短縮形によらず amend による履歴の書き換えを防ぐため、直接の commit は禁止です。ステージ後に safe-git の commit.ts --message <メッセージ> を使ってください。",
-    match = ["git commit --amend --no-edit", "git.exe commit --no-edit --amend", "git commit -m change --amend", "git commit --am", "git commit -m change"],
-    not_match = ["C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/commit.ts --message change"],
-)
-
-prefix_rule(
-    pattern = [["git", "git.exe"], "add"],
-    decision = "forbidden",
-    justification = "ステージ時の外部 filter 実行を防ぐため、直接の add は禁止です。safe-git の stage.ts -- <レビュー済みパス>... を使ってください。",
-    match = ["git add file", "git.exe add --all", "git add -- file", "git add -p file", "git add --renormalize file"],
-    not_match = ["C:/Program Files/nodejs/node.exe .agents/skills/safe-git/scripts/stage.ts -- file"],
-)
-
-prefix_rule(
-    pattern = [["git", "git.exe"], "refs", ["create", "update", "delete", "rename"]],
-    decision = "forbidden",
-    justification = "refs の直接作成・更新・削除・改名は禁止です。ブランチの作成と Push は safe-git、一覧は for-each-ref を使ってください。",
-    match = ["git refs update refs/heads/topic HEAD", "git.exe refs delete refs/tags/v1", "git refs create --no-deref refs/heads/topic HEAD", "git refs rename refs/heads/topic refs/heads/new"],
-    not_match = ["git refs list", "git refs exists refs/heads/topic", "git refs verify"],
-)
-
-prefix_rule(
-    pattern = [["git", "git.exe"], "reflog", ["delete", "expire", "drop", "write"]],
-    decision = "forbidden",
-    justification = "reflog の更新・削除は禁止です。--updateref による参照の更新と復旧履歴の喪失を防ぎ、確認には reflog show・list・exists を使ってください。",
-    match = ["git reflog delete --updateref refs/heads/topic@{0}", "git.exe reflog delete refs/heads/topic@{0} --updateref", "git reflog expire --updateref --expire=all refs/heads/topic", "git reflog expire refs/heads/topic --updateref --expire=all", "git reflog drop --all", "git reflog write refs/heads/topic HEAD HEAD message"],
-    not_match = ["git reflog", "git reflog --all", "git reflog show HEAD", "git.exe reflog show --all", "git reflog list", "git reflog exists refs/heads/topic"],
-)
-
-prefix_rule(
-    pattern = [["git", "git.exe"], "notes", ["add", "copy", "append", "edit", "merge", "remove", "prune", "--ref"]],
-    decision = "forbidden",
-    justification = "notes の作成・更新・削除は禁止です。注釈の確認には notes list・show・get-ref を使ってください。",
-    match = ["git notes remove HEAD", "git.exe notes add -f -m replacement HEAD", "git notes add HEAD --force -m replacement", "git notes copy --force HEAD~1 HEAD", "git notes append -m change HEAD", "git notes edit HEAD", "git notes merge --abort", "git notes merge --commit", "git notes prune", "git notes --ref review remove HEAD"],
-    not_match = ["git notes", "git notes list", "git.exe notes show HEAD", "git notes get-ref"],
-)
-
-prefix_rule(
-    pattern = [["git", "git.exe"], ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--bare", "--exec-path", "--config-env", "--shallow-file", "--attr-source", "-p", "-P", "--no-pager", "--paginate", "--no-replace-objects", "--no-lazy-fetch", "--no-optional-locks", "--no-advice", "--literal-pathspecs", "--no-literal-pathspecs", "--glob-pathspecs", "--noglob-pathspecs", "--icase-pathspecs"]],
-    decision = "forbidden",
-    justification = "グローバルオプションで Git コマンドを迂回しないでください。cwd はツールで指定し、Push は safe-git を使ってください。",
-    match = ["git -C . push", "git -c alias.publish=push publish", "git --no-replace-objects push origin topic", "git.exe -P reset --hard", "git --literal-pathspecs push origin topic"],
-)
-
-prefix_rule(
-    pattern = [["git", "git.exe"], "branch"],
-    decision = "forbidden",
-    justification = "オプションの位置によらずブランチの削除・強制更新を防ぐため、branch コマンドは禁止です。一覧は git for-each-ref、作成は safe-git の create-branch.ts を使ってください。",
-    match = ["git branch -D topic", "git branch topic -D", "git.exe branch topic --delete", "git branch topic --force", "git branch --force topic HEAD", "git branch -M source target", "git branch -C source target", "git branch --move --force source target", "git branch --copy --force source target", "git branch --list"],
-    not_match = ["git for-each-ref refs/heads/"],
-)
-
-prefix_rule(
-    pattern = [["git", "git.exe"], "tag"],
-    decision = "forbidden",
-    justification = "オプションの位置によらずタグの削除・強制更新を防ぐため、tag コマンドは禁止です。一覧は git for-each-ref refs/tags/ を使ってください。",
-    match = ["git tag --delete v1", "git tag --force v1", "git tag v1 --delete", "git.exe tag v1 --force HEAD"],
-    not_match = ["git for-each-ref refs/tags/"],
-)
-
-prefix_rule(
-    pattern = [["git", "git.exe"], "switch"],
-    decision = "forbidden",
-    justification = "オプションの位置によらず変更の破棄・ブランチの強制更新を防ぐため、switch コマンドは禁止です。新規作成は safe-git の create-branch.ts を使ってください。",
-    match = ["git switch --discard-changes main", "git switch -C topic", "git switch main --discard-changes", "git.exe switch main -f", "git switch -c topic --discard-changes", "git switch -c topic"],
-)
-
-prefix_rule(
-    pattern = [["git", "git.exe"], "worktree", ["add", "remove"]],
-    decision = "forbidden",
-    justification = "作業ツリーの直接作成・削除は禁止です。ブランチの新規作成・強制更新と変更の破棄を防ぎ、準備には専用ツールの detached 作成を使ってください。",
-    match = ["git worktree remove --force path", "git worktree remove path --force", "git worktree remove -f path", "git worktree add -B topic path HEAD~1", "git.exe worktree add path HEAD~1 -B topic", "git worktree add --detach path -B topic HEAD~1", "git worktree add -b topic path", "git worktree add path"],
+    justification = "Git の直接実行は禁止です。読み取りは safe-git の read.ts、ステージ・コミット・ブランチ・worktree 作成・Push は各検証付きスクリプトを使ってください。",
+    match = [
+        "git push origin topic",
+        "git --git-dir=.git push origin topic",
+        "git --work-tree=. reset --hard",
+        "git -ccore.hooksPath=/tmp push origin topic",
+        "git notes --ref=review remove HEAD",
+        "git remote remove origin",
+        "git remote -v update --prune",
+        ["/usr/bin/git", "push", "origin", "topic"],
+        ["C:/Program Files/Git/cmd/git.exe", "push", "origin", "topic"],
+        ["C:\\Program Files\\Git\\cmd\\git.exe", "push", "origin", "topic"],
+    ],
+    not_match = [
+        ["C:/Program Files/nodejs/node.exe", ".agents/skills/safe-git/scripts/read.ts", "status", "--short"],
+        ["C:/Program Files/nodejs/node.exe", ".agents/skills/safe-git/scripts/push.ts", "--branch", "codex/example"],
+    ],
 )
