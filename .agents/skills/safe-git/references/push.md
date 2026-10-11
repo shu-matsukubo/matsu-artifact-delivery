@@ -48,6 +48,8 @@ Git の terminal prompt・askpass と credential helper の対話設定を無効
 
 ## Codex Rules
 
+`apply` は、オプションの位置や `--3way` による暗黙の索引更新を含め、コマンド全体を禁止する。レビュー済みのファイルをステージするときは `stage.ts` を使う。`http-push` と標準 remote helper（`remote-http`・`remote-https`・`remote-ftp`・`remote-ftps`・`remote-ext`・`remote-fd`）の直接実行も禁止し、Push は検証付きスクリプトを使う。
+
 `reflog` の `delete` / `expire` / `drop` / `write` は、参照の更新と復旧履歴の喪失を防ぐため禁止する。`reflog` の読み取りと `show` / `list` / `exists` は利用できる。
 
 `notes` の `add` / `copy` / `append` / `edit` / `merge` / `remove` / `prune` は、注釈の作成・更新・削除を防ぐため禁止する。`notes` の既定の一覧表示と `list` / `show` / `get-ref` は利用できる。サブコマンド前の独立した `--ref` も拒否する。

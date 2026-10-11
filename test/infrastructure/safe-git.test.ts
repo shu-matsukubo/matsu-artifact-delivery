@@ -1620,6 +1620,25 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
   if (probe.error) return t.skip('Codex CLI がない環境では Rules 内の match/not_match を利用する');
   const forbidden = [
     ...['git', 'git.exe'].flatMap((git) => [
+      [git, 'apply', 'patch'],
+      ...['--cached', '--index', '--3way', '-3', '--intent-to-add', '-N'].flatMap((option) => [
+        [git, 'apply', option, '--reverse', 'patch'],
+        [git, 'apply', 'patch', '-R', option],
+      ]),
+      [git, 'apply', '--stat', '--cached', '--apply', 'patch'],
+      [git, 'apply', '--build-fake-ancestor=.git/index', 'patch'],
+      [git, 'http-push', url, `HEAD:refs/heads/${branch}`],
+      ...['--force', '-d', '-D'].flatMap((option) => [
+        [git, 'http-push', option, url, branch],
+        [git, 'http-push', url, branch, option],
+      ]),
+      [git, 'http-push', url, `+HEAD:refs/heads/${branch}`],
+      ...['remote-http', 'remote-https', 'remote-ftp', 'remote-ftps'].flatMap((command) => [
+        [git, command, 'origin'],
+        [git, command, 'origin', url],
+      ]),
+      [git, 'remote-ext', 'origin', 'git-receive-pack repository'],
+      [git, 'remote-fd', 'origin', '3'],
       [git, 'fast-import'],
       [git, 'fast-import', '--force'],
       [git, 'fast-import', '--quiet', '--force'],
@@ -1791,6 +1810,43 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     );
     assert.equal(result.decision === 'forbidden', forbidden.includes(args), args.join(' '));
   }
+});
+
+await test('SGT-U44: cached apply のステージ内容の上書きを再現し、Rules で拒否する', async (t) => {
+  const f = await gitFixture(t);
+  const file = join(f.cwd, 'file');
+  await writeFile(file, 'staged-only\n');
+  f.git('add', 'file');
+  const staged = f.git('rev-parse', ':file');
+  const patch = join(await temporaryDirectory(t), 'staged.patch');
+  await writeFile(patch, f.git('diff', '--cached') + '\n');
+  await writeFile(file, 'worktree-only\n');
+  const index = fs.readFileSync(join(f.cwd, '.git/index'));
+  const refs = f.git('for-each-ref', '--format=%(refname) %(objectname)');
+  const args = ['apply', '--cached', '--reverse', patch];
+  // 一時リポジトリだけで、HEAD と作業ファイルにない索引の内容が消える負例を確認する。
+  f.git(...args);
+  assert.equal(f.git('rev-parse', ':file'), f.git('rev-parse', 'HEAD:file'));
+  assert.notEqual(f.git('rev-parse', ':file'), staged);
+  assert.equal(await read(file), 'worktree-only\n');
+  fs.writeFileSync(join(f.cwd, '.git/index'), index);
+  const probe = spawnSync('codex', ['--version'], { stdio: 'pipe' });
+  if (probe.error) return t.skip('Codex CLI がない環境では Rules 内の match/not_match を利用する');
+  const result = JSON.parse(
+    execFileSync(
+      'codex',
+      ['execpolicy', 'check', '--rules', join(repository, '.codex/rules/safe-git.rules'), '--', 'git', ...args],
+      {
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    ),
+  );
+  assert.equal(result.decision, 'forbidden');
+  assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/index')), index);
+  assert.equal(f.git('rev-parse', ':file'), staged);
+  assert.equal(await read(file), 'worktree-only\n');
+  assert.equal(f.git('for-each-ref', '--format=%(refname) %(objectname)'), refs);
 });
 
 await test('SGT-U29: 任意の credential helper を通常・URL 別設定で通信前に拒否する', async (t) => {
