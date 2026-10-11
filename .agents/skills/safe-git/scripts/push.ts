@@ -108,6 +108,7 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
   )
     throw new Error('Git の実行先・設定を上書きする環境変数が設定されています。');
   try {
+    const remoteOperation = args.some((arg) => ['ls-remote', 'fetch', 'push'].includes(arg));
     const executable = trustedExecutable('Git');
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -127,11 +128,16 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
     for (const key of Object.keys(env)) {
       if (
         /^(?:LD_|DYLD_|_?RLD_|LDR_)/i.test(key) ||
+        /^GIT_TRACE/i.test(key) ||
         /^(?:NODE_OPTIONS|NODE_PATH|GLIBC_TUNABLES|BASH_ENV|ENV)$/i.test(key)
       )
         delete env[key];
     }
-    if (process.platform === 'win32' && (sshTransport || args.includes('ls-remote') || args.includes('push'))) {
+    // Trace2 の system / global 設定は -c で無効化できないため、環境で出力先を固定する。
+    env.GIT_TRACE2 = '0';
+    env.GIT_TRACE2_EVENT = '0';
+    env.GIT_TRACE2_PERF = '0';
+    if (process.platform === 'win32' && (sshTransport || remoteOperation)) {
       // SSH コマンドと credential helper を解釈する sh も固定配置から選ぶ。
       const pathKey = Object.keys(env).find((key) => key.toLowerCase() === 'path');
       const inheritedPath = pathKey ? env[pathKey] : '';
@@ -158,7 +164,7 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
         'core.askPass=',
         '-c',
         'credential.interactive=false',
-        ...(args.includes('ls-remote') || args.includes('push') ? ['-c', 'credential.helper='] : []),
+        ...(remoteOperation ? ['-c', 'credential.helper='] : []),
         ...tls,
         ...args,
       ],
@@ -226,33 +232,37 @@ export async function checkedConfigKeys(
   return configKeys;
 }
 
+async function matchesUrl(root: string, run: Run, scope: string | undefined, url: string) {
+  if (!scope) return true;
+  // 設定値に触れず、Git 自身の URL 照合で protocol・host・port・path を判定する。
+  const section = 'safegit' + randomUUID().replaceAll('-', '');
+  return (
+    (
+      await run(
+        [
+          '-c',
+          section + '.matches=false',
+          '-c',
+          `${section}.${scope}.matches=true`,
+          'config',
+          '--type=bool',
+          '--get-urlmatch',
+          section + '.matches',
+          url,
+        ],
+        root,
+      )
+    ).trim() === 'true'
+  );
+}
+
 async function credentialOptions(root: string, configKeys: string[], run: Run, pushUrl: string) {
   const allKeys = new Set(configKeys.filter((key) => /^credential(?:\..+)?\.helper$/i.test(key)));
   const keys = new Set<string>();
   // 各 URL の一致は Git に判定させ、helper の設定順・空値リセットは維持する。
-  const section = 'safegit' + randomUUID().replaceAll('-', '');
   for (const key of allKeys) {
     const scope = /^credential\.(.+)\.helper$/i.exec(key)?.[1];
-    if (
-      !scope ||
-      (
-        await run(
-          [
-            '-c',
-            section + '.matches=false',
-            '-c',
-            `${section}.${scope}.matches=true`,
-            'config',
-            '--type=bool',
-            '--get-urlmatch',
-            section + '.matches',
-            pushUrl,
-          ],
-          root,
-        )
-      ).trim() === 'true'
-    )
-      keys.add(key);
+    if (await matchesUrl(root, run, scope, pushUrl)) keys.add(key);
   }
   if (!keys.size) return [];
   // 継承した helper を先にリセットし、設定ファイルをまたぐ元の順序で再生する。
@@ -363,26 +373,20 @@ async function checkedWorktree(root: string, run: Run, visited = new Set<string>
   return configKeys;
 }
 
-export async function safePush(options: Options, root = repository, run: Run = runGit) {
-  checkBranch(options.branch);
+// Fetch と Push は同じ接続先・TLS・認証の検証を使う。
+export async function checkedRemote(root: string, configKeys: string[], run: Run, direction: 'fetch' | 'push') {
   const git = async (...args: string[]) => (await run(args, root)).replace(/\r?\n$/, '');
-  if (realpathSync(await git('rev-parse', '--show-toplevel')) !== realpathSync(root))
-    throw new Error('スクリプトと Git リポジトリのルートが一致しません。');
-  const grafts = await git('rev-parse', '--path-format=absolute', '--git-path', 'info/grafts');
-  if (lstatSync(grafts, { throwIfNoEntry: false })) throw new Error('info/grafts が存在するため Push できません。');
-  if ((await git('symbolic-ref', '--quiet', '--short', 'HEAD')) !== options.branch)
-    throw new Error('現在のブランチと --branch が一致しません。');
-  const configKeys = await checkedWorktree(root, run);
-  const commit = await git('rev-parse', '--verify', 'HEAD^{commit}');
-  if (!/^[a-f0-9]{40,64}$/.test(commit)) throw new Error('HEAD の commit SHA を確認できません。');
   const fetchUrl = await git('remote', 'get-url', '--all', 'origin');
-  const pushUrl = await git('remote', 'get-url', '--push', '--all', 'origin');
-  if (!approvedUrls.has(fetchUrl) || !approvedUrls.has(pushUrl))
+  const originPushUrl = await git('remote', 'get-url', '--push', '--all', 'origin');
+  if (!approvedUrls.has(fetchUrl) || !approvedUrls.has(originPushUrl))
     throw new Error('origin の取得先・Push 先は対象 GitHub リポジトリの単一 URL に限定します。');
+  const pushUrl = direction === 'fetch' ? fetchUrl : originPushUrl;
   const sshTransport = pushUrl.startsWith('git@') || pushUrl.startsWith('ssh://');
   for (const key of configKeys) {
     if (key.toLowerCase().startsWith('url.') || (sshTransport && key.toLowerCase() === 'core.sshcommand'))
       throw new Error('URL・TLS 検証・SSH コマンドの設定が上書きされているため Push できません。');
+    const httpSetting = /^http(?:\.(.+))?\.(?:schannelcheckrevoke|sslcainfo|sslcapath|proxysslcainfo)$/i.exec(key);
+    if (httpSetting && !(await matchesUrl(root, run, httpSetting[1], pushUrl))) continue;
     if (/^http(?:\..+)?\.schannelcheckrevoke$/i.test(key)) {
       if ((await git('config', '--type=bool', '--get-all', key)).split('\n').some((value) => value !== 'true'))
         throw new Error('TLS 証明書の失効確認を無効にする設定があるため Push できません。');
@@ -433,6 +437,22 @@ export async function safePush(options: Options, root = repository, run: Run = r
   const credentials = sshTransport ? [] : await credentialOptions(root, configKeys, run, pushUrl);
   const remoteGit = async (...args: string[]) =>
     (await run([...credentials, ...args], root, sshTransport)).replace(/\r?\n$/, '');
+  return { url: pushUrl, run: remoteGit };
+}
+
+export async function safePush(options: Options, root = repository, run: Run = runGit) {
+  checkBranch(options.branch);
+  const git = async (...args: string[]) => (await run(args, root)).replace(/\r?\n$/, '');
+  if (realpathSync(await git('rev-parse', '--show-toplevel')) !== realpathSync(root))
+    throw new Error('スクリプトと Git リポジトリのルートが一致しません。');
+  const grafts = await git('rev-parse', '--path-format=absolute', '--git-path', 'info/grafts');
+  if (lstatSync(grafts, { throwIfNoEntry: false })) throw new Error('info/grafts が存在するため Push できません。');
+  if ((await git('symbolic-ref', '--quiet', '--short', 'HEAD')) !== options.branch)
+    throw new Error('現在のブランチと --branch が一致しません。');
+  const configKeys = await checkedWorktree(root, run);
+  const commit = await git('rev-parse', '--verify', 'HEAD^{commit}');
+  if (!/^[a-f0-9]{40,64}$/.test(commit)) throw new Error('HEAD の commit SHA を確認できません。');
+  const { url: pushUrl, run: remoteGit } = await checkedRemote(root, configKeys, run, 'push');
   const refs = await remoteGit('ls-remote', '--symref', pushUrl, 'HEAD', 'refs/heads/' + options.branch);
   const defaultBranch = /^ref: refs\/heads\/([^\s]+)\tHEAD$/m.exec(refs)?.[1];
   if (!defaultBranch || defaultBranch.toLowerCase() === options.branch.toLowerCase())

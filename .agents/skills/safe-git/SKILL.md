@@ -1,6 +1,6 @@
 ---
 name: safe-git
-description: このリポジトリで Codex が Git の状態を参照し、レビュー済みの変更をステージ・Push、または作業ブランチ・コミット・worktree を新規作成するときに使う。引数と接続先を検証する開発専用の手順。
+description: このリポジトリで Codex が Git の状態を参照し、指定 commit を取得し、レビュー済みの変更をステージ・Push、または作業ブランチ・コミット・worktree を新規作成するときに使う。引数と接続先を検証する開発専用の手順。
 ---
 
 # 安全な Git 操作
@@ -41,6 +41,8 @@ done
 
 Git の状態を読む場合も同じ起動手順で [read.ts](scripts/read.ts) を使い、`status --short`、`diff --stat`、`notes list`、`remote get-url origin` など、定義された読み取りコマンドとオプションを渡す。別のリポジトリや submodule は先頭に `--cwd <リポジトリの絶対パス>` を指定する。グローバルオプション、更新コマンド、外部 diff・textconv、出力先ファイルの指定は拒否する。
 
-隔離作業ツリーは同じ起動手順で [create-worktree.ts](scripts/create-worktree.ts) に `--path <未使用の絶対パス> --commit <取得済み commit SHA>` を渡す。元リポジトリの外に、指定したローカル commit の detached worktree を新規作成する。ブランチ・既存の配置・作業変更を保全し、hook と対象 commit の外部 filter を拒否する。commit がローカルにない場合は停止する。
+指定 commit の取得には、同じ起動手順で [fetch.ts](scripts/fetch.ts) に `--commit <取得する commit SHA>` を渡す。Push と共通の接続先・TLS・認証検証を行い、指定 object を取得する。既存の ref・索引・作業変更・`FETCH_HEAD` を保全する。
+
+隔離作業ツリーは同じ起動手順で [create-worktree.ts](scripts/create-worktree.ts) に `--path <未使用の絶対パス> --commit <取得済み commit SHA>` を渡す。元リポジトリの外に、指定したローカル commit の detached worktree を新規作成する。ブランチ・既存の配置・作業変更を保全し、hook と対象 commit の外部 filter を拒否する。commit がローカルにない場合は `fetch.ts` で取得してから実行する。
 
 検証失敗時は Git 操作を行わない。拒否を直接の `git add`・`git push`・`git commit`、別スクリプト、Git alias、グローバルオプション、API による強制更新等で回避しない。再試行は現在状態を確認し、原因を解消してから行う。

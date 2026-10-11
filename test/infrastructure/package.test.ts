@@ -172,6 +172,7 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(workspace, /前回の作業ブランチ、ローカル HEAD、未マージまたは破棄済み作業の変更は引き継がない/);
   assert.match(workspace, /作業ツリーを用意できない場合は停止/);
   assert.match(workspace, /safe-git.*create-worktree\.ts.*detached worktree/);
+  assert.match(workspace, /safe-git.*fetch\.ts --commit.*取得してから.*create-worktree\.ts/);
   assert.match(workspace, /選択した手段.*取得した SHA から作成する/);
   assert.match(workspace, /同名ブランチが既にある場合は再利用・上書きせず停止/);
   assert.match(workspace, /既存ブランチの再利用は.*正当に特定された再開作業に限る/);

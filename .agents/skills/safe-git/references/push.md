@@ -8,7 +8,7 @@ Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux
 
 ## 検証と更新
 
-`GIT_ATTR_SOURCE` はすべての操作で Git の起動前に拒否し、属性の参照元を作業ツリーから差し替えさせない。HTTPS の `http.sslVerify` は Git が Push 先 URL に適用する実効 boolean を確認し、未設定と有効化を許可、無効化と不正な値を拒否する。
+`GIT_ATTR_SOURCE` はすべての操作で Git の起動前に拒否し、属性の参照元を作業ツリーから差し替えさせない。`GIT_TRACE*` はすべての子環境から除去し、Trace2 の3種の出力先は `0` に固定して system / global 設定からのファイル書き込みも防ぐ。HTTPS の `http.sslVerify` は Git が通信先 URL に適用する実効 boolean を確認し、未設定と有効化を許可、無効化と不正な値を拒否する。CA と失効確認の URL 別設定は Git 自身で通信先との一致を判定し、一致する設定だけを検証する。
 
 [スクリプト](../scripts/push.ts)は次を確認する。
 
@@ -19,7 +19,7 @@ Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux
 - Git が参照する `info/grafts` が存在しない。worktree では共通 Git ディレクトリの配置先を確認する。
 - 作業ツリーの検査前に `refs/replace/` の置換 ref を拒否する。初期化済み submodule は入れ子を含め同じ検査を行い、ブランチ・コミットの新規作成にも適用する。すべての Git 呼び出しで `GIT_NO_REPLACE_OBJECTS=1` を指定し、本来の object を検証する。
 - `extensions.partialClone` または `remote.<name>.promisor` があるリポジトリは、submodule とブランチ作成を含め拒否する。すべての Git 呼び出しに `GIT_NO_LAZY_FETCH=1` を指定し、未検証 remote から不足 object を自動取得しない。
-- 既存のリモートブランチを更新する場合、置換 ref を無効にした判定で、その先端が送信する commit の祖先である。リモートの commit がローカルにない場合は、人間が対象を確認して取得してから検証し直す。
+- 既存のリモートブランチを更新する場合、置換 ref を無効にした判定で、その先端が送信する commit の祖先である。リモートの commit がローカルにない場合は、対象を確認して `fetch.ts` で取得してから検証し直す。
 - 検証時のリモート先端を `--force-with-lease` の期待値に指定する。新規作成時は空値を指定し、検証後にブランチが作成・更新された場合は Push を拒否する。
 
 Push は検証した URL と `<commit SHA>:refs/heads/<作業ブランチ>` 一件だけを指定する。祖先関係の確認と先端の一致を条件とし、強制的な履歴の書き換え、削除、mirror、タグ送信、submodule の Push を行わない。ルートと submodule の索引更新・status では `core.hooksPath=/dev/null` を指定し、Push の pre-push hook も実行しない。GitHub 側の追加の保護ルールはサーバー側で適用される。
@@ -46,15 +46,17 @@ Git の terminal prompt・askpass と credential helper の対話設定を無効
 
 検証・通信・Push の失敗は終了コード 1 とする。作業を破棄せず、接続先、ブランチ、リモートの先端、ローカル差分を確認する。通信失敗では反映結果が不明な場合があるため、リモートを再取得する。競合は強制 Push で解消しない。履歴の統合が必要な場合は人間に判断を返す。
 
-## 読み取りと worktree 作成
+## 読み取り・commit 取得・worktree 作成
 
-[read.ts](../scripts/read.ts) は `status`・`diff`・`log`・`show`・`for-each-ref`・`rev-parse`・`ls-files`・`ls-tree`・`merge-base` と、`notes`・`remote`・`worktree`・`reflog`・`refs`・`config` の参照用サブコマンドを受け付ける。オプションは実装の許可一覧で検査する。Git のグローバルオプション、更新サブコマンド、出力ファイル、外部 diff・textconv は指定できない。hook・fsmonitor・適用される clean / process filter を抑止または拒否する。
+[read.ts](../scripts/read.ts) は `status`・`diff`・`log`・`show`・`for-each-ref`・`rev-parse`・`ls-files`・`ls-tree`・`merge-base` と、`notes`・`remote`・`worktree`・`reflog`・`refs`・`config` の参照用サブコマンドを受け付ける。オプションは実装の許可一覧で検査する。Git のグローバルオプション、更新サブコマンド、出力ファイル、外部 diff・textconv は指定できない。hook・fsmonitor・適用される clean / process filter を抑止または拒否する。書式の別名と署名検証の placeholder / atom は拒否し、既定書式と署名表示の設定を固定して外部 verifier の実行を防ぐ。
 
-[create-worktree.ts](../scripts/create-worktree.ts) は `--path <未使用の絶対パス> --commit <取得済み commit SHA>` だけを受け取る。ローカルに存在する commit と、元リポジトリの外にある未使用の配置先を確認し、detached worktree を新規作成する。既存の配置・ref・作業変更を保全し、checkout hook と対象 commit に適用される clean / smudge / process filter を実行しない。指定 commit がない場合は自動取得せず失敗する。
+[fetch.ts](../scripts/fetch.ts) は `--commit <取得する commit SHA>` だけを受け取り、Push と共通の origin・通信先・TLS・認証検証を行う。追加の取得先となる `fetch.bundleURI` は拒否する。指定 SHA を宛先 ref のない refspec で取得し、取得後に commit と一致することを確認する。refmap・タグ取得・prune・submodule 取得・自動 maintenance・commit graph 更新・hook・`FETCH_HEAD` 更新・remote HEAD の追従を無効化し、既存の ref・索引・作業変更を保全する。
+
+[create-worktree.ts](../scripts/create-worktree.ts) は `--path <未使用の絶対パス> --commit <取得済み commit SHA>` だけを受け取る。ローカルに存在する commit と、元リポジトリの外にある未使用の配置先を確認し、detached worktree を新規作成する。既存の配置・ref・作業変更を保全し、checkout hook と対象 commit に適用される clean / smudge / process filter を実行しない。指定 commit は事前に `fetch.ts` で取得する。
 
 ## Codex Rules
 
-[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules) は `git`・`git.exe` と、固定配置の `/usr/bin/git`・`C:/Program Files/Git/cmd/git.exe`（Windows の区切り表記も含む）の直接実行を `forbidden` にする。値付きグローバルオプションや `notes --ref=<値>`、`remote` の操作による更新も同じ入口で拒否する。読み取りは `read.ts`、ステージ・コミット・ブランチ・worktree の新規作成と Push は操作ごとの検証付きスクリプトを使う。固定 Node.js と環境変数の除去手順は [Skill](../SKILL.md) を参照する。人間の通常の Git 操作と、一時リポジトリを使う試験 fixture は対象外とする。
+[ワークスペースの Rules](../../../../.codex/rules/safe-git.rules) は `git`・`git.exe` と、固定配置の `/usr/bin/git`・`C:/Program Files/Git/cmd/git.exe`（Windows の区切り表記も含む）の直接実行を `forbidden` にする。値付きグローバルオプションや `notes --ref=<値>`、`remote` の操作による更新も同じ入口で拒否する。読み取りは `read.ts`、指定 commit の取得は `fetch.ts`、ステージ・コミット・ブランチ・worktree の新規作成と Push は操作ごとの検証付きスクリプトを使う。固定 Node.js と環境変数の除去手順は [Skill](../SKILL.md) を参照する。人間の通常の Git 操作と、一時リポジトリを使う試験 fixture は対象外とする。
 
 プロジェクトの `.codex/` を信頼し、Codex を再起動して読み込む。[公式 Rules 仕様](https://developers.openai.com/codex/rules)に従い、Rules は sandbox 外のコマンド要求に対するリテラルの prefix 判定である。任意の値付き引数を個別に判定できないため、Git の直接呼び出しを一律に拒否する。記載外の実行ファイルパス、複雑な shell、スクリプト内部の子プロセスを網羅する強制境界ではない。Codex は [AGENTS.md](../../../../AGENTS.md) の禁止も守り、Rules を迂回しない。スクリプト実行は通常の sandbox・承認設定に従う。
 

@@ -14,6 +14,7 @@ import { createCommit } from '../../.agents/skills/safe-git/scripts/commit.ts';
 import { stageFiles } from '../../.agents/skills/safe-git/scripts/stage.ts';
 import { createWorktree } from '../../.agents/skills/safe-git/scripts/create-worktree.ts';
 import { inspectRepository } from '../../.agents/skills/safe-git/scripts/read.ts';
+import { fetchCommit } from '../../.agents/skills/safe-git/scripts/fetch.ts';
 import { frontmatter, localLinks, read, repository, temporaryDirectory } from '../lib/plugin.ts';
 
 const url = 'https://github.com/shu-matsukubo/matsu-artifact-delivery.git';
@@ -808,6 +809,7 @@ await test('SGT-U40: 属性の参照元を上書きする環境変数を全操�
     ['commit.ts', 'createCommit', ['--message', 'change']],
     ['create-branch.ts', 'createBranch', ['--branch', 'codex/attribute-source']],
     ['read.ts', 'inspectRepository', ['status', '--short']],
+    ['fetch.ts', 'fetchCommit', ['--commit', f.base]],
     [
       'create-worktree.ts',
       'createWorktree',
@@ -1824,6 +1826,7 @@ await test('SGT-U05: Skill の参照と Codex Rules の禁止・通常操作を�
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/create-branch.ts', '--branch', branch],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/commit.ts', '--message', 'change'],
     ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/stage.ts', '--', 'file'],
+    ['C:/Program Files/nodejs/node.exe', '.agents/skills/safe-git/scripts/fetch.ts', '--commit', head],
   ];
   for (const args of [...forbidden, ...allowed]) {
     const result = JSON.parse(
@@ -2612,6 +2615,282 @@ await test('SGT-U43: Push の索引更新と status はルートと入れ子 sub
       assert.equal(git('config', 'core.hooksPath'), hooks, '設定を変更しない');
       assert.equal(await read(file), 'change');
       assert.equal(f.git('ls-remote', f.remote, 'refs/heads/' + branch).split('\t')[0], f.git('rev-parse', 'HEAD'));
+    });
+  }
+});
+
+await test('SGT-U49: 署名検証の書式・別名・既定設定から外部プログラムを起動しない', async (t) => {
+  const f = await gitFixture(t);
+  const marker = join(f.cwd, '.git/verifier-ran');
+  const verifier = join(f.cwd, '.git/verifier');
+  await writeFile(verifier, `#!/bin/sh\nprintf ran > '${marker.replaceAll('\\', '/')}'\nexit 1\n`, { mode: 0o755 });
+  f.git('config', 'gpg.program', verifier);
+  const signed = execFileSync('git', ['hash-object', '-t', 'commit', '-w', '--stdin'], {
+    cwd: f.cwd,
+    input: `tree ${f.git('rev-parse', 'HEAD^{tree}')}\nparent ${f.commit}\nauthor Test <test@example.invalid> 1 +0000\ncommitter Test <test@example.invalid> 1 +0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n invalid\n -----END PGP SIGNATURE-----\n\nsigned\n`,
+    encoding: 'utf8',
+  }).trim();
+  f.git('update-ref', `refs/heads/${branch}`, signed);
+  f.git('log', '--format=%G?', '-1');
+  assert.equal(await read(marker), 'ran', '署名付き commit の通常の書式は verifier を実行する');
+  await fs.promises.unlink(marker);
+  const refs = f.git('show-ref');
+  for (const args of [
+    ...['log', 'show'].flatMap((command) =>
+      ['%G?', '%GS', 'format:%GK', 'tformat:%GF'].map((format) => [command, `--format=${format}`, 'HEAD']),
+    ),
+    ...['%(signature)', '%(signature:grade)', '%(*signature:signer)'].map((format) => [
+      'for-each-ref',
+      `--format=${format}`,
+    ]),
+  ]) {
+    const calls: string[][] = [];
+    await assert.rejects(
+      inspectRepository(args, f.cwd, async (args, cwd) => {
+        calls.push(args);
+        return runGit(args, cwd);
+      }),
+    );
+    assert.equal(calls.length, 0, args.join(' '));
+  }
+  f.git('config', 'pretty.unsafe', '%G?');
+  f.git('config', 'pretty.indirect', 'unsafe');
+  f.git('config', 'format.pretty', 'indirect');
+  f.git('config', 'log.showSignature', 'true');
+  assert.equal((await inspectRepository(['config', '--get', 'format.pretty'], f.cwd)).trim(), 'indirect');
+  assert.equal((await inspectRepository(['config', '--get', 'log.showSignature'], f.cwd)).trim(), 'true');
+  for (const command of ['log', 'show']) {
+    await assert.rejects(inspectRepository([command, '--format=indirect', 'HEAD'], f.cwd));
+    assert.ok(
+      await inspectRepository(
+        [command, '--no-patch', 'HEAD'].filter((arg) => command === 'show' || arg !== '--no-patch'),
+        f.cwd,
+      ),
+    );
+    assert.match(await inspectRepository([command, '--format=%%G? %H', 'HEAD'], f.cwd), /%G\?/);
+    assert.ok((await inspectRepository([command, '--format=%gD %H', 'HEAD'], f.cwd)).includes(signed));
+    await inspectRepository([command, '--format=', 'HEAD'], f.cwd);
+  }
+  assert.ok(await inspectRepository(['reflog', 'show', 'HEAD'], f.cwd));
+  assert.equal(fs.existsSync(marker), false);
+  assert.equal(f.git('show-ref'), refs);
+});
+
+await test('SGT-U50: 対象外 URL の CA・失効確認設定を無視し、一致する危険な設定は通信前に拒否する', async (t) => {
+  const f = await gitFixture(t);
+  const config = join(f.cwd, '.git/config');
+  const initial = await read(config);
+  for (const [scope, matches] of [
+    ['https://gitlab.com', false],
+    ['http://github.com', false],
+    ['https://github.com:444', false],
+    ['https://github.com/other', false],
+    [url + '-extra', false],
+    ['https://github.com', true],
+    ['https://*.com', true],
+    ['https://github.com/shu-matsukubo', true],
+    [url, true],
+  ] as const) {
+    for (const [option, value] of [
+      ['sslCAInfo', '/corp.pem'],
+      ['sslCAPath', '/corp'],
+      ['proxySSLCAInfo', '/proxy.pem'],
+      ['schannelCheckRevoke', 'false'],
+    ]) {
+      await writeFile(config, initial);
+      f.git('config', `http.${scope}.${option}`, value!);
+      const calls: string[][] = [];
+      const run: Run = (args, cwd) => {
+        calls.push(args);
+        return f.run(args, cwd);
+      };
+      if (matches) await assert.rejects(safePush({ branch, dryRun: true }, f.cwd, run), /CA|TLS/);
+      else await safePush({ branch, dryRun: true }, f.cwd, run);
+      assert.equal(
+        calls.some((args) => args.includes('ls-remote')),
+        !matches,
+        `${scope} ${option}`,
+      );
+      assert.equal(
+        calls.some((args) => args.includes('push')),
+        false,
+      );
+    }
+  }
+});
+
+await test('SGT-U51: Git の全トレース環境変数を子環境から除去し、参照時にファイルを書き換えない', async (t) => {
+  const f = await gitFixture(t);
+  const destination = join(f.cwd, 'file');
+  const baseline = spawnSync('git', ['status', '--short'], {
+    cwd: f.cwd,
+    env: { ...process.env, GIT_TRACE: destination },
+    encoding: 'utf8',
+  });
+  assert.equal(baseline.status, 0, baseline.stderr);
+  assert.notEqual(await read(destination), 'change', '通常の Git は指定ファイルへ追記する');
+  await writeFile(destination, 'change');
+  const inherited = { ...process.env };
+  const variables = [
+    'GIT_TRACE',
+    'GIT_TRACE_PACK_ACCESS',
+    'GIT_TRACE_PACKET',
+    'GIT_TRACE_PACKFILE',
+    'GIT_TRACE_PERFORMANCE',
+    'GIT_TRACE_SETUP',
+    'GIT_TRACE_SHALLOW',
+    'GIT_TRACE_CURL',
+    'GIT_TRACE2',
+    'GIT_TRACE2_EVENT',
+    'GIT_TRACE2_PERF',
+    'GIT_TRACE2_BRIEF',
+  ];
+  try {
+    for (const variable of variables) process.env[variable] = destination;
+    await runGit(['status', '--short'], f.cwd, false, async (file, args, options) => {
+      for (const variable of variables)
+        assert.equal(
+          options.env?.[variable],
+          ['GIT_TRACE2', 'GIT_TRACE2_EVENT', 'GIT_TRACE2_PERF'].includes(variable) ? '0' : undefined,
+          variable,
+        );
+      return runProcess(file, args, options);
+    });
+    await inspectRepository(['status', '--short'], f.cwd);
+    assert.equal(await read(destination), 'change');
+  } finally {
+    process.env = inherited;
+  }
+  const global = join(f.cwd, '.git/trace-config');
+  for (const target of ['normalTarget', 'eventTarget', 'perfTarget'])
+    f.git('config', '--file', global, 'trace2.' + target, destination);
+  const globalBaseline = spawnSync('git', ['status', '--short'], {
+    cwd: f.cwd,
+    env: { ...process.env, GIT_CONFIG_GLOBAL: global },
+    encoding: 'utf8',
+  });
+  assert.equal(globalBaseline.status, 0, globalBaseline.stderr);
+  assert.notEqual(await read(destination), 'change', 'Trace2 のグローバル設定もファイルへ追記する');
+  await writeFile(destination, 'change');
+  await runGit(['status', '--short'], f.cwd, false, (file, args, options) =>
+    runProcess(file, args, { ...options, env: { ...options.env, GIT_CONFIG_GLOBAL: global } }),
+  );
+  assert.equal(await read(destination), 'change');
+});
+
+await test('SGT-U52: 検証済み取得先から指定 commit だけを取得し、ref・索引・作業変更・FETCH_HEAD を保全する', async (t) => {
+  const f = await gitFixture(t);
+  const source = join(await temporaryDirectory(t), 'source');
+  execFileSync('git', ['clone', f.remote, source], { stdio: 'pipe' });
+  const sourceGit = (...args: string[]) =>
+    execFileSync('git', args, { cwd: source, encoding: 'utf8', stdio: 'pipe' }).trim();
+  sourceGit('config', 'user.name', 'Test');
+  sourceGit('config', 'user.email', 'test@example.invalid');
+  await writeFile(join(source, 'file'), 'latest');
+  sourceGit('commit', '--no-gpg-sign', '-qam', 'latest');
+  const selected = sourceGit('rev-parse', 'HEAD');
+  sourceGit('push', 'origin', 'main');
+  assert.notEqual(spawnSync('git', ['cat-file', '-e', selected], { cwd: f.cwd }).status, 0);
+  f.git('config', 'remote.origin.fetch', '+refs/heads/*:refs/heads/*');
+  f.git('config', 'fetch.prune', 'true');
+  f.git('config', 'fetch.pruneTags', 'true');
+  f.git('tag', 'keep');
+  await writeFile(join(f.cwd, 'file'), 'staged');
+  f.git('add', 'file');
+  await writeFile(join(f.cwd, 'file'), 'local work');
+  await writeFile(join(f.cwd, 'untracked'), 'keep');
+  const fetchHead = join(f.cwd, '.git/FETCH_HEAD');
+  await writeFile(fetchHead, 'keep fetch state\n');
+  const marker = join(f.cwd, '.git/fetch-hook-ran');
+  await writeFile(join(f.cwd, '.git/hooks/reference-transaction'), '#!/bin/sh\necho ran > .git/fetch-hook-ran\n', {
+    mode: 0o755,
+  });
+  const refs = f.git('show-ref');
+  const index = fs.readFileSync(join(f.cwd, '.git/index'));
+  const config = fs.readFileSync(join(f.cwd, '.git/config'));
+  const calls: string[][] = [];
+  const run = (args: string[], cwd: string) => {
+    calls.push(args);
+    return execFileSync(
+      'git',
+      args.map((arg) => (arg === url && args.includes('fetch') ? f.remote : arg)),
+      { cwd, encoding: 'utf8', stdio: 'pipe' },
+    );
+  };
+  assert.equal((await fetchCommit(['--commit', selected], f.cwd, run)).commit, selected);
+  const fetch = calls.find((args) => args.includes('fetch'))!;
+  assert.deepEqual(fetch.slice(-3), ['--', url, selected]);
+  for (const option of [
+    '--no-tags',
+    '--no-prune',
+    '--no-prune-tags',
+    '--refmap=',
+    '--no-write-fetch-head',
+    '--recurse-submodules=no',
+    '--no-auto-maintenance',
+    '--no-write-commit-graph',
+  ])
+    assert.ok(fetch.includes(option), option);
+  assert.equal(f.git('rev-parse', '--verify', selected + '^{commit}'), selected);
+  for (const args of [[], ['--commit', 'HEAD'], ['--commit', selected, '--force'], ['--commit', '+' + selected]])
+    await assert.rejects(fetchCommit(args, f.cwd, run));
+  const target = join(await temporaryDirectory(t), 'latest-worktree');
+  await createWorktree(['--path', target, '--commit', selected], f.cwd);
+  assert.equal(await read(join(target, 'file')), 'latest');
+  assert.equal(f.git('show-ref'), refs);
+  assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/index')), index);
+  assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/config')), config);
+  assert.equal(await read(join(f.cwd, 'file')), 'local work');
+  assert.equal(await read(join(f.cwd, 'untracked')), 'keep');
+  assert.equal(await read(fetchHead), 'keep fetch state\n');
+  assert.equal(fs.existsSync(marker), false);
+});
+
+await test('SGT-U53: Fetch も接続先・TLS・helper・置換 ref・partial clone を通信前に検証する', async () => {
+  for (const [command, value] of [
+    ['remote get-url --all origin', 'https://github.com/other/repository.git'],
+    ['remote get-url --push --all origin', 'ext::command'],
+    ['config --name-only --list', 'url.https://attacker/.insteadof'],
+    ['config --name-only --list', 'extensions.partialClone'],
+    ['for-each-ref --format=%(refname) refs/replace/', 'refs/replace/' + head],
+    [`config --type=bool --get-urlmatch http.sslVerify ${url}`, 'false'],
+    ['config --name-only --list', 'http.sslCAPath'],
+    ['config --name-only --list', 'fetch.bundleURI'],
+  ]) {
+    const f = fixture();
+    f.replies.set(command!, value!);
+    await assert.rejects(fetchCommit(['--commit', head], repository, f.run));
+    assert.equal(
+      f.calls.some((args) => args.includes('fetch')),
+      false,
+      command,
+    );
+  }
+  const helper = fixture();
+  helper.replies.set('config --name-only --list', 'credential.helper');
+  helper.replies.set('config --null --list', 'credential.helper\n!untrusted\0');
+  await assert.rejects(fetchCommit(['--commit', head], repository, helper.run), /credential helper/);
+  assert.equal(
+    helper.calls.some((args) => args.includes('fetch')),
+    false,
+  );
+  const f = fixture();
+  const ssh = 'git@github.com:shu-matsukubo/matsu-artifact-delivery.git';
+  f.replies.set('remote get-url --all origin', ssh);
+  f.replies.set('rev-parse --verify ' + head + '^{commit}', head);
+  await fetchCommit(['--commit', head], repository, (args, cwd, transport) => {
+    if (args.includes('fetch')) {
+      assert.equal(transport, true);
+      assert.deepEqual(args.slice(-3), ['--', ssh, head]);
+      return '';
+    }
+    assert.equal(transport, undefined);
+    return f.run(args, cwd);
+  });
+  for (const command of ['ls-remote', 'fetch', 'push']) {
+    await runGit([command, '--', url], repository, false, async (_file, args) => {
+      assert.ok(args.includes('credential.helper='), command);
+      return '';
     });
   }
 });

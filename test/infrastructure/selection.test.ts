@@ -58,6 +58,7 @@ await test('CI-U02: shared, unknown, malformed and empty changes fail open to al
     '.codex/rules/safe-git.rules',
     '.agents/skills/safe-git/SKILL.md',
     '.agents/skills/safe-git/scripts/push.ts',
+    '.agents/skills/safe-git/scripts/fetch.ts',
     'scripts/select-tests.ts',
     'test/infrastructure/selection.test.ts',
     'test/lib/plugin.ts',

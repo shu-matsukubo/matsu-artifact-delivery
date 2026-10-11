@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkedConfigKeys, runGit } from './push.ts';
 
 const repository = fileURLToPath(new URL('../../../../', import.meta.url));
+const builtinFormats = new Set(['oneline', 'short', 'medium', 'full', 'fuller', 'reference', 'email', 'mboxrd', 'raw']);
 const flags: Record<string, string[]> = {
   status: [
     '--short',
@@ -95,7 +96,19 @@ export async function inspectRepository(args: string[], root = repository, run =
       continue;
     }
     if (paths || !arg.startsWith('-') || permitted.includes(arg)) continue;
-    if (['log', 'show', 'for-each-ref'].includes(command) && /^--format=/.test(arg)) continue;
+    if (['log', 'show', 'for-each-ref'].includes(command) && /^--format=/.test(arg)) {
+      const format = arg.slice('--format='.length);
+      // pretty の別名と署名検証の placeholder / atom は外部 verifier を起動できる。
+      if (
+        (command !== 'for-each-ref' &&
+          format !== '' &&
+          !builtinFormats.has(format) &&
+          !/^(?:t?format:)|%/.test(format)) ||
+        /%G.|%\(\*?signature(?=[:)])/u.test(format.replaceAll('%%', ''))
+      )
+        throw new Error('書式の別名と署名検証を行う書式は使用できません。');
+      continue;
+    }
     if (command === 'log' && /^--max-count=[1-9][0-9]*$/.test(arg)) continue;
     throw new Error('読み取り用に定義したオプションだけを指定してください。');
   }
@@ -107,6 +120,9 @@ export async function inspectRepository(args: string[], root = repository, run =
       '--no-pager',
       '-c',
       'core.hooksPath=/dev/null',
+      ...(['log', 'show', 'reflog'].includes(command)
+        ? ['-c', 'log.showSignature=false', '-c', 'format.pretty=medium']
+        : []),
       command,
       ...(['diff', 'log', 'show'].includes(command) ? ['--no-ext-diff', '--no-textconv'] : []),
       ...rest,
