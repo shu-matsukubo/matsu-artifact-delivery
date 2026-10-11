@@ -15,6 +15,7 @@ Windows は PowerShell で実行する。
 $ErrorActionPreference = 'Stop'
 $env:NODE_OPTIONS = $null
 $env:NODE_PATH = $null
+$env:NODE_V8_COVERAGE = $null
 $env:BASH_ENV = $null
 $env:ENV = $null
 Get-ChildItem Env: | Where-Object Name -Match '^(LD_|DYLD_|_?RLD_|LDR_)|^GLIBC_TUNABLES$' | ForEach-Object { [Environment]::SetEnvironmentVariable($_.Name, $null, 'Process') }
@@ -25,7 +26,7 @@ Get-ChildItem Env: | Where-Object Name -Match '^(LD_|DYLD_|_?RLD_|LDR_)|^GLIBC_T
 Linux は起動済みの Bash で次を使う。macOS は Node.js の固定配置を `/usr/local/bin/node` に置き換える。環境変数の除去が完了するまで外部プロセスを起動しない。
 
 ```sh
-unset NODE_OPTIONS NODE_PATH GLIBC_TUNABLES BASH_ENV ENV || exit 1
+unset NODE_OPTIONS NODE_PATH GLIBC_TUNABLES BASH_ENV ENV NODE_V8_COVERAGE || exit 1
 for variable in "${!LD_@}" "${!DYLD_@}" "${!_RLD_@}" "${!RLD_@}" "${!LDR_@}"; do
   unset "$variable" || exit 1
 done

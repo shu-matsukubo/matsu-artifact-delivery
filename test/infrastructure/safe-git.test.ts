@@ -7,8 +7,15 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { delimiter, join, posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test, { type TestContext } from 'node:test';
-import { checkedConfigKeys, parseArguments, runGit, safePush } from '../../.agents/skills/safe-git/scripts/push.ts';
+import {
+  checkedConfigKeys,
+  checkedRemote,
+  parseArguments,
+  runGit,
+  safePush,
+} from '../../.agents/skills/safe-git/scripts/push.ts';
 import { createHash } from 'node:crypto';
+import { createServer } from 'node:http';
 import { runProcess } from '../../.agents/skills/safe-git/scripts/process.ts';
 import { createBranch } from '../../.agents/skills/safe-git/scripts/create-branch.ts';
 import { createCommit } from '../../.agents/skills/safe-git/scripts/commit.ts';
@@ -3154,4 +3161,238 @@ await test('SGT-U57: コミットによる自動 GC の外部実行を再現し�
   assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/config')), config);
   assert.equal((await runGit(['config', '--type=bool', '--get', 'maintenance.auto'], f.cwd)).trim(), 'false');
   assert.equal((await runGit(['config', '--type=int', '--get', 'gc.auto'], f.cwd)).trim(), '0');
+});
+
+await test('SGT-U58: HTTPS の Cookie 保存を通信前に拒否し、設定と作業内容を保全する', async (t) => {
+  const f = await gitFixture(t);
+  const received: (string | undefined)[] = [];
+  const server = createServer((request, response) => {
+    received.push(request.headers.cookie);
+    response.writeHead(200, {
+      'Set-Cookie': 'session=test; Path=/',
+      'Content-Type': 'application/x-git-upload-pack-advertisement',
+    });
+    response.end('001e# service=git-upload-pack\n00000000');
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const local = `http://127.0.0.1:${address.port}/repo.git`;
+  const baseline = join(f.cwd, '.git/baseline-cookies');
+  await runProcess(
+    'git',
+    ['-c', 'http.proxy=', '-c', 'http.saveCookies=true', '-c', 'http.cookieFile=' + baseline, 'ls-remote', local],
+    { cwd: f.cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }, timeout: 10_000 },
+  );
+  assert.match(await read(baseline), /session\s+test/, 'Cookie 保存で通信後にファイルを変更する');
+  const cases: [string, string, boolean][] = [
+    ['http.saveCookies', 'true', false],
+    ['http.saveCookies', 'yes', false],
+    ['http.https://github.com.saveCookies', 'true', false],
+    ['http.https://github.com/shu-matsukubo/.saveCookies', 'true', false],
+    ['http.https://*.com.saveCookies', 'true', false],
+    ['http.saveCookies', 'false', true],
+    ['http.https://other.invalid.saveCookies', 'true', true],
+    ['http.http://github.com.saveCookies', 'true', true],
+    ['http.https://github.com:443.saveCookies', 'false', true],
+    ['http.saveCookies', 'invalid', false],
+  ];
+  for (const [key, value, allowed] of cases) {
+    await t.test(key + '=' + value, async (t) => {
+      f.git('config', key, value);
+      t.after(() => f.git('config', '--unset-all', key));
+      for (const destination of ['file', '.git/config']) {
+        f.git('config', 'http.cookieFile', join(f.cwd, destination));
+        const config = fs.readFileSync(join(f.cwd, '.git/config'));
+        const content = await read(join(f.cwd, 'file'));
+        const refs = f.git('show-ref');
+        for (const operation of ['dry-run', 'push', 'fetch']) {
+          const calls: string[][] = [];
+          const run = (args: string[], cwd: string) => {
+            calls.push(args);
+            if (args.includes('fetch'))
+              return execFileSync(
+                'git',
+                args.map((arg) => (arg === url ? f.remote : arg)),
+                { cwd, encoding: 'utf8', stdio: 'pipe' },
+              );
+            return f.run(args, cwd);
+          };
+          const result =
+            operation === 'fetch'
+              ? fetchCommit(['--commit', f.commit], f.cwd, run)
+              : safePush({ branch, dryRun: operation === 'dry-run' }, f.cwd, run);
+          if (allowed) await result;
+          else await assert.rejects(result);
+          assert.equal(
+            calls.some((args) => args.some((arg) => ['ls-remote', 'push', 'fetch'].includes(arg))),
+            allowed,
+          );
+        }
+        assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/config')), config);
+        assert.equal(await read(join(f.cwd, 'file')), content);
+        assert.equal(f.git('show-ref'), refs);
+      }
+    });
+  }
+  f.git('config', 'http.saveCookies', 'true');
+  f.git('config', `http.${url}.saveCookies`, 'false');
+  await safePush({ branch, dryRun: true }, f.cwd, f.run);
+  const input = join(f.cwd, '.git/input-cookies');
+  await writeFile(input, '# Netscape HTTP Cookie File\n127.0.0.1\tFALSE\t/\tFALSE\t0\tinput\tkeep\n');
+  f.git('config', 'http.saveCookies', 'false');
+  f.git('config', 'http.cookieFile', input);
+  const before = await read(input);
+  const run = (args: string[], cwd: string) =>
+    args.includes('ls-remote')
+      ? runProcess('git', ['-c', 'http.proxy=', ...args.map((arg) => (arg === url ? local : arg))], {
+          cwd,
+          env: { ...process.env },
+          timeout: 10_000,
+        })
+      : f.run(args, cwd);
+  const remote = await checkedRemote(f.cwd, await checkedConfigKeys(f.cwd, run), run, 'fetch');
+  await remote.run('ls-remote', url);
+  assert.ok(received.includes('input=keep'), 'Cookie ファイルの読み取りは維持する');
+  assert.equal(await read(input), before);
+  const ssh = 'git@github.com:shu-matsukubo/matsu-artifact-delivery.git';
+  f.git('remote', 'set-url', 'origin', ssh);
+  f.git('config', 'http.saveCookies', 'true');
+  await safePush({ branch, dryRun: true }, f.cwd, (args, cwd) =>
+    f.run(
+      args.map((arg) => (arg === ssh ? url : arg)),
+      cwd,
+    ),
+  );
+});
+
+await test('SGT-U59: 承認済み URL と同名の remote・group を Fetch と Push の通信前に拒否する', async (t) => {
+  const f = await gitFixture(t);
+  f.git('config', `remote.${url}.url`, f.remote);
+  assert.match(f.git('ls-remote', url, 'HEAD'), new RegExp(f.base), 'URL の形でも同名 remote に接続する');
+  f.git('config', '--remove-section', `remote.${url}`);
+  const urls = [
+    url,
+    url.slice(0, -4),
+    'git@github.com:shu-matsukubo/matsu-artifact-delivery.git',
+    'ssh://git@github.com/shu-matsukubo/matsu-artifact-delivery.git',
+  ];
+  for (const operand of urls) {
+    f.git('remote', 'set-url', 'origin', operand);
+    const keys = [`remote.${operand}.url`, `remote.${operand}.pushurl`];
+    // group は末尾を config の変数名として表現できる URL で検証する。
+    if (operand.endsWith('.git')) keys.push(`remotes.${operand}`);
+    for (const key of keys) {
+      f.git('config', key, key.startsWith('remotes.') ? 'origin' : f.remote);
+      const config = fs.readFileSync(join(f.cwd, '.git/config'));
+      const refs = f.git('show-ref');
+      for (const operation of ['dry-run', 'push', 'fetch']) {
+        const calls: string[][] = [];
+        const run = (args: string[], cwd: string) => {
+          calls.push(args);
+          if (args.some((arg) => ['ls-remote', 'push', 'fetch'].includes(arg))) throw new Error('unexpected network');
+          return f.run(args, cwd);
+        };
+        const result =
+          operation === 'fetch'
+            ? fetchCommit(['--commit', f.commit], f.cwd, run)
+            : safePush({ branch, dryRun: operation === 'dry-run' }, f.cwd, run);
+        await assert.rejects(result, /remote|group/);
+        assert.equal(
+          calls.some((args) => args.some((arg) => ['ls-remote', 'push', 'fetch'].includes(arg))),
+          false,
+          key,
+        );
+      }
+      assert.deepEqual(fs.readFileSync(join(f.cwd, '.git/config')), config);
+      assert.equal(f.git('show-ref'), refs);
+      f.git('config', '--unset-all', key);
+    }
+  }
+  f.git('remote', 'set-url', 'origin', url);
+  f.git('remote', 'add', 'unrelated', f.remote);
+  f.git('config', 'remotes.unrelated', 'origin');
+  await safePush({ branch, dryRun: false }, f.cwd, f.run);
+  const ssh = 'git@github.com:shu-matsukubo/matsu-artifact-delivery.git';
+  f.git('remote', 'set-url', '--push', 'origin', ssh);
+  f.git('config', `remote.${url}.url`, f.remote);
+  await assert.rejects(fetchCommit(['--commit', f.commit], f.cwd, f.run), /remote/);
+  await safePush({ branch, dryRun: true }, f.cwd, (args, cwd) =>
+    f.run(
+      args.map((arg) => (arg === ssh ? url : arg)),
+      cwd,
+    ),
+  );
+  f.git('config', '--unset-all', `remote.${url}.url`);
+  f.git('config', `remote.${ssh}.url`, f.remote);
+  await assert.rejects(safePush({ branch, dryRun: true }, f.cwd, f.run), /remote/);
+  await fetchCommit(['--commit', f.commit], f.cwd, (args, cwd) =>
+    execFileSync(
+      'git',
+      args.map((arg) => (arg === url && args.includes('fetch') ? f.remote : arg)),
+      { cwd, encoding: 'utf8', stdio: 'pipe' },
+    ),
+  );
+});
+
+await test('SGT-U60: 起動手順と Git の子環境は NODE_V8_COVERAGE による出力を残さない', async (t) => {
+  const root = await temporaryDirectory(t);
+  const baseline = join(root, 'baseline');
+  const probe = spawnSync(process.execPath, ['-e', ''], {
+    env: { ...process.env, NODE_V8_COVERAGE: baseline },
+    encoding: 'utf8',
+  });
+  assert.equal(probe.status, 0, probe.stderr);
+  assert.ok(fs.readdirSync(baseline).some((name) => name.startsWith('coverage-')));
+  const skill = await read(join(repository, '.agents/skills/safe-git/SKILL.md'));
+  const quote = (value: string) => "'" + value.replaceAll('\\', '/').replaceAll("'", "'\\''") + "'";
+  for (const language of ['sh', 'powershell']) {
+    if (language === 'powershell' && process.platform !== 'win32') continue;
+    const block = new RegExp('```' + language + '\\r?\\n([\\s\\S]*?)```').exec(skill)?.[1];
+    assert.ok(block);
+    const node = language === 'sh' ? '/usr/bin/node' : "& 'C:/Program Files/nodejs/node.exe'";
+    const clean = block.slice(0, block.indexOf(node));
+    const destination = join(root, language);
+    const polluted =
+      language === 'sh'
+        ? 'export NODE_V8_COVERAGE=' + quote(destination) + '\n'
+        : "$env:NODE_V8_COVERAGE = '" + destination.replaceAll("'", "''") + "'\n";
+    const command =
+      polluted +
+      clean +
+      (language === 'sh'
+        ? quote(process.execPath) + ' -e "console.log(1)"'
+        : "& '" + process.execPath.replaceAll("'", "''") + "' -e 'console.log(1)'");
+    const executable =
+      language === 'sh'
+        ? process.platform === 'win32'
+          ? 'C:/Program Files/Git/bin/bash.exe'
+          : '/bin/bash'
+        : 'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
+    const result = spawnSync(
+      executable,
+      language === 'sh' ? ['-c', command] : ['-NoProfile', '-NonInteractive', '-Command', command],
+      { encoding: 'utf8' },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.existsSync(destination), false, language);
+  }
+  const inherited = { ...process.env };
+  try {
+    process.env.NODE_V8_COVERAGE = join(root, 'child');
+    await runGit(['status', '--short'], repository, false, async (_file, _args, options) => {
+      assert.equal(options.env?.NODE_V8_COVERAGE, '');
+      return runProcess(process.execPath, ['-e', ''], options);
+    });
+    assert.equal(fs.existsSync(process.env.NODE_V8_COVERAGE), false);
+  } finally {
+    process.env = inherited;
+  }
 });

@@ -2,7 +2,7 @@
 
 開発用の Node.js 22.19.0 以降と Git を使う。利用者向け Plugin の実行要件や配布物には追加しない。人間が通常のターミナルで行う Git 操作は対象外とする。
 
-Node.js は Windows の `C:/Program Files/nodejs/node.exe`、Linux の `/usr/bin/node`、macOS の `/usr/local/bin/node` に固定し、管理者が実行ファイルと配置先を保護する。信頼する起動済みのシェルで `NODE_OPTIONS`、`NODE_PATH`、`GLIBC_TUNABLES`、`BASH_ENV`、`ENV` と `LD_*`、`DYLD_*`、`_RLD_*`、`RLD_*`、`LDR_*` を組み込み機能で除去してから起動する。シェル自体の起動環境は管理者が保護する。Git・SSH・helper の子プロセスにも同じ除去を適用する。固定配置がない場合は実行を止める。起動コマンドは [Skill](../SKILL.md) を参照する。
+Node.js は Windows の `C:/Program Files/nodejs/node.exe`、Linux の `/usr/bin/node`、macOS の `/usr/local/bin/node` に固定し、管理者が実行ファイルと配置先を保護する。信頼する起動済みのシェルで `NODE_OPTIONS`、`NODE_PATH`、`NODE_V8_COVERAGE`、`GLIBC_TUNABLES`、`BASH_ENV`、`ENV` と `LD_*`、`DYLD_*`、`_RLD_*`、`RLD_*`、`LDR_*` を組み込み機能で除去してから起動する。シェル自体の起動環境は管理者が保護する。Git・SSH・helper の子プロセスにも同じ制限を適用し、`NODE_V8_COVERAGE` は空値に固定して Node.js の自動継承を止める。固定配置がない場合は実行を止める。起動コマンドは [Skill](../SKILL.md) を参照する。
 
 すべての Git 呼び出しに `maintenance.auto=false` と `gc.auto=0` を指定し、自動メンテナンスと自動 GC による外部コマンドの実行・object の書き換えを防ぐ。リポジトリの設定値は変更しない。
 
@@ -11,6 +11,8 @@ Git 実行ファイルは Windows の `C:/Program Files/Git/cmd/git.exe`、Linux
 ## 検証と更新
 
 `GIT_ATTR_SOURCE` と `GIT_REDIRECT_STDIN`・`GIT_REDIRECT_STDOUT`・`GIT_REDIRECT_STDERR` はすべての操作で Git の起動前に拒否し、属性の参照元や標準ハンドルを差し替えさせない。`GIT_TRACE*` はすべての子環境から除去し、Trace2 の3種の出力先は `0` に固定して system / global 設定からのファイル書き込みも防ぐ。`core.alternateRefsCommand` は参照・更新の共通検証で拒否し、alternate の参照列挙から外部コマンドを実行させない。HTTPS の `http.sslVerify` は Git が通信先 URL に適用する実効 boolean を確認し、未設定と有効化を許可、無効化と不正な値を拒否する。CA と失効確認の URL 別設定は Git 自身で通信先との一致を判定し、一致する設定だけを検証する。
+
+Fetch と Push の通信先 URL と同名の remote・group は、URL を別の接続先に解決するため拒否する。HTTPS の `http.saveCookies` は通信先 URL に適用する実効 boolean を確認し、Cookie 保存を有効にする設定と不正な値を通信前に拒否する。未設定・無効化・対象外 URL の設定を許可し、Cookie ファイルの読み取りは維持する。
 
 [スクリプト](../scripts/push.ts)は次を確認する。
 

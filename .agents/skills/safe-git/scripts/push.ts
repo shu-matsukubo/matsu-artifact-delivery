@@ -129,7 +129,7 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
       if (
         /^(?:LD_|DYLD_|_?RLD_|LDR_)/i.test(key) ||
         /^GIT_TRACE/i.test(key) ||
-        /^(?:NODE_OPTIONS|NODE_PATH|GLIBC_TUNABLES|BASH_ENV|ENV)$/i.test(key)
+        /^(?:NODE_OPTIONS|NODE_PATH|NODE_V8_COVERAGE|GLIBC_TUNABLES|BASH_ENV|ENV)$/i.test(key)
       )
         delete env[key];
     }
@@ -137,6 +137,8 @@ export async function runGit(args: string[], cwd: string, sshTransport = false, 
     env.GIT_TRACE2 = '0';
     env.GIT_TRACE2_EVENT = '0';
     env.GIT_TRACE2_PERF = '0';
+    // Node は削除した coverage 変数も自動継承するため、空値で継承を止める。
+    env.NODE_V8_COVERAGE = '';
     if (process.platform === 'win32' && (sshTransport || remoteOperation)) {
       // SSH コマンドと credential helper を解釈する sh も固定配置から選ぶ。
       const pathKey = Object.keys(env).find((key) => key.toLowerCase() === 'path');
@@ -267,6 +269,21 @@ async function matchesUrl(root: string, run: Run, scope: string | undefined, url
   );
 }
 
+async function httpBoolean(root: string, run: Run, key: string, url: string, fallback: string) {
+  try {
+    return (await run(['config', '--type=bool', '--get-urlmatch', key, url], root)).trim();
+  } catch (error) {
+    const failure = (error instanceof Error && error.cause ? error.cause : error) as {
+      code?: number;
+      status?: number;
+      stderr?: string | Buffer;
+    };
+    // 未設定だけを既定値として扱い、不正な値や実行失敗は伝播する。
+    if ((failure.code ?? failure.status) !== 1 || String(failure.stderr ?? 'unknown') !== '') throw error;
+    return fallback;
+  }
+}
+
 async function credentialOptions(root: string, configKeys: string[], run: Run, pushUrl: string) {
   const allKeys = new Set(configKeys.filter((key) => /^credential(?:\..+)?\.helper$/i.test(key)));
   const keys = new Set<string>();
@@ -392,6 +409,12 @@ export async function checkedRemote(root: string, configKeys: string[], run: Run
   if (!approvedUrls.has(fetchUrl) || !approvedUrls.has(originPushUrl))
     throw new Error('origin の取得先・Push 先は対象 GitHub リポジトリの単一 URL に限定します。');
   const pushUrl = direction === 'fetch' ? fetchUrl : originPushUrl;
+  if (
+    configKeys.some(
+      (key) => /^remote\.(.+)\.[^.]+$/i.exec(key)?.[1] === pushUrl || /^remotes\.(.+)$/i.exec(key)?.[1] === pushUrl,
+    )
+  )
+    throw new Error('接続先 URL と同名の remote・group があるため通信先を検証できません。');
   const sshTransport = pushUrl.startsWith('git@') || pushUrl.startsWith('ssh://');
   for (const key of configKeys) {
     if (key.toLowerCase().startsWith('url.') || (sshTransport && key.toLowerCase() === 'core.sshcommand'))
@@ -431,19 +454,13 @@ export async function checkedRemote(root: string, configKeys: string[], run: Run
   }
   if (!sshTransport) {
     // URL 別設定の優先順位と boolean の表記は Git 自身で判定する。
-    let verify = 'true';
-    try {
-      verify = await git('config', '--type=bool', '--get-urlmatch', 'http.sslVerify', pushUrl);
-    } catch (error) {
-      const failure = (error instanceof Error && error.cause ? error.cause : error) as {
-        code?: number;
-        status?: number;
-        stderr?: string | Buffer;
-      };
-      // 未設定だけを既定の有効化として扱い、不正な値や実行失敗は伝播する。
-      if ((failure.code ?? failure.status) !== 1 || String(failure.stderr ?? 'unknown') !== '') throw error;
-    }
+    const verify = await httpBoolean(root, run, 'http.sslVerify', pushUrl, 'true');
     if (verify !== 'true') throw new Error('TLS 証明書の検証を無効にする設定があるため Push できません。');
+    if (
+      configKeys.some((key) => /^http(?:\..+)?\.savecookies$/i.test(key)) &&
+      (await httpBoolean(root, run, 'http.saveCookies', pushUrl, 'false')) !== 'false'
+    )
+      throw new Error('Cookie 保存によるファイル変更を伴うため通信できません。');
   }
   const credentials = sshTransport ? [] : await credentialOptions(root, configKeys, run, pushUrl);
   const remoteGit = async (...args: string[]) =>
