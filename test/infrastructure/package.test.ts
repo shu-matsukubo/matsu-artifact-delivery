@@ -54,6 +54,7 @@ await test('PKG-U02: project Codex settings stay outside packages; prompt roles 
 
 await test('PKG-U03: Plugin documentation resolves local links and explains reviewer permissions', async () => {
   for (const path of [
+    'AGENTS.md',
     'README.md',
     'docs/testing.md',
     'docs/distribution.md',
@@ -117,9 +118,10 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(startup, /人間が普段操作するリポジトリとは別の、スケジューラ専用 clone \/ 作業ディレクトリ/);
   assertContract(startup, {
     id: 'SCH-U01',
-    ordered: ['GitHub Plugin', '`gh`', 'その他利用可能な手段'],
-    contains: ['操作ごと', '公開情報', 'URL', '認証', '再取得', 'safe-git'],
+    ordered: ['GitHub Plugin', '`gh`', '停止'],
+    contains: ['操作ごと', '権限', '再取得', 'ユーザーへ'],
   });
+  assert.doesNotMatch(startup, /その他利用可能な手段|認証済み API|ブラウザー|URL の直接参照/);
   assert.doesNotMatch(all, /フォールバックせず停止|GitHub Plugin を前提/);
   assert.match(startup, /独自の状態ファイルやチェックポイントファイル.*作成・永続化しない/);
   assert.match(startup, /状態管理用のラベルは追加しない/);
@@ -152,13 +154,10 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
 
   assertContract(selection, {
     id: 'SCH-U01',
-    ordered: [
-      'リポジトリの Open PR',
-      'read.ts status --porcelain=v1 --untracked-files=all',
-      '`AI処理可能` ラベル付きの Open Issue',
-    ],
+    ordered: ['リポジトリの Open PR', 'git status --short', '`AI処理可能` ラベル付きの Open Issue'],
   });
-  assert.match(selection, /\/scheduled\/issue\/<Issue 番号>.*Open PR.*新しい Issue を選ばず.*レビュー待ち/);
+  assert.match(selection, /\/issue\/<Issue 番号>.*Open PR.*新しい Issue を選ばず.*レビュー待ち/);
+  assert.match(selection, /既存の `\/scheduled\/issue\/<Issue 番号>`/);
   assert.match(selection, /staged、unstaged、untracked file.*clean/);
   assert.match(selection, /確認に失敗した場合は停止/);
   assert.match(selection, /差分があれば.*人間による確認が必要.*終了/);
@@ -171,9 +170,9 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(workspace, /取得したコミット SHA と一致する新しい隔離作業ツリー/);
   assert.match(workspace, /前回の作業ブランチ、ローカル HEAD、未マージまたは破棄済み作業の変更は引き継がない/);
   assert.match(workspace, /作業ツリーを用意できない場合は停止/);
-  assert.match(workspace, /safe-git.*create-worktree\.ts.*detached worktree/);
-  assert.match(workspace, /safe-git.*fetch\.ts --commit.*取得してから.*create-worktree\.ts/);
-  assert.match(workspace, /選択した手段.*取得した SHA から作成する/);
+  assert.match(workspace, /<prefix>\/issue\/<Issue 番号>/);
+  assert.match(workspace, /git fetch.*git worktree add -b/);
+  assert.doesNotMatch(workspace, /<prefix>\/scheduled\/issue/);
   assert.match(workspace, /同名ブランチが既にある場合は再利用・上書きせず停止/);
   assert.match(workspace, /既存ブランチの再利用は.*正当に特定された再開作業に限る/);
 
@@ -186,27 +185,17 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
     id: 'SCH-U01',
     ordered: [
       'コミットを作成',
+      'git push <remote> HEAD:refs/heads/<prefix>/issue/<Issue 番号>',
       'リモートブランチを再取得',
-      '対応するローカルコミットを作成',
-      'read.ts status --porcelain=v1 --untracked-files=all',
+      'git status --short',
       '選択した手段で Issue を参照する Open PR を作成',
     ],
   });
-  assert.match(publish, /検証・レビュー済みの差分.*GitHub Plugin.*コミット・Git object.*ref 更新/);
-  assert.match(publish, /safe-git.*ローカルコミット.*Push/);
-  assert.match(publish, /`stage\.ts`.*レビュー済みの変更だけをステージ.*`commit\.ts`/);
-  assert.match(publish, /`git add`・`git commit`・`git push` は直接実行しない/);
-  assert.match(publish, /リモートブランチの先端 SHA が作成したコミット SHA と一致.*差分がレビュー済みの差分と一致/);
+  assert.match(publish, /`git add.*検証・レビュー済みの変更だけをステージ.*`git commit`/);
+  assert.match(publish, /当該 Issue 用ブランチ.*Push 先も同じブランチ.*確認できたときだけ/);
+  assert.match(publish, /リモートブランチの先端 SHA が作成したコミット SHA と一致/);
   assert.match(publish, /確認できない場合は PR を作成しない/);
-  assert.match(
-    publish,
-    /ローカル HEAD の tree.*リモートコミットの tree.*一致していなければ.*`stage\.ts`.*レビュー済みの変更だけをステージ/,
-  );
-  assert.match(publish, /コミット前に index の tree.*リモートコミットの tree と一致.*確認/);
-  assert.match(
-    publish,
-    /ローカル HEAD の tree.*リモートコミットの tree と一致.*staged、unstaged、untracked file.*clean/,
-  );
+  assert.match(publish, /staged、unstaged、untracked file.*clean/);
   assert.match(publish, /不一致や失敗、レビュー対象外の変更.*変更の保全.*停止し、PR を作成しない/);
   assert.match(publish, /PR の base は開始時に確認した default branch、head は Issue 用ブランチ/);
   assert.match(publish, /`Closes`、`Fixes`、`Resolves` 等の Issue closing keyword を含めない/);
