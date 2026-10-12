@@ -200,7 +200,7 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(publish, /新規公開.*リモート ref が存在しない場合だけ作成する操作/);
   assert.match(publish, /Plugin \/ API 経路.*ref 作成.*既存 ref.*失敗/);
   assert.match(publish, /競合した場合は再利用・上書きせず停止/);
-  assert.match(publish, /正当に特定された再開作業.*既存ブランチ.*再開 Push.*fast-forward/);
+  assert.match(publish, /正当に特定された再開作業.*既存ブランチ.*先端 SHA.*条件付き fast-forward 更新/);
   assert.match(publish, /リモートブランチの先端 SHA が作成したコミット SHA と一致.*差分がレビュー済みの差分と一致/);
   assert.match(publish, /確認できない場合は PR を作成しない/);
   assert.match(

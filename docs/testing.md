@@ -162,6 +162,7 @@ npm run ci:select -- --all
 | SCH-U12〜SCH-U14         | literal なファイル指定、submodule の別リモートへの Push 防止、fsmonitor に依存しない clean 確認                                       | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
 | SCH-U15〜SCH-U17         | 変更を隠す index フラグと submodule 設定の検出、ステージのフック抑止、外部 diff を使わない index 全体の照合                           | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
 | SCH-U18                  | 起点 SHA の取得時にタグの取得・削除と submodule の再帰取得を抑止する                                                                  | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
+| SCH-U19〜SCH-U23         | 接続先の全 URL、再開 ref の削除・置換競合、pager・置換 ref の抑止、設定由来の値を引数として渡す契約                                   | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
 
 ### 既存 MCP の対応表
 
