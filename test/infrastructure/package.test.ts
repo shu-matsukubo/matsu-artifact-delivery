@@ -56,14 +56,15 @@ await test('PKG-U03: 開発・Plugin 文書の参照が解決し、レビュー�
   const skillDocuments = (await files(join(repository, '.agents/skills')))
     .filter((path) => path.endsWith('.md'))
     .map((path) => `.agents/skills/${path}`);
+  const developerDocuments = (await files(join(repository, 'docs')))
+    .filter((path) => path.endsWith('.md'))
+    .map((path) => `docs/${path}`);
   for (const path of [
     'AGENTS.md',
     'README.md',
-    'docs/testing.md',
-    'docs/distribution.md',
-    'docs/codex-workflows.md',
     'plugins/artifact-workflow/README.md',
     'plugins/expert-escalation/README.md',
+    ...developerDocuments,
     ...skillDocuments,
   ])
     await localLinks(repository, path);
@@ -180,7 +181,8 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
     workspace,
     /git fetch origin <取得したコミット SHA>.*git worktree add --detach <未使用の絶対パス> <取得したコミット SHA>/,
   );
-  assert.match(workspace, /選択した手段.*取得した SHA から作成する/);
+  assert.match(workspace, /選択した手段.*取得した SHA からローカル作業ブランチを作成する/);
+  assert.match(workspace, /リモートブランチは.*GitHub 反映.*新規公開時に作成/);
   assert.match(workspace, /同名ブランチが既にある場合は再利用・上書きせず停止/);
   assert.match(workspace, /既存ブランチの再利用は.*正当に特定された再開作業に限る/);
 
@@ -199,16 +201,28 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
       '選択した手段で Issue を参照する Open PR を作成',
     ],
   });
-  assert.match(publish, /検証・レビュー済みの差分.*GitHub Plugin.*コミット・Git object.*ref 更新/);
+  assert.match(publish, /検証・レビュー済みの差分.*GitHub Plugin.*コミット・Git object/);
   assert.match(
     publish,
-    /`git add -- <レビュー済みパス>\.\.\.`.*レビュー済みの変更だけをステージ.*`git commit`.*`git push origin <Issue 用ブランチ>`/,
+    /`git add -- <レビュー済みパス>\.\.\.`.*レビュー済みの変更だけをステージ.*`git commit -m "<生成したコミットメッセージ>"`/,
   );
+  const commitCommands = [...publish.matchAll(/`(git commit[^`]*)`/g)];
+  assert.equal(commitCommands.length, 2);
+  for (const command of commitCommands) assert.match(command[1]!, / -[mF] /);
+  assert.match(publish, /新規公開.*リモート ref が存在しない場合だけ作成する操作/);
+  assert.match(publish, /Plugin \/ API 経路.*ref 作成.*既存 ref.*失敗/);
+  assert.ok(
+    publish.includes(
+      'git push --force-with-lease=refs/heads/<Issue 用ブランチ>: origin HEAD:refs/heads/<Issue 用ブランチ>',
+    ),
+  );
+  assert.match(publish, /競合した場合は再利用・上書きせず停止/);
+  assert.match(publish, /正当に特定された再開作業.*既存ブランチ.*fast-forward.*git push origin HEAD:refs\/heads/);
   assert.match(publish, /リモートブランチの先端 SHA が作成したコミット SHA と一致.*差分がレビュー済みの差分と一致/);
   assert.match(publish, /確認できない場合は PR を作成しない/);
   assert.match(
     publish,
-    /ローカル HEAD の tree.*リモートコミットの tree.*一致していなければ.*`git add`.*レビュー済みの変更だけをステージ/,
+    /ローカル HEAD の tree.*リモートコミットの tree.*一致していなければ.*`git add -- <レビュー済みパス>\.\.\.`.*レビュー済みの変更だけをステージ/,
   );
   assert.match(publish, /コミット前に.*index の tree.*リモートコミットの tree と一致.*確認/);
   assert.match(

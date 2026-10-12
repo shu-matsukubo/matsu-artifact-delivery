@@ -75,3 +75,34 @@ await test('TS-U03: the dependency-free CLI checks its repository and fails with
     return true;
   });
 });
+
+await test('TS-U04: 開発用 Skill のチェッカーをルートの型チェックで検証する', async (t) => {
+  const root = await temporaryDirectory(t);
+  await copyFile(join(repository, 'tsconfig.json'), join(root, 'tsconfig.json'));
+  await writeFile(join(root, 'package.json'), '{"type":"module"}');
+  await mkdir(join(root, 'scripts'));
+  await writeFile(join(root, 'scripts/valid.ts'), 'export {};');
+  const checker = join(root, '.agents/skills/example/scripts/check.ts');
+  await mkdir(dirname(checker), { recursive: true });
+  const invoke = () =>
+    execFileSync(
+      process.execPath,
+      [
+        join(repository, 'node_modules/typescript/bin/tsc'),
+        '--project',
+        root,
+        '--typeRoots',
+        join(repository, 'node_modules/@types'),
+      ],
+      { cwd: root, encoding: 'utf8', stdio: 'pipe' },
+    );
+  await writeFile(checker, 'export const value: number = "invalid";');
+  assert.throws(invoke, (error: unknown) => {
+    assert.ok(error instanceof Error && 'stdout' in error && typeof error.stdout === 'string');
+    assert.match(error.stdout, /example[\\/]scripts[\\/]check\.ts/);
+    assert.match(error.stdout, /TS2322/);
+    return true;
+  });
+  await writeFile(checker, 'export const value: number = 1;');
+  assert.equal(invoke(), '');
+});
