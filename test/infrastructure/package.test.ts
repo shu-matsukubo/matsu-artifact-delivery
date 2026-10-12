@@ -158,11 +158,7 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
 
   assertContract(selection, {
     id: 'SCH-U01',
-    ordered: [
-      'リポジトリの Open PR',
-      'git status --porcelain=v1 --untracked-files=all',
-      '`AI処理可能` ラベル付きの Open Issue',
-    ],
+    ordered: ['リポジトリの Open PR', 'clean の確認を実行', '`AI処理可能` ラベル付きの Open Issue'],
   });
   assert.match(selection, /\/scheduled\/issue\/<Issue 番号>.*Open PR.*新しい Issue を選ばず.*レビュー待ち/);
   assert.match(selection, /staged、unstaged、untracked file.*clean/);
@@ -177,10 +173,7 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(workspace, /取得したコミット SHA と一致する新しい隔離作業ツリー/);
   assert.match(workspace, /前回の作業ブランチ、ローカル HEAD、未マージまたは破棄済み作業の変更は引き継がない/);
   assert.match(workspace, /作業ツリーを用意できない場合は停止/);
-  assert.match(
-    workspace,
-    /git fetch origin <取得したコミット SHA>.*git -c core.hooksPath=\/dev\/null worktree add --detach <未使用の絶対パス> <取得したコミット SHA>/,
-  );
+  assert.match(workspace, /\(git-operations\.md\).*起点の取得を実行.*worktree 作成で detached worktree/);
   assert.match(workspace, /選択した手段.*取得した SHA からローカル作業ブランチを作成する/);
   assert.match(workspace, /リモートブランチは.*GitHub 反映.*新規公開時に作成/);
   assert.match(workspace, /同名ブランチが既にある場合は再利用・上書きせず停止/);
@@ -197,35 +190,22 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
       'コミットを作成',
       'リモートブランチを再取得',
       '対応するローカルコミットを作成',
-      'git status --porcelain=v1 --untracked-files=all',
+      'Git 操作の clean の確認',
       '選択した手段で Issue を参照する Open PR を作成',
     ],
   });
   assert.match(publish, /検証・レビュー済みの差分.*GitHub Plugin.*コミット・Git object/);
-  assert.match(
-    publish,
-    /`git add -- <レビュー済みパス>\.\.\.`.*レビュー済みの変更だけをステージ.*`git .*commit .* -m "<生成したコミットメッセージ>"`/,
-  );
-  const commitCommands = [...publish.matchAll(/`(git [^`]*\bcommit [^`]*)`/g)];
-  assert.equal(commitCommands.length, 2);
-  for (const command of commitCommands) assert.match(command[1]!, / -[mF] /);
+  assert.match(publish, /Git 経路ではステージ、ステージ全体の差分の照合、コミットと tree・clean の確認/);
+  assert.match(publish, /不一致やレビュー対象外の変更.*停止し、Push しない/);
   assert.match(publish, /新規公開.*リモート ref が存在しない場合だけ作成する操作/);
   assert.match(publish, /Plugin \/ API 経路.*ref 作成.*既存 ref.*失敗/);
-  assert.ok(
-    publish.includes(
-      'git -c core.hooksPath=/dev/null push --porcelain --no-signed --no-follow-tags --force-with-lease=refs/heads/<Issue 用ブランチ>: origin HEAD:refs/heads/<Issue 用ブランチ>',
-    ),
-  );
   assert.match(publish, /競合した場合は再利用・上書きせず停止/);
-  assert.match(
-    publish,
-    /正当に特定された再開作業.*既存ブランチ.*fast-forward.*git -c core.hooksPath=\/dev\/null push --no-signed --no-follow-tags origin HEAD:refs\/heads/,
-  );
+  assert.match(publish, /正当に特定された再開作業.*既存ブランチ.*再開 Push.*fast-forward/);
   assert.match(publish, /リモートブランチの先端 SHA が作成したコミット SHA と一致.*差分がレビュー済みの差分と一致/);
   assert.match(publish, /確認できない場合は PR を作成しない/);
   assert.match(
     publish,
-    /ローカル HEAD の tree.*リモートコミットの tree.*一致していなければ.*`git add -- <レビュー済みパス>\.\.\.`.*レビュー済みの変更だけをステージ/,
+    /ローカル HEAD の tree.*リモートコミットの tree.*一致していなければ.*ステージとステージ全体の差分の照合/,
   );
   assert.match(publish, /コミット前に.*index の tree.*リモートコミットの tree と一致.*確認/);
   assert.match(
@@ -237,6 +217,12 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(publish, /`Closes`、`Fixes`、`Resolves` 等の Issue closing keyword を含めない/);
   assert.match(publish, /PR の merge と Issue の Close は別のライフサイクル/);
   assert.match(publish, /Issue はこの Skill では閉じず、人間が必要な確認を終えた後に閉じる/);
+
+  // 各段階は同じ Git 操作定義を使い、コマンドの挙動は scheduled-git.test.ts で検証する。
+  for (const reference of [startup, resume, selection, workspace, publish]) {
+    assert.match(reference, /\[Git 操作\]\(git-operations\.md\)/);
+    assert.doesNotMatch(reference, /`git /);
+  }
 
   const codex = parseToml(await read(join(repository, '.codex/config.toml'))) as {
     model: string;

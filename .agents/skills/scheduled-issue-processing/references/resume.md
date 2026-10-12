@@ -15,7 +15,7 @@
 
 ## 作業を特定できない場合
 
-前回作業を一意に特定できない場合はローカル workspace の staged / unstaged / untracked を確認する。clean なら未完了作業なしとして[新規 Issue の選定](issue-selection.md)へ進む。変更がある場合は由来を推測せず、人間による確認が必要と報告して停止する。
+前回作業を一意に特定できない場合は [Git 操作](git-operations.md)の clean の確認でローカル workspace の staged / unstaged / untracked を確認する。確認に失敗した場合は停止する。clean なら未完了作業なしとして[新規 Issue の選定](issue-selection.md)へ進む。変更がある場合は由来を推測せず、人間による確認が必要と報告して停止する。
 
 ## 変更の保全
 

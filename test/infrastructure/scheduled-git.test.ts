@@ -6,18 +6,26 @@ import test, { type TestContext } from 'node:test';
 import { read, repository, temporaryDirectory } from '../lib/plugin.ts';
 
 const publish = await read(join(repository, '.agents/skills/scheduled-issue-processing/references/publish-pr.md'));
-const commands = [...publish.matchAll(/`(git [^`]+)`/g)].map((match) => match[1]!);
-const commits = commands.filter((command) => /\bcommit /.test(command));
-const pushes = commands.filter((command) => /\bpush /.test(command));
-assert.equal(commits.length, 2);
-assert.equal(pushes.length, 2);
+const operations = await read(
+  join(repository, '.agents/skills/scheduled-issue-processing/references/git-operations.md'),
+);
+const prefix = /`(git [^`]+)`/.exec(operations)![1]!;
+const table = new Map(
+  [...operations.matchAll(/^\|\s*([^|]+?)\s*\|\s*`([^`]+)`\s*\|$/gm)].map((match) => [match[1]!, match[2]!]),
+);
+function command(name: string) {
+  const args = table.get(name);
+  assert.ok(args, `操作が未定義: ${name}`);
+  return `${prefix} ${args}`;
+}
+const commits = [command('コミット')];
+const pushes = [command('新規 Push'), command('再開 Push')];
+const stages = [command('ステージ')];
 const workspace = await read(
   join(repository, '.agents/skills/scheduled-issue-processing/references/workspace-setup.md'),
 );
-const setup = [...workspace.matchAll(/`(git [^`]+)`/g)]
-  .map((match) => match[1]!)
-  .filter((command) => /\b(worktree add|switch) /.test(command));
-assert.equal(setup.length, 2);
+const setup = [command('worktree 作成'), command('ブランチ作成')];
+const statuses = [command('clean の確認')];
 
 // 手順書のプレースホルダーだけを置換し、シェルを介さず実際の Git に渡す。
 function argumentsFor(command: string, branch = 'scheduled-test', replacements: Record<string, string> = {}) {
@@ -60,6 +68,27 @@ async function fixture(t: TestContext) {
   return { root, local, remote, git, put };
 }
 
+async function submoduleFixture(t: TestContext) {
+  const result = await fixture(t);
+  const { root, local, git } = result;
+  const source = join(root, 'submodule-source');
+  const subRemote = join(root, 'submodule.git');
+  const dependency = join(local, 'dependency');
+  git('switch', '-c', 'scheduled-test');
+  await mkdir(source);
+  git('-C', source, 'init', '--initial-branch=scheduled-test');
+  await writeFile(join(source, 'child.txt'), 'base\n');
+  git('-C', source, 'add', '--', 'child.txt');
+  git('-C', source, 'commit', '--no-gpg-sign', '-m', 'child base');
+  git('init', '--bare', subRemote);
+  git('-C', source, 'remote', 'add', 'origin', subRemote);
+  git('-C', source, 'push', 'origin', 'HEAD:refs/heads/scheduled-test');
+  git('-c', 'protocol.file.allow=always', 'submodule', 'add', source, 'dependency');
+  git('-C', dependency, 'remote', 'set-url', 'origin', subRemote);
+  git('commit', '--no-gpg-sign', '-m', 'add dependency');
+  return { ...result, source, subRemote, dependency };
+}
+
 await test('SCH-U03: 公開用と同期用のコミットはフックによる未レビュー差分を含めない', async (t) => {
   const { local, git, put } = await fixture(t);
   const hooks = join(local, '.git/hooks');
@@ -72,12 +101,12 @@ await test('SCH-U03: 公開用と同期用のコミットはフックによる�
       { mode: 0o755 },
     );
   }
-  for (const [index, command] of commits.entries()) {
+  for (const [index, commitCommand] of commits.entries()) {
     await put('reviewed.txt', `reviewed ${index}\n`);
     git('add', '--', 'reviewed.txt');
-    const reviewedTree = git('write-tree');
-    git(...argumentsFor(command));
-    assert.equal(git('rev-parse', 'HEAD^{tree}'), reviewedTree);
+    const reviewedTree = git(...argumentsFor(command('index の tree')));
+    git(...argumentsFor(commitCommand));
+    assert.equal(git(...argumentsFor(command('HEAD の tree'))), reviewedTree);
     assert.equal(git('status', '--porcelain=v1', '--untracked-files=all'), '');
     assert.equal(git('config', 'core.hooksPath'), hooks);
   }
@@ -183,16 +212,13 @@ await test('SCH-U08: 新規・再開 Push は利用不能な Push 署名設定�
 
 await test('SCH-U09: 新規 worktree は元のリポジトリ外に配置し、作成と切り替えの後に clean を確認する', () => {
   assert.match(workspace, /元のリポジトリ外.*未使用の絶対パス/);
-  assert.match(
-    workspace,
-    /worktree 作成後とブランチ切り替え後.*git status --porcelain=v1 --untracked-files=all.*clean/,
-  );
+  assert.match(workspace, /worktree 作成後とブランチ切り替え後.*\(git-operations\.md\).*clean/);
 });
 
 await test('SCH-U10: 新規 Git 公開の強制 Push は対象と影響への明示的承認を必要とする', () => {
   assert.match(publish, /Plugin \/ API 経路.*ref 作成.*既存 ref.*失敗/);
-  assert.match(publish, /Git 経路.*対象と影響.*ユーザーの明示的な承認を得た場合だけ.*--force-with-lease/);
-  assert.match(publish, /スケジューラの起動や `AI処理可能` ラベルを.*承認.*扱わない/);
+  assert.match(publish, /Git 経路.*対象と影響.*ユーザーの明示的な承認を得た場合だけ.*新規 Push/);
+  assert.match(publish, /`--force-with-lease` の承認として、スケジューラの起動や `AI処理可能` ラベルを扱わない/);
   assert.match(publish, /承認がない場合は Plugin \/ API 経路.*利用できなければ停止/);
 });
 
@@ -206,4 +232,141 @@ await test('SCH-U11: 新規 Push は同一 SHA の既存 ref への no-op を新
   assert.doesNotMatch(unchanged, created);
   assert.equal(git('--git-dir', remote, 'for-each-ref', '--format=%(refname) %(objectname)'), published);
   assert.match(publish, /新規公開.*--porcelain.*対象 ref の行が `\*`.*新規作成.*`=`.*up to date.*停止/);
+});
+
+await test('SCH-U12: 公開・同期のステージはファイル名を literal に扱い、類似名の未レビュー変更を含めない', async (t) => {
+  const { git, put } = await fixture(t);
+  for (const [index, command] of stages.entries()) {
+    const reviewed = `file[${index}].txt`;
+    const unreviewed = `file${index}.txt`;
+    await put(reviewed, 'reviewed\n');
+    await put(unreviewed, 'unreviewed\n');
+    git(...argumentsFor(command, 'scheduled-test', { '<レビュー済みパス>...': `"${reviewed}"` }));
+    assert.equal(git('diff', '--cached', '--name-only'), reviewed);
+    git(...argumentsFor(commits[0]!));
+  }
+});
+
+await test('SCH-U13: 新規・再開 Push は submodule の別リモートを更新しない', async (t) => {
+  for (const [index, command] of pushes.entries()) {
+    const { subRemote, dependency, remote, git } = await submoduleFixture(t);
+    if (index === 1) git(...argumentsFor(pushes[0]!));
+    const previous = git('--git-dir', subRemote, 'for-each-ref', '--format=%(refname) %(objectname)');
+    await writeFile(join(dependency, 'child.txt'), 'reviewed child\n');
+    git('-C', dependency, 'add', '--', 'child.txt');
+    git('-C', dependency, 'commit', '--no-gpg-sign', '-m', 'child update');
+    git('add', '--', 'dependency');
+    git(...argumentsFor(commits[0]!));
+    git('config', '--global', 'push.recurseSubmodules', 'on-demand');
+    git(...argumentsFor(command));
+    assert.equal(git('--git-dir', subRemote, 'for-each-ref', '--format=%(refname) %(objectname)'), previous);
+    assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/scheduled-test'), git('rev-parse', 'HEAD'));
+    assert.equal(git('config', 'push.recurseSubmodules'), 'on-demand');
+  }
+});
+
+await test('SCH-U14: すべての clean 確認は stale な fsmonitor による変更の見落としを防ぐ', async (t) => {
+  for (const command of statuses) {
+    const { root, git, put } = await fixture(t);
+    const monitor = join(root, 'fsmonitor').replaceAll('\\', '/');
+    await writeFile(monitor, '#!/bin/sh\nprintf "unchanged-token\\000"\n', { mode: 0o755 });
+    git('config', 'core.fsmonitor', monitor);
+    git('config', 'core.fsmonitorHookVersion', '2');
+    git('status', '--porcelain=v1', '--untracked-files=all');
+    git('status', '--porcelain=v1', '--untracked-files=all');
+    await put('reviewed.txt', 'edit\n');
+    assert.equal(git('status', '--porcelain=v1', '--untracked-files=all'), '');
+    assert.match(git(...argumentsFor(command)), /M reviewed\.txt/);
+    assert.equal(git('config', 'core.fsmonitor'), monitor);
+  }
+});
+
+await test('SCH-U15: clean 判定の前に変更を隠す index フラグを検出し、既存フラグを保全する', async (t) => {
+  for (const flag of ['assume-unchanged', 'skip-worktree']) {
+    const { git, put } = await fixture(t);
+    git('update-index', `--${flag}`, 'reviewed.txt');
+    await put('reviewed.txt', 'hidden edit\n');
+    assert.equal(git(...argumentsFor(statuses[0]!)), '');
+    const entries = git(...argumentsFor(command('index の確認')))
+      .split('\0')
+      .filter(Boolean);
+    assert.ok(entries.some((entry) => /^[a-zS] /.test(entry)));
+    assert.match(git('ls-files', '-v'), /^[a-zS] reviewed\.txt$/);
+  }
+  assert.match(operations, /先に index の確認.*先頭が小文字.*`S`.*停止.*フラグを自動解除しない/s);
+});
+
+await test('SCH-U16: clean 確認は設定で隠された submodule 内の変更を検出する', async (t) => {
+  const { dependency, git } = await submoduleFixture(t);
+  git('config', 'diff.ignoreSubmodules', 'all');
+  git('config', 'submodule.dependency.ignore', 'all');
+  await writeFile(join(dependency, 'child.txt'), 'dirty child\n');
+  assert.equal(git('status', '--porcelain=v1', '--untracked-files=all'), '');
+  assert.match(git(...argumentsFor(statuses[0]!)), /M dependency/);
+  assert.equal(git('config', 'submodule.dependency.ignore'), 'all');
+  for (const flag of ['assume-unchanged', 'skip-worktree']) {
+    git('-C', dependency, 'update-index', `--${flag}`, 'child.txt');
+    assert.equal(git(...argumentsFor(statuses[0]!)), '');
+    assert.match(git('-C', dependency, ...argumentsFor(command('index の確認'))), /^[a-zS] child\.txt\0$/);
+  }
+  assert.match(operations, /対象作業ツリーと初期化済み submodule のそれぞれで先に index の確認/);
+});
+
+await test('SCH-U18: 起点の取得はタグの取得・削除と submodule の再帰取得を設定から引き継がない', async (t) => {
+  const { root, source, subRemote, remote, git } = await submoduleFixture(t);
+  git(...argumentsFor(pushes[0]!));
+  const receiver = join(root, 'receiver');
+  git('clone', remote, receiver);
+  git('-C', receiver, 'switch', 'scheduled-test');
+  git('-C', receiver, '-c', 'protocol.file.allow=always', 'submodule', 'update', '--init');
+  const child = join(receiver, 'dependency');
+  const oldChild = git('-C', child, 'rev-parse', 'HEAD');
+  await writeFile(join(source, 'child.txt'), 'new remote child\n');
+  git('-C', source, 'add', '--', 'child.txt');
+  git('-C', source, 'commit', '--no-gpg-sign', '-m', 'new remote child');
+  const newChild = git('-C', source, 'rev-parse', 'HEAD');
+  git('-C', source, 'push', 'origin', 'HEAD:refs/heads/scheduled-test');
+  assert.equal(git('--git-dir', subRemote, 'rev-parse', 'refs/heads/scheduled-test'), newChild);
+  git('update-index', '--cacheinfo', `160000,${newChild},dependency`);
+  git(...argumentsFor(commits[0]!));
+  git('tag', 'remote-tag');
+  git('push', 'origin', 'refs/tags/remote-tag');
+  git(...argumentsFor(pushes[1]!));
+  const base = git('rev-parse', 'HEAD');
+  git('-C', receiver, 'tag', 'local-tag');
+  git('-C', receiver, 'config', 'remote.origin.tagOpt', '--tags');
+  git('-C', receiver, 'config', 'fetch.prune', 'true');
+  git('-C', receiver, 'config', 'fetch.pruneTags', 'true');
+  git('-C', receiver, 'config', 'fetch.recurseSubmodules', 'true');
+  assert.throws(() => git('-C', child, 'cat-file', '-e', newChild));
+  git('-C', receiver, ...argumentsFor(command('起点の取得'), 'scheduled-test', { '<取得したコミット SHA>': base }));
+  assert.equal(git('-C', receiver, 'rev-parse', 'FETCH_HEAD'), base);
+  assert.equal(git('-C', receiver, 'tag', '--list'), 'local-tag');
+  assert.equal(git('-C', child, 'rev-parse', 'HEAD'), oldChild);
+  assert.throws(() => git('-C', child, 'cat-file', '-e', newChild));
+  assert.equal(git('-C', receiver, 'config', 'fetch.recurseSubmodules'), 'true');
+});
+
+await test('SCH-U17: ステージはフックを実行せず、差分照合は外部 diff に隠されず index 全体を示す', async (t) => {
+  const { root, local, git, put } = await fixture(t);
+  await put('unreviewed.txt', 'already staged\n');
+  git('add', '--', 'unreviewed.txt');
+  const hooks = join(local, '.git/hooks');
+  await mkdir(hooks, { recursive: true });
+  git('config', 'core.hooksPath', hooks);
+  await writeFile(join(hooks, 'post-index-change'), '#!/bin/sh\nprintf "hook ran\\n" > hook-marker\n', {
+    mode: 0o755,
+  });
+  const external = join(root, 'external-diff').replaceAll('\\', '/');
+  await writeFile(external, '#!/bin/sh\nprintf "external ran\\n" > external-marker\n', { mode: 0o755 });
+  git('config', 'diff.external', external);
+  git('config', 'diff.test.textconv', external);
+  await put('.gitattributes', '*.txt diff=test\n');
+  await put('reviewed.txt', 'reviewed edit\n');
+  git(...argumentsFor(stages[0]!, 'scheduled-test', { '<レビュー済みパス>...': 'reviewed.txt' }));
+  const diff = git(...argumentsFor(command('ステージ全体の差分')));
+  assert.match(diff, /\+reviewed edit/);
+  assert.match(diff, /\+already staged/);
+  assert.equal(await read(join(local, 'unreviewed.txt')), 'already staged\n');
+  assert.doesNotMatch(git(...argumentsFor(statuses[0]!)), /hook-marker|external-marker/);
 });

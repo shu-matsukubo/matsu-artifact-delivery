@@ -159,6 +159,9 @@ npm run ci:select -- --all
 | SCH-U02                  | プラグイン Issue への対象限定、実装中・merge 済み PR がある Issue の選定除外                                                          | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U03〜SCH-U08         | 手順書の Git コマンドで commit・checkout・Push のフック、署名設定、タグ追従を無効にし、新規公開の競合と再開時の非 fast-forward を拒否 | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
 | SCH-U09〜SCH-U11         | 新規 worktree の配置と clean 確認、新規 Git 公開に必要な明示的承認、同一 SHA の既存 ref への no-op を新規作成として扱わないこと       | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
+| SCH-U12〜SCH-U14         | literal なファイル指定、submodule の別リモートへの Push 防止、fsmonitor に依存しない clean 確認                                       | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
+| SCH-U15〜SCH-U17         | 変更を隠す index フラグと submodule 設定の検出、ステージのフック抑止、外部 diff を使わない index 全体の照合                           | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
+| SCH-U18                  | 起点 SHA の取得時にタグの取得・削除と submodule の再帰取得を抑止する                                                                  | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
 
 ### 既存 MCP の対応表
 
