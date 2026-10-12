@@ -44,6 +44,18 @@ function argumentsFor(command: string, branch = 'scheduled-test', replacements: 
     });
 }
 
+function pushArguments(
+  git: (...args: string[]) => string,
+  pushCommand: string,
+  branch = 'scheduled-test',
+  replacements: Record<string, string> = {},
+) {
+  return argumentsFor(pushCommand, branch, {
+    '<レビュー済みコミット SHA>': git(...argumentsFor(command('レビュー済みコミットの確認'))),
+    ...replacements,
+  });
+}
+
 async function fixture(t: TestContext) {
   const root = await temporaryDirectory(t);
   const local = join(root, 'local');
@@ -112,6 +124,13 @@ await test('SCH-U03: 公開用と同期用のコミットはフックによる�
     git('add', '--', 'reviewed.txt');
     const reviewedTree = git(...argumentsFor(command('index の tree')));
     git(...argumentsFor(commitCommand));
+    const reviewedCommit = git(...argumentsFor(command('レビュー済みコミットの確認')));
+    assert.equal(
+      git(
+        ...argumentsFor(command('コミットの tree'), 'scheduled-test', { '<レビュー済みコミット SHA>': reviewedCommit }),
+      ),
+      reviewedTree,
+    );
     assert.equal(git(...argumentsFor(command('HEAD の tree'))), reviewedTree);
     assert.equal(git('status', '--porcelain=v1', '--untracked-files=all'), '');
     assert.equal(git('config', 'core.hooksPath'), hooks);
@@ -136,17 +155,17 @@ await test('SCH-U05: 新規・再開 Push はタグを公開せず、競合と�
   const refs = () => git('--git-dir', remote, 'for-each-ref', '--format=%(refname) %(objectname)');
   git('config', '--global', 'push.followTags', 'true');
   git('tag', '-a', 'pending-tag', '-m', 'pending');
-  git(...argumentsFor(pushes[0]!));
+  git(...pushArguments(git, pushes[0]!));
   const initial = git('rev-parse', 'HEAD');
   assert.equal(refs(), `refs/heads/scheduled-test ${git('rev-parse', 'HEAD')}`);
   const published = refs();
   await put('reviewed.txt', 'resumed\n');
   git('add', '--', 'reviewed.txt');
   git('commit', '--no-gpg-sign', '-m', 'resumed');
-  assert.throws(() => git(...argumentsFor(pushes[0]!)));
+  assert.throws(() => git(...pushArguments(git, pushes[0]!)));
   assert.equal(refs(), published);
-  git(...argumentsFor(command('再開の祖先確認'), 'scheduled-test', { '<確認したリモート先端 SHA>': initial }));
-  git(...argumentsFor(pushes[1]!, 'scheduled-test', { '<確認したリモート先端 SHA>': initial }));
+  git(...pushArguments(git, command('再開の祖先確認'), 'scheduled-test', { '<確認したリモート先端 SHA>': initial }));
+  git(...pushArguments(git, pushes[1]!, 'scheduled-test', { '<確認したリモート先端 SHA>': initial }));
   assert.equal(refs(), `refs/heads/scheduled-test ${git('rev-parse', 'HEAD')}`);
   const resumed = refs();
   const resumedTip = git('rev-parse', 'HEAD');
@@ -155,7 +174,9 @@ await test('SCH-U05: 新規・再開 Push はタグを公開せず、競合と�
   git('add', '--', 'reviewed.txt');
   git('commit', '--no-gpg-sign', '-m', 'diverged');
   assert.throws(() =>
-    git(...argumentsFor(command('再開の祖先確認'), 'scheduled-test', { '<確認したリモート先端 SHA>': resumedTip })),
+    git(
+      ...pushArguments(git, command('再開の祖先確認'), 'scheduled-test', { '<確認したリモート先端 SHA>': resumedTip }),
+    ),
   );
   assert.equal(refs(), resumed);
   assert.equal(git('config', 'push.followTags'), 'true');
@@ -198,7 +219,7 @@ await test('SCH-U07: 新規・再開 Push は pre-push フックによる変更�
     await put('reviewed.txt', `reviewed ${index}\n`);
     git('add', '--', 'reviewed.txt');
     git(...argumentsFor(commits[0]!));
-    git(...argumentsFor(command, 'scheduled-test', { '<確認したリモート先端 SHA>': expected }));
+    git(...pushArguments(git, command, 'scheduled-test', { '<確認したリモート先端 SHA>': expected }));
     assert.equal(git('status', '--porcelain=v1', '--untracked-files=all'), '');
     assert.equal(
       git('--git-dir', remote, 'for-each-ref', '--format=%(refname) %(objectname)'),
@@ -217,7 +238,7 @@ await test('SCH-U08: 新規・再開 Push は利用不能な Push 署名設定�
     await put('reviewed.txt', `reviewed ${index}\n`);
     git('add', '--', 'reviewed.txt');
     git(...argumentsFor(commits[0]!));
-    git(...argumentsFor(command, 'scheduled-test', { '<確認したリモート先端 SHA>': expected }));
+    git(...pushArguments(git, command, 'scheduled-test', { '<確認したリモート先端 SHA>': expected }));
     assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/scheduled-test'), git('rev-parse', 'HEAD'));
     assert.equal(git('config', 'push.gpgSign'), 'true');
   }
@@ -237,11 +258,11 @@ await test('SCH-U10: 新規 Git 公開の強制 Push は対象と影響への明
 
 await test('SCH-U11: 新規 Push は同一 SHA の既存 ref への no-op を新規作成として扱わない', async (t) => {
   const { remote, git } = await fixture(t);
-  const created = /^\*\tHEAD:refs\/heads\/scheduled-test\t/m;
-  assert.match(git(...argumentsFor(pushes[0]!)), created);
+  const created = /^\*\t[0-9a-f]{40}:refs\/heads\/scheduled-test\t/m;
+  assert.match(git(...pushArguments(git, pushes[0]!)), created);
   const published = git('--git-dir', remote, 'for-each-ref', '--format=%(refname) %(objectname)');
-  const unchanged = git(...argumentsFor(pushes[0]!));
-  assert.match(unchanged, /^=\tHEAD:refs\/heads\/scheduled-test\t/m);
+  const unchanged = git(...pushArguments(git, pushes[0]!));
+  assert.match(unchanged, /^=\t[0-9a-f]{40}:refs\/heads\/scheduled-test\t/m);
   assert.doesNotMatch(unchanged, created);
   assert.equal(git('--git-dir', remote, 'for-each-ref', '--format=%(refname) %(objectname)'), published);
   assert.match(publish, /新規公開.*--porcelain.*対象 ref の行が `\*`.*新規作成.*`=`.*up to date.*停止/);
@@ -263,7 +284,7 @@ await test('SCH-U12: 公開・同期のステージはファイル名を literal
 await test('SCH-U13: 新規・再開 Push は submodule の別リモートを更新しない', async (t) => {
   for (const [index, command] of pushes.entries()) {
     const { subRemote, dependency, remote, git } = await submoduleFixture(t);
-    if (index === 1) git(...argumentsFor(pushes[0]!));
+    if (index === 1) git(...pushArguments(git, pushes[0]!));
     const expected = index === 1 ? git('--git-dir', remote, 'rev-parse', 'refs/heads/scheduled-test') : '';
     const previous = git('--git-dir', subRemote, 'for-each-ref', '--format=%(refname) %(objectname)');
     await writeFile(join(dependency, 'child.txt'), 'reviewed child\n');
@@ -272,7 +293,7 @@ await test('SCH-U13: 新規・再開 Push は submodule の別リモートを更
     git('add', '--', 'dependency');
     git(...argumentsFor(commits[0]!));
     git('config', '--global', 'push.recurseSubmodules', 'on-demand');
-    git(...argumentsFor(command, 'scheduled-test', { '<確認したリモート先端 SHA>': expected }));
+    git(...pushArguments(git, command, 'scheduled-test', { '<確認したリモート先端 SHA>': expected }));
     assert.equal(git('--git-dir', subRemote, 'for-each-ref', '--format=%(refname) %(objectname)'), previous);
     assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/scheduled-test'), git('rev-parse', 'HEAD'));
     assert.equal(git('config', 'push.recurseSubmodules'), 'on-demand');
@@ -328,7 +349,7 @@ await test('SCH-U16: clean 確認は設定で隠された submodule 内の変更
 
 await test('SCH-U18: 起点の取得はタグの取得・削除と submodule の再帰取得を設定から引き継がない', async (t) => {
   const { root, source, subRemote, remote, git } = await submoduleFixture(t);
-  git(...argumentsFor(pushes[0]!));
+  git(...pushArguments(git, pushes[0]!));
   const expected = git('rev-parse', 'HEAD');
   const receiver = join(root, 'receiver');
   git('clone', remote, receiver);
@@ -346,7 +367,7 @@ await test('SCH-U18: 起点の取得はタグの取得・削除と submodule の
   git(...argumentsFor(commits[0]!));
   git('tag', 'remote-tag');
   git('push', 'origin', 'refs/tags/remote-tag');
-  git(...argumentsFor(pushes[1]!, 'scheduled-test', { '<確認したリモート先端 SHA>': expected }));
+  git(...pushArguments(git, pushes[1]!, 'scheduled-test', { '<確認したリモート先端 SHA>': expected }));
   const base = git('rev-parse', 'HEAD');
   git('-C', receiver, 'tag', 'local-tag');
   git('-C', receiver, 'config', 'remote.origin.tagOpt', '--tags');
@@ -401,14 +422,14 @@ await test('SCH-U19: 接続先の確認は全 Push URL と URL 書き換え後�
 
 await test('SCH-U20: 再開 Push は確認後の ref 削除・置換を拒否し、既存 ref だけを更新する', async (t) => {
   const { remote, git, put } = await fixture(t);
-  git(...argumentsFor(pushes[0]!));
+  git(...pushArguments(git, pushes[0]!));
   const expected = git('rev-parse', 'HEAD');
   await put('reviewed.txt', 'resumed\n');
   git('add', '--', 'reviewed.txt');
   git(...argumentsFor(commits[0]!));
   const replacements = { '<確認したリモート先端 SHA>': expected };
-  git(...argumentsFor(command('再開の祖先確認'), 'scheduled-test', replacements));
-  const resume = argumentsFor(pushes[1]!, 'scheduled-test', replacements);
+  git(...pushArguments(git, command('再開の祖先確認'), 'scheduled-test', replacements));
+  const resume = pushArguments(git, pushes[1]!, 'scheduled-test', replacements);
   git('--git-dir', remote, 'update-ref', '-d', 'refs/heads/scheduled-test');
   assert.throws(() => git(...resume));
   assert.equal(git('--git-dir', remote, 'for-each-ref'), '');
@@ -457,8 +478,45 @@ await test('SCH-U23: 設定由来のブランチ名とパスは値を展開せ�
   git('check-ref-format', '--branch', branch);
   git(...argumentsFor(setup[1]!, branch, { '<取得したコミット SHA>': git('rev-parse', 'HEAD') }));
   assert.equal(git('branch', '--show-current'), branch);
-  git(...argumentsFor(pushes[0]!, branch));
+  git(...pushArguments(git, pushes[0]!, branch));
   assert.equal(git('ls-remote', 'origin', `refs/heads/${branch}`).split('\t')[1], `refs/heads/${branch}`);
   assert.match(operations, /すべてのプレースホルダー.*引数配列.*シェル/s);
   assert.match(operations, /ブランチ名.*refspec.*コミットメッセージ.*パス/s);
+});
+
+await test('SCH-U24: diff.relative 設定があってもステージ全体の差分を照合する', async (t) => {
+  const { local, git, put } = await fixture(t);
+  await mkdir(join(local, 'nested'));
+  await put('nested/reviewed.txt', 'reviewed\n');
+  await put('outside.txt', 'unreviewed\n');
+  git('add', '--', 'nested/reviewed.txt', 'outside.txt');
+  git('config', 'diff.relative', 'true');
+  assert.doesNotMatch(git('-C', join(local, 'nested'), 'diff', '--cached'), /outside\.txt/);
+  const diff = git('-C', join(local, 'nested'), ...argumentsFor(command('ステージ全体の差分')));
+  assert.match(diff, /nested\/reviewed\.txt/);
+  assert.match(diff, /outside\.txt/);
+  assert.equal(git('config', 'diff.relative'), 'true');
+});
+
+await test('SCH-U25: 新規・再開 Push は確認後に HEAD が移動してもレビュー済み SHA だけを公開する', async (t) => {
+  for (const [index, pushCommand] of pushes.entries()) {
+    const { remote, git, put } = await fixture(t);
+    if (index === 1) git(...pushArguments(git, pushes[0]!));
+    const expected = index === 1 ? git('rev-parse', 'HEAD') : '';
+    await put('reviewed.txt', `reviewed ${index}\n`);
+    git('add', '--', 'reviewed.txt');
+    git(...argumentsFor(commits[0]!));
+    const reviewed = git(...argumentsFor(command('レビュー済みコミットの確認')));
+    const replacements = {
+      '<レビュー済みコミット SHA>': reviewed,
+      '<確認したリモート先端 SHA>': expected,
+    };
+    if (index === 1) git(...pushArguments(git, command('再開の祖先確認'), 'scheduled-test', replacements));
+    await put('reviewed.txt', `unreviewed ${index}\n`);
+    git('add', '--', 'reviewed.txt');
+    git(...argumentsFor(commits[0]!));
+    git(...argumentsFor(pushCommand, 'scheduled-test', replacements));
+    assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/scheduled-test'), reviewed);
+    assert.notEqual(git('rev-parse', 'HEAD'), reviewed);
+  }
 });
