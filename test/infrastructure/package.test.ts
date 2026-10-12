@@ -52,14 +52,19 @@ await test('PKG-U02: project Codex settings stay outside packages; prompt roles 
   }
 });
 
-await test('PKG-U03: Plugin documentation resolves local links and explains reviewer permissions', async () => {
+await test('PKG-U03: 開発・Plugin 文書の参照が解決し、レビュー権限を説明する', async () => {
+  const skillDocuments = (await files(join(repository, '.agents/skills')))
+    .filter((path) => path.endsWith('.md'))
+    .map((path) => `.agents/skills/${path}`);
   for (const path of [
+    'AGENTS.md',
     'README.md',
     'docs/testing.md',
     'docs/distribution.md',
     'docs/codex-workflows.md',
     'plugins/artifact-workflow/README.md',
     'plugins/expert-escalation/README.md',
+    ...skillDocuments,
   ])
     await localLinks(repository, path);
 
@@ -118,7 +123,7 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assertContract(startup, {
     id: 'SCH-U01',
     ordered: ['GitHub Plugin', '`gh`', 'その他利用可能な手段'],
-    contains: ['操作ごと', '公開情報', 'URL', '認証', '再取得', 'safe-git'],
+    contains: ['操作ごと', '公開情報', 'URL', '認証', '再取得'],
   });
   assert.doesNotMatch(all, /フォールバックせず停止|GitHub Plugin を前提/);
   assert.match(startup, /独自の状態ファイルやチェックポイントファイル.*作成・永続化しない/);
@@ -154,7 +159,7 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
     id: 'SCH-U01',
     ordered: [
       'リポジトリの Open PR',
-      'read.ts status --porcelain=v1 --untracked-files=all',
+      'git status --porcelain=v1 --untracked-files=all',
       '`AI処理可能` ラベル付きの Open Issue',
     ],
   });
@@ -171,8 +176,10 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(workspace, /取得したコミット SHA と一致する新しい隔離作業ツリー/);
   assert.match(workspace, /前回の作業ブランチ、ローカル HEAD、未マージまたは破棄済み作業の変更は引き継がない/);
   assert.match(workspace, /作業ツリーを用意できない場合は停止/);
-  assert.match(workspace, /safe-git.*create-worktree\.ts.*detached worktree/);
-  assert.match(workspace, /safe-git.*fetch\.ts --commit.*取得してから.*create-worktree\.ts/);
+  assert.match(
+    workspace,
+    /git fetch origin <取得したコミット SHA>.*git worktree add --detach <未使用の絶対パス> <取得したコミット SHA>/,
+  );
   assert.match(workspace, /選択した手段.*取得した SHA から作成する/);
   assert.match(workspace, /同名ブランチが既にある場合は再利用・上書きせず停止/);
   assert.match(workspace, /既存ブランチの再利用は.*正当に特定された再開作業に限る/);
@@ -188,21 +195,22 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
       'コミットを作成',
       'リモートブランチを再取得',
       '対応するローカルコミットを作成',
-      'read.ts status --porcelain=v1 --untracked-files=all',
+      'git status --porcelain=v1 --untracked-files=all',
       '選択した手段で Issue を参照する Open PR を作成',
     ],
   });
   assert.match(publish, /検証・レビュー済みの差分.*GitHub Plugin.*コミット・Git object.*ref 更新/);
-  assert.match(publish, /safe-git.*ローカルコミット.*Push/);
-  assert.match(publish, /`stage\.ts`.*レビュー済みの変更だけをステージ.*`commit\.ts`/);
-  assert.match(publish, /`git add`・`git commit`・`git push` は直接実行しない/);
+  assert.match(
+    publish,
+    /`git add -- <レビュー済みパス>\.\.\.`.*レビュー済みの変更だけをステージ.*`git commit`.*`git push origin <Issue 用ブランチ>`/,
+  );
   assert.match(publish, /リモートブランチの先端 SHA が作成したコミット SHA と一致.*差分がレビュー済みの差分と一致/);
   assert.match(publish, /確認できない場合は PR を作成しない/);
   assert.match(
     publish,
-    /ローカル HEAD の tree.*リモートコミットの tree.*一致していなければ.*`stage\.ts`.*レビュー済みの変更だけをステージ/,
+    /ローカル HEAD の tree.*リモートコミットの tree.*一致していなければ.*`git add`.*レビュー済みの変更だけをステージ/,
   );
-  assert.match(publish, /コミット前に index の tree.*リモートコミットの tree と一致.*確認/);
+  assert.match(publish, /コミット前に.*index の tree.*リモートコミットの tree と一致.*確認/);
   assert.match(
     publish,
     /ローカル HEAD の tree.*リモートコミットの tree と一致.*staged、unstaged、untracked file.*clean/,
