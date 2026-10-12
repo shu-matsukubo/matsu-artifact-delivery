@@ -164,6 +164,7 @@ npm run ci:select -- --all
 | SCH-U18                  | 起点 SHA の取得時にタグの取得・削除と submodule の再帰取得を抑止する                                                                  | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
 | SCH-U19〜SCH-U23         | 接続先の全 URL、再開 ref の削除・置換競合、pager・置換 ref の抑止、設定由来の値を引数として渡す契約                                   | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
 | SCH-U24 / SCH-U25        | diff.relative による差分の欠落を防ぎ、確認後の HEAD 移動でもレビュー済み SHA だけを公開する                                           | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
+| SCH-U26〜SCH-U28         | stat 設定による内容変更の見落とし、進行中操作の意図しない完了、外部操作の期限と期限超過後の再取得契約                                 | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
 
 ### 既存 MCP の対応表
 

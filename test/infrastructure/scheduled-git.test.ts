@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, rename, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { read, repository, temporaryDirectory } from '../lib/plugin.ts';
@@ -30,10 +30,10 @@ const statuses = [command('clean の確認')];
 // 引数の境界を先に決め、値をシェルコードとして解釈せず実際の Git に渡す。
 function argumentsFor(command: string, branch = 'scheduled-test', replacements: Record<string, string> = {}) {
   return command
-    .match(/"[^"]*"|(?:<[^>]+>|[^\s"<])+/g)!
+    .match(/(?:"[^"]*"|<[^>]+>|[^\s"<])+/g)!
     .slice(1)
     .map((argument) => {
-      argument = argument.replace(/^"|"$/g, '');
+      argument = argument.replaceAll('"', '');
       for (const [placeholder, value] of Object.entries({
         '<生成したコミットメッセージ>': 'scheduled test',
         '<Issue 用ブランチ>': branch,
@@ -519,4 +519,87 @@ await test('SCH-U25: 新規・再開 Push は確認後に HEAD が移動して�
     assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/scheduled-test'), reviewed);
     assert.notEqual(git('rev-parse', 'HEAD'), reviewed);
   }
+});
+
+await test('SCH-U26: 同サイズ・同 mtime で status が clean でも追跡ファイルの内容不一致を検出する', async (t) => {
+  for (const submodule of [false, true]) {
+    const child = submodule ? await submoduleFixture(t) : undefined;
+    const result = child ?? (await fixture(t));
+    const target = child?.dependency ?? result.local;
+    const name = submodule ? 'child.txt' : 'reviewed.txt';
+    const path = join(target, name);
+    const oldTime = new Date('2000-01-01T00:00:00Z');
+    await utimes(path, oldTime, oldTime);
+    result.git('config', 'core.trustctime', 'false');
+    result.git('config', 'core.checkStat', 'minimal');
+    if (submodule) {
+      result.git('-C', target, 'config', 'core.trustctime', 'false');
+      result.git('-C', target, 'config', 'core.checkStat', 'minimal');
+    }
+    assert.equal(result.git(...argumentsFor(statuses[0]!)), '');
+    const entries = result
+      .git('-C', target, ...argumentsFor(command('index の内容')))
+      .split('\0')
+      .filter(Boolean);
+    const entry = entries.find((value) => value.endsWith(`\t${name}`))!;
+    const expected = entry.split(' ')[1]!;
+    const hash = () =>
+      result.git(
+        '-C',
+        target,
+        ...argumentsFor(command('追跡ファイルの blob'), 'scheduled-test', { '<追跡ファイルパス>': name }),
+      );
+    assert.equal(hash(), expected);
+    const before = await stat(path);
+    const replacement = join(result.root, 'replacement.txt');
+    await writeFile(replacement, 'edit\n');
+    await utimes(replacement, before.atime, before.mtime);
+    await rename(replacement, path);
+    const after = await stat(path);
+    assert.equal(after.size, before.size);
+    assert.equal(after.mtimeMs, before.mtimeMs);
+    assert.equal(result.git('status', '--porcelain=v1', '--untracked-files=all'), '');
+    assert.notEqual(hash(), expected);
+    assert.equal(result.git('config', 'core.trustctime'), 'false');
+    assert.equal(result.git('config', 'core.checkStat'), 'minimal');
+  }
+  assert.ok(argumentsFor(prefix).includes('core.trustctime=true'));
+  assert.ok(argumentsFor(prefix).includes('core.checkStat=default'));
+  assert.match(operations, /clean の確認.*index の内容.*blob.*不一致.*停止/s);
+});
+
+await test('SCH-U27: 進行中の merge を Git の状態パスで検出し、再開とコミット前に停止する', async (t) => {
+  const { git, put } = await fixture(t);
+  git('switch', '-c', 'other');
+  await put('side.txt', 'side\n');
+  git('add', '--', 'side.txt');
+  git('commit', '--no-gpg-sign', '-m', 'side');
+  git('switch', 'work');
+  await put('reviewed.txt', 'reviewed\n');
+  git('add', '--', 'reviewed.txt');
+  git('commit', '--no-gpg-sign', '-m', 'reviewed');
+  const head = git('rev-parse', 'HEAD');
+  git('merge', '--no-commit', '--no-ff', 'other');
+  const statePath = git(...argumentsFor(command('作業状態のパス'), 'scheduled-test', { '<状態名>': 'MERGE_HEAD' }));
+  await access(statePath);
+  assert.equal(await read(statePath), `${git('rev-parse', 'other')}\n`);
+  assert.equal(git('rev-parse', 'HEAD'), head);
+  assert.match(
+    operations,
+    /作業状態の確認.*MERGE_HEAD.*CHERRY_PICK_HEAD.*REVERT_HEAD.*rebase-apply.*rebase-merge.*sequencer/s,
+  );
+  assert.match(operations, /存在.*停止.*自動.*continue.*abort/s);
+  assert.match(operations, /ステージ前とコミット直前.*作業状態の確認/);
+  const resume = await read(join(repository, '.agents/skills/scheduled-issue-processing/references/resume.md'));
+  assert.match(resume, /再開.*新規.*前.*作業状態の確認/);
+  assert.match(publish, /どの経路でも.*作業状態の確認.*コミット/);
+});
+
+await test('SCH-U28: 外部操作には期限とプロセスツリーの停止を要求し、期限超過後は状態を再取得する', async () => {
+  assert.match(operations, /各 Git 操作.*60,000 ms.*タイムアウト/);
+  assert.match(operations, /子・孫プロセス.*停止.*終了.*確認/);
+  assert.match(operations, /用意できない場合は.*実行.*停止/);
+  assert.match(operations, /期限超過.*結果不明.*現在状態.*再取得.*再試行/s);
+  const startup = await read(join(repository, '.agents/skills/scheduled-issue-processing/references/startup.md'));
+  assert.match(startup, /gh.*API.*Git 操作.*実行期限/);
 });

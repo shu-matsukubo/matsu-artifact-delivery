@@ -131,7 +131,7 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(startup, /状態管理用のラベルは追加しない/);
   assert.match(startup, /実行結果や中断内容は同一スレッドで報告/);
 
-  assert.match(resume, /新規 Issue の処理より前に/);
+  assert.match(resume, /再開・新規 Issue の判定より前に.*作業状態の確認.*進行中の操作があれば停止/);
   assert.match(resume, /同一スレッドの過去の会話・実行ログ.*前回実行時の結果や中断内容.*Memory.*補助情報/);
   assert.match(resume, /状態の正本ではなく/);
   assert.match(resume, /過去ログや Memory 等が利用できないこと自体をエラーや停止理由にしない/);
