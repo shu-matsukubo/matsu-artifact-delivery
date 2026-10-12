@@ -31,14 +31,15 @@ Git 経路では、次の共通部分に表の引数を続けて実行する。�
 | 再開 Push                  | `push --porcelain --no-signed --no-follow-tags --recurse-submodules=no --force-with-lease=refs/heads/<Issue 用ブランチ>:<確認したリモート先端 SHA> origin <レビュー済みコミット SHA>:refs/heads/<Issue 用ブランチ>` |
 | レビュー済みコミットの確認 | `rev-parse --verify "HEAD^{commit}"`                                                                                                                                                                                |
 | コミットの tree            | `rev-parse "<レビュー済みコミット SHA>^{tree}"`                                                                                                                                                                     |
+| コミットの object          | `cat-file commit <レビュー済みコミット SHA>`                                                                                                                                                                        |
 
-作業状態の確認では、`MERGE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`、`rebase-apply`、`rebase-merge`、`sequencer` のそれぞれについて作業状態のパスを取得し、そのファイル・ディレクトリの不存在を確認する。いずれかが存在する場合や確認に失敗した場合は進行中の操作として停止し、自動で `continue`・`abort` や状態ファイルの削除を行わない。linked worktree でも `.git` をディレクトリと仮定しない。
+作業状態の確認では、`MERGE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`、`rebase-apply`、`rebase-merge`、`sequencer`、`BISECT_START` のそれぞれについて作業状態のパスを取得し、そのファイル・ディレクトリの不存在を確認する。いずれかが存在する場合や確認に失敗した場合は進行中の操作として停止し、自動で `continue`・`abort` や状態ファイルの削除を行わない。linked worktree でも `.git` をディレクトリと仮定しない。
 
 clean の確認では、対象作業ツリーと初期化済み submodule のそれぞれで先に index の確認と作業状態の確認を行う。NUL 区切りの各項目の先頭が小文字（assume-unchanged）または `S`（skip-worktree）の場合は変更を隠せるため停止し、フラグを自動解除しない。その後、clean の確認が成功し、出力が空であることを確認する。submodule 内の変更も対象に含める。
 
 clean の確認はリポジトリのルートで行い、status が空でも index の内容の各追跡パスを照合する。NUL 区切りの項目を `mode blob stage` と最初のタブ以降のパスに分け、stage が 0 以外、内容不一致、ファイルの欠落・種類の不一致、読み取り・操作失敗の場合は停止する。通常ファイル（`100644` / `100755`）は追跡ファイルの blob を取得し、改行・clean filter を適用した SHA が index の blob と一致することを確認する。シンボリックリンク（`120000`）はリンク先文字列のバイト列を、改行を加えずリンク内容の blob の標準入力へ渡す。`core.symlinks=false` の通常ファイルによるリンク表現では、そのファイルのバイト列を渡す。submodule（`160000`）は初期化済みならその HEAD の SHA を index と照合し、内部でも同じ確認を行う。未初期化の submodule は変更検査の対象外とし、初期化しない。未知の mode は停止する。照合のために index の再作成・フラグ解除・ステージを行わない。
 
-ステージ前とコミット直前に、対象作業ツリーと初期化済み submodule の作業状態の確認を行う。ステージには、作業ツリーを基準にしたレビュー済みの個々のファイルパス（削除を含む）または submodule のパスを渡す。各パスはシェルに応じて引用し、Git のパターンとして展開させない。ステージ後はパスで絞らずステージ全体の差分をレビュー済み差分と照合し、想定外の変更があれば[変更の保全](resume.md#変更の保全)に従って停止する。コミット前に index の tree を取得する。コミット後にレビュー済みコミットの確認で完全な SHA を取得し、そのコミットの tree が index の tree と一致することと clean を確認してから Push に進む。祖先確認と Push は同じレビュー済みコミット SHA を使い、確認後の HEAD の移動で公開内容を変えない。
+ステージ前とコミット直前に、対象作業ツリーと初期化済み submodule の作業状態の確認を行う。ステージには、作業ツリーを基準にしたレビュー済みの個々のファイルパス（削除を含む）または submodule のパスを渡す。各パスはシェルに応じて引用し、Git のパターンとして展開させない。ステージ後はパスで絞らずステージ全体の差分をレビュー済み差分と照合し、想定外の変更があれば[変更の保全](resume.md#変更の保全)に従って停止する。コミット前に HEAD の完全な SHA と index の tree を取得する。コミット後にレビュー済みコミットの確認で完全な SHA を取得し、そのコミットの tree が index の tree と一致することと、コミットの object のヘッダー（最初の空行まで）の `parent` が 1 件だけでコミット前の HEAD SHA と一致することを確認する。不一致や確認失敗は Push せず停止する。clean を確認してから Push に進む。祖先確認と Push は同じレビュー済みコミット SHA を使い、確認後の HEAD の移動で公開内容を変えない。
 
 取得前に取得先の確認、各 Push 前に Push 先の確認を行う。URL 書き換え後の出力が 1 件で、GitHub 側で確認した対象リポジトリの clone URL（HTTPS / SSH）とホスト・owner・リポジトリ名が一致することを確認する。複数 URL、不一致、確認失敗の場合は通信せず停止する。リモート名 `origin` だけを接続先の根拠にしない。
 

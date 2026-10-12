@@ -74,8 +74,10 @@ async function fixture(t: TestContext) {
     GIT_COMMITTER_NAME: 'Scheduled test',
     GIT_COMMITTER_EMAIL: 'scheduled@example.invalid',
   };
-  const git = (...args: string[]) =>
-    execFileSync('git', args, { cwd: local, env, encoding: 'utf8', stdio: 'pipe', timeout: 10000 }).trim();
+  const invoke = (args: string[], input?: Buffer) =>
+    execFileSync('git', args, { cwd: local, env, input, encoding: 'utf8', stdio: 'pipe', timeout: 10000 }).trim();
+  const git = (...args: string[]) => invoke(args);
+  const gitInput = (input: Buffer, ...args: string[]) => invoke(args, input);
   const put = (name: string, content: string) => writeFile(join(local, name), content);
   git('init', '--initial-branch=work');
   git('init', '--bare', remote);
@@ -83,7 +85,7 @@ async function fixture(t: TestContext) {
   await put('reviewed.txt', 'base\n');
   git('add', '--', 'reviewed.txt');
   git('commit', '--no-gpg-sign', '-m', 'base');
-  return { root, local, remote, git, put };
+  return { root, local, remote, git, gitInput, put };
 }
 
 async function submoduleFixture(t: TestContext) {
@@ -602,4 +604,102 @@ await test('SCH-U28: 外部操作には期限とプロセスツリーの停止�
   assert.match(operations, /期限超過.*結果不明.*現在状態.*再取得.*再試行/s);
   const startup = await read(join(repository, '.agents/skills/scheduled-issue-processing/references/startup.md'));
   assert.match(startup, /gh.*API.*Git 操作.*実行期限/);
+});
+
+await test('SCH-U29: 内容照合は改行・clean filter・リンク代替ファイルを正規化して誤検知しない', async (t) => {
+  const { git, gitInput, put } = await fixture(t);
+  const name = '空白 [1] $file.txt';
+  await put('.gitattributes', '* text eol=lf\nfilter.txt filter=normalize\n');
+  await put(name, 'normal\r\n');
+  await put('filter.txt', 'UPPER\r\n');
+  git('config', 'filter.normalize.clean', 'sed s/UPPER/lower/g');
+  git('config', 'filter.normalize.required', 'true');
+  git(...argumentsFor(stages[0]!, 'scheduled-test', { '<レビュー済みパス>...': '.gitattributes' }));
+  for (const path of [name, 'filter.txt'])
+    git(...argumentsFor(stages[0]!, 'scheduled-test', { '<レビュー済みパス>...': path }));
+  const linkBytes = Buffer.from('target');
+  await put('link.txt', linkBytes.toString());
+  git('config', 'core.symlinks', 'false');
+  const linkBlob = gitInput(linkBytes, 'hash-object', '-w', '--stdin');
+  git('update-index', '--add', '--cacheinfo', `120000,${linkBlob},link.txt`);
+  git(...argumentsFor(commits[0]!));
+  const before = git(...argumentsFor(command('index の tree')));
+  for (const entry of git(...argumentsFor(command('index の内容')))
+    .split('\0')
+    .filter(Boolean)) {
+    const tab = entry.indexOf('\t');
+    const [mode, expected, stage] = entry.slice(0, tab).split(' ');
+    const path = entry.slice(tab + 1);
+    assert.equal(stage, '0');
+    const actual =
+      mode === '120000'
+        ? gitInput(linkBytes, ...argumentsFor(command('リンク内容の blob')))
+        : git(...argumentsFor(command('追跡ファイルの blob'), 'scheduled-test', { '<追跡ファイルパス>': path }));
+    assert.match(actual, /^[0-9a-f]{40}$/);
+    assert.equal(actual, expected);
+  }
+  assert.equal(git('cat-file', 'blob', `HEAD:${name}`), 'normal');
+  assert.equal(git('cat-file', 'blob', 'HEAD:filter.txt'), 'lower');
+  assert.equal(git(...argumentsFor(command('index の tree'))), before);
+  assert.equal(git(...argumentsFor(statuses[0]!)), '');
+});
+
+await test('SCH-U30: tree が同じでも想定外の親を含むコミットを raw object の照合で検出する', async (t) => {
+  const { local, git } = await fixture(t);
+  const expected = git('rev-parse', 'HEAD');
+  const tree = git('rev-parse', 'HEAD^{tree}');
+  const other = git('commit-tree', tree, '-p', expected, '-m', 'unreviewed history');
+  const ordinary = git('commit-tree', tree, '-p', expected, '-m', `message\nparent ${other}`);
+  const merge = git('commit-tree', tree, '-p', expected, '-p', other, '-m', 'unexpected merge');
+  const parents = (sha: string) => {
+    const object = git(
+      ...argumentsFor(command('コミットの object'), 'scheduled-test', { '<レビュー済みコミット SHA>': sha }),
+    );
+    return object
+      .split('\n\n')[0]!
+      .split('\n')
+      .filter((line) => line.startsWith('parent '))
+      .map((line) => line.slice(7));
+  };
+  assert.deepEqual(parents(ordinary), [expected]);
+  assert.deepEqual(parents(merge), [expected, other]);
+  assert.equal(git('rev-parse', `${ordinary}^{tree}`), git('rev-parse', `${merge}^{tree}`));
+  await writeFile(join(local, '.git/shallow'), `${merge}\n`);
+  assert.equal(git('rev-list', '--parents', '-n', '1', merge), merge);
+  assert.deepEqual(parents(merge), [expected, other]);
+  assert.match(operations, /コミット前に.*HEAD.*SHA.*index の tree/);
+  assert.match(operations, /parent.*1 件.*コミット前.*SHA.*不一致.*停止/s);
+  assert.match(publish, /Plugin \/ API 経路.*親.*新規.*起点 SHA.*再開.*先端 SHA/s);
+});
+
+await test('SCH-U31: linked worktree の clean な bisect と sequencer 状態を元の作業ツリーと分けて検出する', async (t) => {
+  const { root, git } = await fixture(t);
+  const isolated = join(root, 'isolated');
+  git(
+    ...argumentsFor(setup[0]!, 'scheduled-test', {
+      '<未使用の絶対パス>': isolated,
+      '<取得したコミット SHA>': git('rev-parse', 'HEAD'),
+    }),
+  );
+  git('-C', isolated, 'bisect', 'start');
+  assert.equal(git('-C', isolated, ...argumentsFor(statuses[0]!)), '');
+  const names = [
+    'MERGE_HEAD',
+    'CHERRY_PICK_HEAD',
+    'REVERT_HEAD',
+    'rebase-apply',
+    'rebase-merge',
+    'sequencer',
+    'BISECT_START',
+  ];
+  for (const name of names) {
+    const args = argumentsFor(command('作業状態のパス'), 'scheduled-test', { '<状態名>': name });
+    const path = git('-C', isolated, ...args);
+    if (name === 'BISECT_START') await access(path);
+    else if (['rebase-apply', 'rebase-merge', 'sequencer'].includes(name)) await mkdir(path);
+    else await writeFile(path, 'in progress\n');
+    await access(path);
+    await assert.rejects(access(git(...args)), { code: 'ENOENT' });
+  }
+  assert.match(operations, /作業状態の確認.*BISECT_START/s);
 });
