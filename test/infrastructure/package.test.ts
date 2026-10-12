@@ -179,7 +179,7 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(workspace, /作業ツリーを用意できない場合は停止/);
   assert.match(
     workspace,
-    /git fetch origin <取得したコミット SHA>.*git worktree add --detach <未使用の絶対パス> <取得したコミット SHA>/,
+    /git fetch origin <取得したコミット SHA>.*git -c core.hooksPath=\/dev\/null worktree add --detach <未使用の絶対パス> <取得したコミット SHA>/,
   );
   assert.match(workspace, /選択した手段.*取得した SHA からローカル作業ブランチを作成する/);
   assert.match(workspace, /リモートブランチは.*GitHub 反映.*新規公開時に作成/);
@@ -213,13 +213,13 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(publish, /Plugin \/ API 経路.*ref 作成.*既存 ref.*失敗/);
   assert.ok(
     publish.includes(
-      'git push --no-follow-tags --force-with-lease=refs/heads/<Issue 用ブランチ>: origin HEAD:refs/heads/<Issue 用ブランチ>',
+      'git -c core.hooksPath=/dev/null push --porcelain --no-signed --no-follow-tags --force-with-lease=refs/heads/<Issue 用ブランチ>: origin HEAD:refs/heads/<Issue 用ブランチ>',
     ),
   );
   assert.match(publish, /競合した場合は再利用・上書きせず停止/);
   assert.match(
     publish,
-    /正当に特定された再開作業.*既存ブランチ.*fast-forward.*git push --no-follow-tags origin HEAD:refs\/heads/,
+    /正当に特定された再開作業.*既存ブランチ.*fast-forward.*git -c core.hooksPath=\/dev\/null push --no-signed --no-follow-tags origin HEAD:refs\/heads/,
   );
   assert.match(publish, /リモートブランチの先端 SHA が作成したコミット SHA と一致.*差分がレビュー済みの差分と一致/);
   assert.match(publish, /確認できない場合は PR を作成しない/);

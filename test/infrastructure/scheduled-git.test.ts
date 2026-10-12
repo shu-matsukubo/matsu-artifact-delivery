@@ -11,9 +11,17 @@ const commits = commands.filter((command) => /\bcommit /.test(command));
 const pushes = commands.filter((command) => /\bpush /.test(command));
 assert.equal(commits.length, 2);
 assert.equal(pushes.length, 2);
+const workspace = await read(
+  join(repository, '.agents/skills/scheduled-issue-processing/references/workspace-setup.md'),
+);
+const setup = [...workspace.matchAll(/`(git [^`]+)`/g)]
+  .map((match) => match[1]!)
+  .filter((command) => /\b(worktree add|switch) /.test(command));
+assert.equal(setup.length, 2);
 
 // 手順書のプレースホルダーだけを置換し、シェルを介さず実際の Git に渡す。
-function argumentsFor(command: string, branch = 'scheduled-test') {
+function argumentsFor(command: string, branch = 'scheduled-test', replacements: Record<string, string> = {}) {
+  for (const [placeholder, value] of Object.entries(replacements)) command = command.replaceAll(placeholder, value);
   return command
     .replaceAll('<生成したコミットメッセージ>', 'scheduled test')
     .replaceAll('<Issue 用ブランチ>', branch)
@@ -49,7 +57,7 @@ async function fixture(t: TestContext) {
   await put('reviewed.txt', 'base\n');
   git('add', '--', 'reviewed.txt');
   git('commit', '--no-gpg-sign', '-m', 'base');
-  return { local, remote, git, put };
+  return { root, local, remote, git, put };
 }
 
 await test('SCH-U03: 公開用と同期用のコミットはフックによる未レビュー差分を含めない', async (t) => {
@@ -111,4 +119,91 @@ await test('SCH-U05: 新規・再開 Push はタグを公開せず、競合と�
   assert.throws(() => git(...argumentsFor(pushes[1]!)));
   assert.equal(refs(), resumed);
   assert.equal(git('config', 'push.followTags'), 'true');
+});
+
+await test('SCH-U06: worktree 作成とブランチ切り替えは checkout フックによる変更を含めない', async (t) => {
+  const { root, local, git } = await fixture(t);
+  const hooks = join(local, '.git/hooks');
+  const isolated = join(root, 'isolated worktree');
+  await mkdir(hooks, { recursive: true });
+  git('config', 'core.hooksPath', hooks);
+  await writeFile(join(hooks, 'post-checkout'), '#!/bin/sh\nprintf "hook ran\\n" >> unreviewed.txt\n', {
+    mode: 0o755,
+  });
+  const base = git('rev-parse', 'HEAD');
+  const replacements = { '<未使用の絶対パス>': `"${isolated}"`, '<取得したコミット SHA>': base };
+  git(...argumentsFor(setup[0]!, 'scheduled-test', replacements));
+  assert.equal(git('-C', isolated, 'rev-parse', 'HEAD'), base);
+  assert.equal(git('-C', isolated, 'status', '--porcelain=v1', '--untracked-files=all'), '');
+  git('-C', isolated, ...argumentsFor(setup[1]!, 'scheduled-test', replacements));
+  assert.equal(git('-C', isolated, 'branch', '--show-current'), 'scheduled-test');
+  assert.equal(git('-C', isolated, 'rev-parse', 'HEAD'), base);
+  assert.equal(git('-C', isolated, 'status', '--porcelain=v1', '--untracked-files=all'), '');
+  assert.equal(git('status', '--porcelain=v1', '--untracked-files=all'), '');
+  assert.equal(git('config', 'core.hooksPath'), hooks);
+});
+
+await test('SCH-U07: 新規・再開 Push は pre-push フックによる変更と別ブランチの公開を防ぐ', async (t) => {
+  const { local, remote, git, put } = await fixture(t);
+  const hooks = join(local, '.git/hooks');
+  await mkdir(hooks, { recursive: true });
+  git('config', 'core.hooksPath', hooks);
+  await writeFile(
+    join(hooks, 'pre-push'),
+    '#!/bin/sh\nprintf "hook ran\\n" >> unreviewed.txt\ngit add -- unreviewed.txt\ngit push --no-verify origin HEAD:refs/heads/unreviewed-branch\n',
+    { mode: 0o755 },
+  );
+  for (const [index, command] of pushes.entries()) {
+    await put('reviewed.txt', `reviewed ${index}\n`);
+    git('add', '--', 'reviewed.txt');
+    git(...argumentsFor(commits[0]!));
+    git(...argumentsFor(command));
+    assert.equal(git('status', '--porcelain=v1', '--untracked-files=all'), '');
+    assert.equal(
+      git('--git-dir', remote, 'for-each-ref', '--format=%(refname) %(objectname)'),
+      `refs/heads/scheduled-test ${git('rev-parse', 'HEAD')}`,
+    );
+    assert.equal(git('config', 'core.hooksPath'), hooks);
+  }
+});
+
+await test('SCH-U08: 新規・再開 Push は利用不能な Push 署名設定を引き継がない', async (t) => {
+  const { remote, git, put } = await fixture(t);
+  git('config', '--global', 'push.gpgSign', 'true');
+  git('config', '--global', 'gpg.program', 'unavailable-scheduled-test-signer');
+  for (const [index, command] of pushes.entries()) {
+    await put('reviewed.txt', `reviewed ${index}\n`);
+    git('add', '--', 'reviewed.txt');
+    git(...argumentsFor(commits[0]!));
+    git(...argumentsFor(command));
+    assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/scheduled-test'), git('rev-parse', 'HEAD'));
+    assert.equal(git('config', 'push.gpgSign'), 'true');
+  }
+});
+
+await test('SCH-U09: 新規 worktree は元のリポジトリ外に配置し、作成と切り替えの後に clean を確認する', () => {
+  assert.match(workspace, /元のリポジトリ外.*未使用の絶対パス/);
+  assert.match(
+    workspace,
+    /worktree 作成後とブランチ切り替え後.*git status --porcelain=v1 --untracked-files=all.*clean/,
+  );
+});
+
+await test('SCH-U10: 新規 Git 公開の強制 Push は対象と影響への明示的承認を必要とする', () => {
+  assert.match(publish, /Plugin \/ API 経路.*ref 作成.*既存 ref.*失敗/);
+  assert.match(publish, /Git 経路.*対象と影響.*ユーザーの明示的な承認を得た場合だけ.*--force-with-lease/);
+  assert.match(publish, /スケジューラの起動や `AI処理可能` ラベルを.*承認.*扱わない/);
+  assert.match(publish, /承認がない場合は Plugin \/ API 経路.*利用できなければ停止/);
+});
+
+await test('SCH-U11: 新規 Push は同一 SHA の既存 ref への no-op を新規作成として扱わない', async (t) => {
+  const { remote, git } = await fixture(t);
+  const created = /^\*\tHEAD:refs\/heads\/scheduled-test\t/m;
+  assert.match(git(...argumentsFor(pushes[0]!)), created);
+  const published = git('--git-dir', remote, 'for-each-ref', '--format=%(refname) %(objectname)');
+  const unchanged = git(...argumentsFor(pushes[0]!));
+  assert.match(unchanged, /^=\tHEAD:refs\/heads\/scheduled-test\t/m);
+  assert.doesNotMatch(unchanged, created);
+  assert.equal(git('--git-dir', remote, 'for-each-ref', '--format=%(refname) %(objectname)'), published);
+  assert.match(publish, /新規公開.*--porcelain.*対象 ref の行が `\*`.*新規作成.*`=`.*up to date.*停止/);
 });
