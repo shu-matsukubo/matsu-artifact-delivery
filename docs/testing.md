@@ -157,6 +157,7 @@ npm run ci:select -- --all
 | PKG-U01〜PKG-U04         | marketplace、Plugin Agent 登録不要とリポジトリ Codex 設定の配布外確認、開発・Plugin 文書の参照、ID 対応        | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U01                  | 入口の reference 参照、起動・再開・新規選定・環境準備・GitHub とローカルへの反映・clean 確認の契約と担当境界   | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | SCH-U02                  | プラグイン Issue への対象限定、実装中・merge 済み PR がある Issue の選定除外                                   | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
+| SCH-U03〜SCH-U05         | 手順書の Git コマンドでフック混入・署名設定・タグ追従を防ぎ、新規公開の競合と再開時の非 fast-forward を拒否    | [定期処理の Git 回帰試験](../test/infrastructure/scheduled-git.test.ts)                   |
 
 ### 既存 MCP の対応表
 

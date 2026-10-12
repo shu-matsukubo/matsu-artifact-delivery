@@ -204,20 +204,23 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(publish, /検証・レビュー済みの差分.*GitHub Plugin.*コミット・Git object/);
   assert.match(
     publish,
-    /`git add -- <レビュー済みパス>\.\.\.`.*レビュー済みの変更だけをステージ.*`git commit -m "<生成したコミットメッセージ>"`/,
+    /`git add -- <レビュー済みパス>\.\.\.`.*レビュー済みの変更だけをステージ.*`git .*commit .* -m "<生成したコミットメッセージ>"`/,
   );
-  const commitCommands = [...publish.matchAll(/`(git commit[^`]*)`/g)];
+  const commitCommands = [...publish.matchAll(/`(git [^`]*\bcommit [^`]*)`/g)];
   assert.equal(commitCommands.length, 2);
   for (const command of commitCommands) assert.match(command[1]!, / -[mF] /);
   assert.match(publish, /新規公開.*リモート ref が存在しない場合だけ作成する操作/);
   assert.match(publish, /Plugin \/ API 経路.*ref 作成.*既存 ref.*失敗/);
   assert.ok(
     publish.includes(
-      'git push --force-with-lease=refs/heads/<Issue 用ブランチ>: origin HEAD:refs/heads/<Issue 用ブランチ>',
+      'git push --no-follow-tags --force-with-lease=refs/heads/<Issue 用ブランチ>: origin HEAD:refs/heads/<Issue 用ブランチ>',
     ),
   );
   assert.match(publish, /競合した場合は再利用・上書きせず停止/);
-  assert.match(publish, /正当に特定された再開作業.*既存ブランチ.*fast-forward.*git push origin HEAD:refs\/heads/);
+  assert.match(
+    publish,
+    /正当に特定された再開作業.*既存ブランチ.*fast-forward.*git push --no-follow-tags origin HEAD:refs\/heads/,
+  );
   assert.match(publish, /リモートブランチの先端 SHA が作成したコミット SHA と一致.*差分がレビュー済みの差分と一致/);
   assert.match(publish, /確認できない場合は PR を作成しない/);
   assert.match(
