@@ -156,8 +156,8 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
     id: 'SCH-U01',
     ordered: ['リポジトリの Open PR', 'git status --short', '`AI処理可能` ラベル付きの Open Issue'],
   });
-  assert.match(selection, /\/issue\/<Issue 番号>.*Open PR.*新しい Issue を選ばず.*レビュー待ち/);
-  assert.match(selection, /既存の `\/scheduled\/issue\/<Issue 番号>`/);
+  assert.match(selection, /同一スレッドの定期処理.*Open PR.*新しい Issue を選ばず.*レビュー待ち/);
+  assert.match(selection, /ブランチ名だけで.*定期処理とみなさない/);
   assert.match(selection, /staged、unstaged、untracked file.*clean/);
   assert.match(selection, /確認に失敗した場合は停止/);
   assert.match(selection, /差分があれば.*人間による確認が必要.*終了/);
@@ -172,6 +172,8 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(workspace, /作業ツリーを用意できない場合は停止/);
   assert.match(workspace, /<prefix>\/issue\/<Issue 番号>/);
   assert.match(workspace, /git fetch.*git worktree add -b/);
+  assert.match(workspace, /作成した作業ツリー内で.*git branch --show-current.*git remote -v.*git status --short/);
+  assert.match(workspace, /git rev-parse HEAD.*起点 SHA.*一致.*clean.*実装/);
   assert.doesNotMatch(workspace, /<prefix>\/scheduled\/issue/);
   assert.match(workspace, /同名ブランチが既にある場合は再利用・上書きせず停止/);
   assert.match(workspace, /既存ブランチの再利用は.*正当に特定された再開作業に限る/);
@@ -184,14 +186,20 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assertContract(publish, {
     id: 'SCH-U01',
     ordered: [
+      'git diff --cached',
       'コミットを作成',
-      'git push <remote> HEAD:refs/heads/<prefix>/issue/<Issue 番号>',
+      'git diff <起点 SHA> HEAD',
+      'ブランチ作成機能',
+      'git push <remote> HEAD:refs/heads/<Issue 用ブランチ>',
       'リモートブランチを再取得',
       'git status --short',
       '選択した手段で Issue を参照する Open PR を作成',
     ],
   });
-  assert.match(publish, /`git add.*検証・レビュー済みの変更だけをステージ.*`git commit`/);
+  assert.match(publish, /`git add.*検証・レビュー済みの変更だけをステージ.*`git commit -m/);
+  assert.match(publish, /コミット後.*差分.*検証・レビュー済み.*一致.*Push/);
+  assert.match(publish, /新規.*起点 SHA.*ブランチ作成機能.*同名ブランチ.*停止/);
+  assert.match(publish, /再開.*一意に特定.*既存.*当該 Issue 用ブランチ/);
   assert.match(publish, /当該 Issue 用ブランチ.*Push 先も同じブランチ.*確認できたときだけ/);
   assert.match(publish, /リモートブランチの先端 SHA が作成したコミット SHA と一致/);
   assert.match(publish, /確認できない場合は PR を作成しない/);
