@@ -1,8 +1,12 @@
 # 前回作業の判定と再開
 
+単体実行でも、`git branch --show-current`、`git remote -v`、`git status --short --untracked-files=all` で接続先・ブランチ・差分を確認する。確認失敗、競合、Git 操作中の状態では変更を進めず停止する。
+
 前回作業の特定には、同一スレッドの過去の会話・実行ログ、前回実行時の結果や中断内容、利用可能な Memory 等を補助情報として参照する。これらは状態の正本ではなく、過去ログや Memory 等が利用できないこと自体をエラーや停止理由にしない。GitHub とローカル workspace の現在状態を最終的な判断材料とする。
 
 新規 Issue の処理より前に、利用可能な補助情報と、選択した手段で取得した Issue・PR・branch・commit、ローカル HEAD・branch・worktree・staged / unstaged / untracked の現在状態を照合し、未完了作業の有無を確認する。
+
+指定 Issue がある場合は、その Issue の作業だけを再開する。別の Issue の未完了作業は再開しない。別の作業が現在の作業ツリーに残っている場合は保全して停止する。
 
 ## 作業を一意に特定できる場合
 
@@ -15,7 +19,9 @@
 
 ## 作業を特定できない場合
 
-前回作業を一意に特定できない場合はローカル workspace の staged / unstaged / untracked を確認する。clean なら未完了作業なしとして[新規 Issue の選定](issue-selection.md)へ進む。変更がある場合は由来を推測せず、人間による確認が必要と報告して停止する。
+前回作業を一意に特定できない場合はローカル workspace の staged / unstaged / untracked とブランチを確認する。clean で、未完了作業を示す Issue ブランチ等もなければ[新規 Issue の選定](issue-selection.md)へ進む。変更がある場合は由来を推測せず、人間による確認が必要と報告して停止する。由来不明の Issue ブランチが残っている場合も停止する。
+
+新規開始では staged、unstaged、untracked file がなく clean であることを確認する。この条件は正当に特定した再開作業には適用しない。
 
 ## 変更の保全
 

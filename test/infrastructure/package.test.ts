@@ -80,50 +80,64 @@ await test('PKG-U04: all contract IDs and runnable suites appear in the test inv
   }
 });
 
-await test('SCH-U01: 入口から判断フローを参照でき、起動・再開・反映契約と担当境界を維持する', async () => {
+await test('SCH-U01: 定期起動の条件と中断判断を確認して共通 Workflow へ渡す', async () => {
   const skillPath = '.agents/skills/scheduled-issue-processing';
   const { metadata, body } = frontmatter(await read(join(repository, skillPath, 'SKILL.md')));
   assert.equal(metadata.name, 'scheduled-issue-processing');
   assert.match(metadata.description, /スケジューラが.*明示指定した場合のみ/);
   assert.match(metadata.description, /通常の Issue 対応や一般的な開発作業には使用しない/);
+  const references = await localLinks(repository, `${skillPath}/SKILL.md`);
+  assert.ok(references.includes(`${skillPath}/references/startup.md`));
+  assert.ok(references.includes('.agents/skills/issue-development-workflow/SKILL.md'));
+  const startup = await read(join(repository, skillPath, 'references/startup.md'));
+  await localLinks(repository, `${skillPath}/references/startup.md`);
+  assert.match(startup, /スケジューラから Skill 名を直接指定して起動/);
+  assert.match(startup, /同一スレッドで繰り返し実行/);
+  assert.match(startup, /スケジューラ専用 clone \/ 作業ディレクトリ/);
+  assertContract(startup, {
+    id: 'SCH-U01',
+    ordered: ['Open PR', 'レビュー待ちとして終了', '作業状態', 'Workflow'],
+    contains: ['ブランチ名だけで', '一意に特定', '人間による確認が必要', '再開'],
+  });
+  assert.doesNotMatch(
+    [body, startup].join('\n'),
+    /git (?:fetch|worktree add|commit|push)|担当エージェントに実装を委譲/,
+  );
+  assert.deepEqual(await files(join(repository, skillPath)), ['SKILL.md', 'references/startup.md']);
+});
+
+await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映契約と担当境界を維持する', async () => {
+  const skillPath = '.agents/skills/issue-development-workflow';
+  const { metadata, body } = frontmatter(await read(join(repository, skillPath, 'SKILL.md')));
+  assert.equal(metadata.name, 'issue-development-workflow');
+  assert.match(metadata.description, /指定 Issue.*PR 作成/);
 
   const references = [
-    'startup.md',
     'resume.md',
     'issue-selection.md',
     'workspace-setup.md',
     'implementation-review.md',
     'publish-pr.md',
   ].map((name) => `${skillPath}/references/${name}`);
-  assert.deepEqual(await localLinks(repository, `${skillPath}/SKILL.md`), references);
-  assert.equal(body.split('\n').filter((line) => /^\d+\. /.test(line)).length, 6);
+  const entryLinks = await localLinks(repository, `${skillPath}/SKILL.md`);
+  for (const reference of references) assert.ok(entryLinks.includes(reference));
+  assert.ok(entryLinks.includes('AGENTS.md'));
   for (const reference of references) await localLinks(repository, reference);
-  const [startup, resume, selection, workspace, implementation, publish] = await Promise.all([
+  const [resume, selection, workspace, implementation, publish] = await Promise.all([
     read(join(repository, references[0]!)),
     read(join(repository, references[1]!)),
     read(join(repository, references[2]!)),
     read(join(repository, references[3]!)),
     read(join(repository, references[4]!)),
-    read(join(repository, references[5]!)),
   ]);
-  const all = [body, startup, resume, selection, workspace, implementation, publish].join('\n');
+  const all = [body, resume, selection, workspace, implementation, publish].join('\n');
   assert.doesNotMatch(all, /作業ディレクトリ外の永続的な作業記録|記録を保存できない場合は停止/);
   assert.doesNotMatch(all, /開始前と各段階の前後.*記録|完了記録|記録の base branch|記録したコミット SHA/);
 
-  assert.match(startup, /スケジューラから Skill 名を直接指定して起動/);
-  assert.match(startup, /通常の Issue 対応や一般的な開発作業では使用しない/);
-  assert.match(startup, /スケジューラ \/ オートメーションから同一スレッドで繰り返し実行/);
-  assert.match(startup, /人間が普段操作するリポジトリとは別の、スケジューラ専用 clone \/ 作業ディレクトリ/);
-  assertContract(startup, {
-    id: 'SCH-U01',
-    ordered: ['GitHub Plugin', '`gh`', '停止'],
-    contains: ['操作ごと', '権限', '再取得', 'ユーザーへ'],
-  });
-  assert.doesNotMatch(startup, /その他利用可能な手段|認証済み API|ブラウザー|URL の直接参照/);
   assert.doesNotMatch(all, /フォールバックせず停止|GitHub Plugin を前提/);
-  assert.match(startup, /独自の状態ファイルやチェックポイントファイル.*作成・永続化しない/);
-  assert.match(startup, /状態管理用のラベルは追加しない/);
-  assert.match(startup, /実行結果や中断内容は同一スレッドで報告/);
+  assert.match(body, /独自の状態ファイルやチェックポイントファイル.*作成・永続化しない/);
+  assert.match(body, /状態管理用のラベルは追加しない/);
+  assert.match(body, /実行結果や中断内容は同一スレッドで報告/);
 
   assert.match(resume, /新規 Issue の処理より前に/);
   assert.match(resume, /同一スレッドの過去の会話・実行ログ.*前回実行時の結果や中断内容.*Memory.*補助情報/);
@@ -143,28 +157,18 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(resume, /その作業によるローカル変更を利用/);
   assert.match(resume, /現在の差分に対する検証・レビュー完了を確認できなければ.*\(implementation-review\.md\).*戻す/);
   assert.match(resume, /前回作業を一意に特定できない場合.*staged \/ unstaged \/ untracked.*確認/);
-  assert.match(resume, /clean なら未完了作業なしとして.*新規 Issue の選定/);
+  assert.match(resume, /clean.*未完了作業.*なければ.*新規 Issue の選定/);
   assert.match(resume, /変更がある場合は由来を推測せず、人間による確認が必要と報告して停止/);
   assert.match(resume, /base branch・起点 SHA と既存の作業ツリーを引き継ぐ/);
   assert.match(resume, /全段階で異常状態は自動修復しない/);
   assert.match(resume, /`reset`.*`checkout`.*`restore`.*`stash`.*`clean`.*未追跡ファイルの削除.*行わない/);
   assert.match(resume, /PR 作成済み.*base・head.*差分が検証・レビュー済みの作業と一致.*レビュー待ちとして終了/);
 
-  assertContract(selection, {
-    id: 'SCH-U01',
-    ordered: [
-      'リポジトリの Open PR',
-      'git status --short --untracked-files=all',
-      '`AI処理可能` ラベル付きの Open Issue',
-    ],
-  });
-  assert.match(selection, /同一スレッドの定期処理.*Open PR.*新しい Issue を選ばず.*レビュー待ち/);
-  assert.match(selection, /ブランチ名だけで.*定期処理とみなさない/);
-  assert.match(selection, /staged、unstaged、untracked file.*clean/);
-  assert.match(selection, /確認に失敗した場合は停止/);
-  assert.match(selection, /差分があれば.*人間による確認が必要.*終了/);
-  assert.match(selection, /新規開始に適用.*正当に特定した再開作業には適用しない/);
   assert.match(selection, /対象 Issue がない場合は終了/);
+  assert.match(resume, /指定 Issue.*別の Issue.*再開しない/);
+  assert.match(resume, /git branch --show-current.*git remote -v.*git status --short --untracked-files=all/);
+  assert.match(resume, /競合.*Git 操作中.*停止/);
+  assert.match(resume, /新規開始.*正当に特定した再開作業には適用しない/);
 
   assert.match(workspace, /選択した手段.*default branch とその最新コミット SHA/);
   assert.match(workspace, /ユーザー設定にあるブランチ prefix/);
@@ -190,7 +194,7 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(implementation, /指摘があれば実装担当へ修正を戻し、問題がなくなるまでレビューを繰り返す/);
 
   assertContract(publish, {
-    id: 'SCH-U01',
+    id: 'DEV-U01',
     ordered: [
       'git diff --cached',
       'コミットを作成',
@@ -233,10 +237,13 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.deepEqual([implementer.model, implementer.model_reasoning_effort], ['gpt-6-luna', 'medium']);
 });
 
-await test('SCH-U02: 選定 reference が対象外・実装中・merge 済みの Issue を除外する', async () => {
+await test('DEV-U02: 指定 Issue は依頼範囲で扱い、未指定時は処理可能なプラグイン Issue を選ぶ', async () => {
   const selection = await read(
-    join(repository, '.agents/skills/scheduled-issue-processing/references/issue-selection.md'),
+    join(repository, '.agents/skills/issue-development-workflow/references/issue-selection.md'),
   );
+  assert.match(selection, /Issue が指定.*Open.*確認/);
+  assert.match(selection, /指定 Issue.*ラベル.*要求しない/);
+  assert.match(selection, /Issue が未指定.*`AI処理可能` ラベル付きの Open Issue/);
   assert.match(selection, /プラグインの新規作成・修正に該当する候補だけを対象/);
   assert.match(selection, /インフラ、CI、リポジトリ文書のみの Issue は対象外/);
   assert.match(selection, /関連付けられた実装 PR を、ブランチ名にかかわらず確認/);
@@ -247,6 +254,6 @@ await test('SCH-U02: 選定 reference が対象外・実装中・merge 済みの
   const implementer = parseToml(await read(join(repository, '.codex/agents/issue-implementer.toml'))) as {
     developer_instructions: string;
   };
-  assert.match(implementer.developer_instructions, /プラグインの新規作成・修正に該当しない場合は実装を開始せず/);
-  assert.match(implementer.developer_instructions, /対象外であることを親エージェントに返す/);
+  assert.match(implementer.developer_instructions, /親が指定した Issue と担当範囲/);
+  assert.match(implementer.developer_instructions, /レビュー、GitHub PR 作成、対象 Issue の選定は行わない/);
 });
