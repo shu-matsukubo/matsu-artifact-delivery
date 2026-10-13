@@ -56,9 +56,7 @@ await test('PKG-U03: Plugin documentation resolves local links and explains revi
   for (const path of [
     'AGENTS.md',
     'README.md',
-    'docs/testing.md',
-    'docs/distribution.md',
-    'docs/codex-workflows.md',
+    ...(await readdir(join(repository, 'docs'))).filter((path) => path.endsWith('.md')).map((path) => `docs/${path}`),
     'plugins/artifact-workflow/README.md',
     'plugins/expert-escalation/README.md',
   ])
@@ -154,7 +152,11 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
 
   assertContract(selection, {
     id: 'SCH-U01',
-    ordered: ['リポジトリの Open PR', 'git status --short', '`AI処理可能` ラベル付きの Open Issue'],
+    ordered: [
+      'リポジトリの Open PR',
+      'git status --short --untracked-files=all',
+      '`AI処理可能` ラベル付きの Open Issue',
+    ],
   });
   assert.match(selection, /同一スレッドの定期処理.*Open PR.*新しい Issue を選ばず.*レビュー待ち/);
   assert.match(selection, /ブランチ名だけで.*定期処理とみなさない/);
@@ -172,7 +174,11 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
   assert.match(workspace, /作業ツリーを用意できない場合は停止/);
   assert.match(workspace, /<prefix>\/issue\/<Issue 番号>/);
   assert.match(workspace, /git fetch.*git worktree add -b/);
-  assert.match(workspace, /作成した作業ツリー内で.*git branch --show-current.*git remote -v.*git status --short/);
+  assert.match(workspace, /元の checkout の外にある未使用のパス/);
+  assert.match(
+    workspace,
+    /作成した作業ツリー内で.*git branch --show-current.*git remote -v.*git status --short --untracked-files=all/,
+  );
   assert.match(workspace, /git rev-parse HEAD.*起点 SHA.*一致.*clean.*実装/);
   assert.doesNotMatch(workspace, /<prefix>\/scheduled\/issue/);
   assert.match(workspace, /同名ブランチが既にある場合は再利用・上書きせず停止/);
@@ -192,7 +198,7 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
       'ブランチ作成機能',
       'git push <remote> HEAD:refs/heads/<Issue 用ブランチ>',
       'リモートブランチを再取得',
-      'git status --short',
+      'git status --short --untracked-files=all',
       '選択した手段で Issue を参照する Open PR を作成',
     ],
   });
