@@ -196,13 +196,15 @@ await test('SCH-U01: 入口から判断フローを参照でき、起動・再�
       'コミットを作成',
       'git diff <起点 SHA> HEAD',
       'ブランチ作成機能',
-      'git push <remote> HEAD:refs/heads/<Issue 用ブランチ>',
+      'git push --no-follow-tags <remote> HEAD:refs/heads/<Issue 用ブランチ>',
       'リモートブランチを再取得',
       'git status --short --untracked-files=all',
       '選択した手段で Issue を参照する Open PR を作成',
     ],
   });
   assert.match(publish, /`git add.*検証・レビュー済みの変更だけをステージ.*`git commit -m/);
+  const agents = await read(join(repository, 'AGENTS.md'));
+  assert.ok(agents.includes('git push --no-follow-tags <remote> HEAD:refs/heads/<Issue 用ブランチ>'));
   assert.match(publish, /コミット後.*差分.*検証・レビュー済み.*一致.*Push/);
   assert.match(publish, /新規.*起点 SHA.*ブランチ作成機能.*同名ブランチ.*停止/);
   assert.match(publish, /再開.*一意に特定.*既存.*当該 Issue 用ブランチ/);
