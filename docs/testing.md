@@ -159,7 +159,8 @@ npm run ci:select -- --all
 | DEV-U01                  | Workflow 単体の安全確認・再開・環境準備・GitHub とローカルへの反映・担当境界                                   | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | DEV-U02                  | 指定 Issue の扱い・未指定時の対象限定・実装中と merge 済みの Issue の選定除外                                  | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | DEV-U03                  | 対象範囲に応じた実装・レビュー手順と Workflow・担当エージェントの整合                                          | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
-| DEV-U04                  | 再開時の HEAD・リモート先端・作業差分の照合、未反映修正の反映と既存 PR の引き継ぎ                              | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
+| DEV-U04                  | 再開時の HEAD・リモート先端・作業差分の照合、既存 HEAD と未反映修正の反映、既存 PR の引き継ぎ                  | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
+| DEV-U05                  | 既存 PR の対象・Open 状態を再開・反映前後に確認し、不一致・Close・merge 時の反映と PR 再作成を停止             | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 
 ### 既存 MCP の対応表
 

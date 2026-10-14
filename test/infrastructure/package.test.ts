@@ -230,7 +230,6 @@ await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映�
   assert.match(publish, /新規.*起点 SHA.*ブランチ作成機能.*同名ブランチ.*停止/);
   assert.match(publish, /再開.*一意に特定.*既存.*当該 Issue 用ブランチ/);
   assert.match(publish, /当該 Issue 用ブランチ.*Push 先も同じブランチ.*確認できたときだけ/);
-  assert.match(publish, /リモートブランチの先端 SHA が作成したコミット SHA と一致/);
   assert.match(publish, /確認できない場合は PR を作成・更新しない/);
   assert.match(publish, /staged、unstaged、untracked file.*clean/);
   assert.match(publish, /不一致や失敗、レビュー対象外の変更.*変更の保全.*停止し、PR を作成・更新しない/);
@@ -321,6 +320,7 @@ await test('DEV-U04: 再開時は未反映の修正を検証・反映して既�
   );
   assert.match(publish, /一件.*base・head.*対象 Issue.*一致.*既存 PR.*新規 PR を作成しない/);
   assert.match(publish, /PR の不一致、複数の候補、確認失敗.*停止/);
+  assert.match(publish, /リモートブランチの先端 SHA が反映対象のローカル HEAD の SHA と一致/);
   assertContract(publish, {
     id: 'DEV-U04',
     ordered: [
@@ -331,5 +331,43 @@ await test('DEV-U04: 再開時は未反映の修正を検証・反映して既�
       '選択した手段で Issue を参照する Open PR を作成',
     ],
     contains: ['未コミットの変更がある場合は', '未 Push のコミットは再作成せず', 'PR を作成・更新しない'],
+  });
+});
+
+await test('DEV-U05: 既存 PR の対応と Open 状態を再開・反映前後に確認する', async () => {
+  const skillPath = '.agents/skills/issue-development-workflow/references';
+  const resume = await read(join(repository, skillPath, 'resume.md'));
+  const publish = await read(join(repository, skillPath, 'publish-pr.md'));
+  assertContract(resume, {
+    id: 'DEV-U05',
+    ordered: [
+      '既存の Open PR を引き継ぐ前に',
+      '対象 Issue・base・head',
+      '一件だけ',
+      '不一致、複数の候補、確認失敗',
+      '変更を保全して停止',
+      '現在の差分に対する検証・レビュー',
+    ],
+  });
+  assertContract(publish, {
+    id: 'DEV-U05',
+    ordered: [
+      '既存 PR を引き継ぐ場合は、Push 前に',
+      'Open PR を再取得',
+      'Open 状態',
+      '対象 Issue・base・head',
+      '一件だけ',
+      'Close・merge 済み',
+      '変更を保全して停止',
+      'git push --no-follow-tags --no-signed <remote> HEAD:refs/heads/<Issue 用ブランチ>',
+      'リモートブランチを再取得',
+      'Issue に関連付けられた Open PR を再取得',
+      '引き継いだ既存 PR が Close・merge 済み',
+      '停止',
+      '既存 PR を引き継ぎ',
+      '必要な本文更新',
+      '引き継ぐ既存 PR がなく、Open PR がない場合だけ',
+      '選択した手段で Issue を参照する Open PR を作成',
+    ],
   });
 });
