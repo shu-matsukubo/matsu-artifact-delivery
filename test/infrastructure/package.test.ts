@@ -334,9 +334,24 @@ await test('DEV-U06: 通常の変更依頼は Workflow で製造・レビュー�
     }
   }
   const implementation = await read(join(repository, `${workflowPath}/references/implementation-review.md`));
+  assertContract(implementation, {
+    id: 'DEV-U06',
+    ordered: [
+      '委任メッセージを用意する',
+      'リテラルの `$plugin-maintenance`',
+      'そのメッセージを',
+      '担当エージェントに実装を委譲する',
+    ],
+  });
   assert.match(implementation, /plugin-maintenance.*plugin-review/);
   assert.match(implementation, /実装.*レビュー/);
   assert.ok(implementation.indexOf('plugin-maintenance') < implementation.indexOf('plugin-review'));
+  assert.ok(implementation.includes('プラグインの新規作成・修正に関わる範囲では、リテラルの `$plugin-maintenance`'));
+
+  const implementer = parseToml(await read(join(repository, '.codex/agents/issue-implementer.toml'))) as {
+    developer_instructions: string;
+  };
+  assert.match(implementer.developer_instructions, /プラグイン.*\$plugin-maintenance.*明示的に使う/);
 
   const selection = await read(join(repository, `${workflowPath}/references/issue-selection.md`));
   assert.match(selection, /具体的な変更依頼.*Issue.*選定しない/);
