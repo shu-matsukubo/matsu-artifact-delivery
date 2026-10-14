@@ -90,15 +90,29 @@ await test('SCH-U01: 定期起動の条件と中断判断を確認して共通 W
   assert.ok(references.includes(`${skillPath}/references/startup.md`));
   assert.ok(references.includes('.agents/skills/issue-development-workflow/SKILL.md'));
   const startup = await read(join(repository, skillPath, 'references/startup.md'));
-  await localLinks(repository, `${skillPath}/references/startup.md`);
+  const startupLinks = await localLinks(repository, `${skillPath}/references/startup.md`);
   assert.match(startup, /スケジューラから Skill 名を直接指定して起動/);
   assert.match(startup, /同一スレッドで繰り返し実行/);
   assert.match(startup, /スケジューラ専用 clone \/ 作業ディレクトリ/);
   assertContract(startup, {
     id: 'SCH-U01',
-    ordered: ['Open PR', 'レビュー待ちとして終了', '作業状態', 'Workflow'],
+    ordered: [
+      'Open PR',
+      '作業状態',
+      '再開判定',
+      'ローカル HEAD',
+      'リモートブランチの先端 SHA',
+      'staged / unstaged / untracked',
+      '由来不明の変更',
+      'レビュー待ち条件を満たす場合だけ',
+      'レビュー待ちとして終了',
+      '未反映の変更や未 Push のコミット',
+      'Workflow を呼び出す',
+    ],
     contains: ['ブランチ名だけで', '一意に特定', '人間による確認が必要', '再開'],
   });
+  assert.ok(startupLinks.includes('.agents/skills/issue-development-workflow/references/resume.md'));
+  assert.match(startup, /未反映の変更や未 Push のコミット.*差分を保全.*Workflow.*再開/);
   assert.doesNotMatch(
     [body, startup].join('\n'),
     /git (?:fetch|worktree add|commit|push)|担当エージェントに実装を委譲/,
