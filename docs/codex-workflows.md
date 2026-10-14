@@ -18,9 +18,9 @@ Codex のリポジトリ用スキルは `.agents/skills/` に置く。配布す�
 
 開発用 Skills は Markdown を主体とし、既存コマンドで容易に代替できる処理は手順から直接利用する。配布プラグインの実行コードと共通のビルド・配布・検証基盤は、それぞれの責務に応じて実装する。
 
-[Issue 開発 Workflow](../.agents/skills/issue-development-workflow/SKILL.md) は手動の Issue 対応と定期実行で共用する。未完了作業の再開、対象確認・選定、作業環境の準備、実装・レビュー、PR 作成を統括する。[実装とレビューの調整](../.agents/skills/issue-development-workflow/references/implementation-review.md)で対象範囲に応じた手順を選び、プラグイン変更には `plugin-maintenance` / `plugin-review`、インフラ・CI・リポジトリ文書のみの変更には共通の開発・検証方針を適用する。モデルと推論レベルは `.codex/config.toml` と `.codex/agents/` で設定する。
+[Issue 開発 Workflow](../.agents/skills/issue-development-workflow/SKILL.md) は通常の具体的な変更依頼、手動の Issue 対応、定期実行を扱う。通常の変更依頼では別の Issue を選定せず、依頼された範囲を実装・レビューする。Issue 選定は明示的な選定依頼または定期実行で行い、Issue を扱う場合は未完了作業の再開、作業環境の準備、実装・レビュー、PR 作成を統括する。[実装とレビューの調整](../.agents/skills/issue-development-workflow/references/implementation-review.md)で対象範囲に応じた手順を選ぶ。プラグイン変更では Workflow から `plugin-maintenance` を呼び出して実装し、`plugin-review` でレビューする。`plugin-review` は単独レビューにも使える。インフラ・CI・リポジトリ文書のみの変更には共通の開発・検証方針を適用する。モデルと推論レベルは `.codex/config.toml` と `.codex/agents/` で設定する。
 
-手動では `$issue-development-workflow Issue #53 を対応して PR を作成する` のように指定する。Issue 指定時は依頼された対象を扱い、未指定時は `AI処理可能` ラベル付きのプラグイン Issue を選ぶ。
+具体的な変更依頼では `$issue-development-workflow <変更内容>` のように指定する。Issue の対応は `$issue-development-workflow Issue #53 を対応して PR を作成する`、Issue 選定は `$issue-development-workflow 対応する Issue を選んで進める` のように依頼する。Issue 選定を明示されない通常の変更依頼では、別の Issue を選ばない。
 
 [定期 Issue 処理](../.agents/skills/scheduled-issue-processing/SKILL.md) はスケジューラが名前を明示して起動する。専用 clone / 作業ディレクトリで、同じ定期処理の Open PR や作業状態から中断を判断し、実行可能な場合に Issue 開発 Workflow を呼び出す。スケジューラには `$scheduled-issue-processing を実行する` と指定する。
 

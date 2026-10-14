@@ -3,6 +3,7 @@ import { access, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { parse as parseToml } from 'smol-toml';
+import { parse as parseYaml } from 'yaml';
 import {
   files,
   frontmatter,
@@ -124,7 +125,7 @@ await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映�
   const skillPath = '.agents/skills/issue-development-workflow';
   const { metadata, body } = frontmatter(await read(join(repository, skillPath, 'SKILL.md')));
   assert.equal(metadata.name, 'issue-development-workflow');
-  assert.match(metadata.description, /指定 Issue.*PR 作成/);
+  assert.match(metadata.description, /Issue.*PR 作成/);
 
   const references = [
     'resume.md',
@@ -250,13 +251,13 @@ await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映�
   assert.deepEqual([implementer.model, implementer.model_reasoning_effort], ['gpt-6-luna', 'medium']);
 });
 
-await test('DEV-U02: 指定 Issue は依頼範囲で扱い、未指定時は処理可能なプラグイン Issue を選ぶ', async () => {
+await test('DEV-U02: 指定 Issue の依頼範囲と、明示要求時の対象選定を守る', async () => {
   const selection = await read(
     join(repository, '.agents/skills/issue-development-workflow/references/issue-selection.md'),
   );
   assert.match(selection, /Issue が指定.*Open.*確認/);
   assert.match(selection, /指定 Issue.*ラベル.*要求しない/);
-  assert.match(selection, /Issue が未指定.*`AI処理可能` ラベル付きの Open Issue/);
+  assert.match(selection, /対象 Issue の選定を依頼.*`AI処理可能` ラベル付きの Open Issue/);
   assert.match(selection, /プラグインの新規作成・修正に該当する候補だけを対象/);
   assert.match(selection, /インフラ、CI、リポジトリ文書のみの Issue は対象外/);
   assert.match(selection, /関連付けられた実装 PR を、ブランチ名にかかわらず確認/);
@@ -267,7 +268,7 @@ await test('DEV-U02: 指定 Issue は依頼範囲で扱い、未指定時は処�
   const implementer = parseToml(await read(join(repository, '.codex/agents/issue-implementer.toml'))) as {
     developer_instructions: string;
   };
-  assert.match(implementer.developer_instructions, /親が指定した Issue と担当範囲/);
+  assert.match(implementer.developer_instructions, /親が指定した変更依頼と担当範囲/);
   assert.match(implementer.developer_instructions, /レビュー、GitHub PR 作成、対象 Issue の選定は行わない/);
 });
 
@@ -307,6 +308,39 @@ await test('DEV-U03: Issue の対象範囲に応じた実装・レビュー手�
   const skill = await read(join(repository, '.agents/skills/issue-development-workflow/SKILL.md'));
   const design = await read(join(repository, 'docs/codex-workflows.md'));
   assert.doesNotMatch([skill, design].join('\n'), /実装(?:とレビュー)?は.*plugin-maintenance.*委ねる/);
+});
+
+await test('DEV-U06: 通常の変更依頼は Workflow で製造・レビューし、Issue 選定は明示要求時に限る', async () => {
+  const maintenancePath = '.agents/skills/plugin-maintenance';
+  const maintenancePolicy = parseYaml(await read(join(repository, maintenancePath, 'agents/openai.yaml'))) as {
+    policy?: { allow_implicit_invocation?: boolean };
+  };
+  assert.equal(maintenancePolicy.policy?.allow_implicit_invocation, false);
+
+  const review = await read(join(repository, '.agents/skills/plugin-review/SKILL.md'));
+  assert.match(frontmatter(review).metadata.description, /レビュー/);
+
+  const workflowPath = '.agents/skills/issue-development-workflow';
+  const workflow = await read(join(repository, `${workflowPath}/SKILL.md`));
+  assert.match(frontmatter(workflow).metadata.description, /具体的な変更依頼/);
+  assert.match(workflow, /具体的な変更依頼では.*別の Issue は選ばない/);
+  for (const skillPath of [workflowPath, '.agents/skills/plugin-review']) {
+    const skillFiles = await files(join(repository, skillPath));
+    if (skillFiles.includes('agents/openai.yaml')) {
+      const settings = parseYaml(await read(join(repository, skillPath, 'agents/openai.yaml'))) as {
+        policy?: { allow_implicit_invocation?: boolean };
+      };
+      assert.ok([undefined, true].includes(settings.policy?.allow_implicit_invocation));
+    }
+  }
+  const implementation = await read(join(repository, `${workflowPath}/references/implementation-review.md`));
+  assert.match(implementation, /plugin-maintenance.*plugin-review/);
+  assert.match(implementation, /実装.*レビュー/);
+  assert.ok(implementation.indexOf('plugin-maintenance') < implementation.indexOf('plugin-review'));
+
+  const selection = await read(join(repository, `${workflowPath}/references/issue-selection.md`));
+  assert.match(selection, /具体的な変更依頼.*Issue.*選定しない/);
+  assert.match(selection, /対象 Issue の選定を依頼/);
 });
 
 await test('DEV-U04: 再開時は未反映の修正を検証・反映して既存 PR を引き継ぐ', async () => {
