@@ -217,9 +217,9 @@ await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映�
   assert.match(publish, /再開.*一意に特定.*既存.*当該 Issue 用ブランチ/);
   assert.match(publish, /当該 Issue 用ブランチ.*Push 先も同じブランチ.*確認できたときだけ/);
   assert.match(publish, /リモートブランチの先端 SHA が作成したコミット SHA と一致/);
-  assert.match(publish, /確認できない場合は PR を作成しない/);
+  assert.match(publish, /確認できない場合は PR を作成・更新しない/);
   assert.match(publish, /staged、unstaged、untracked file.*clean/);
-  assert.match(publish, /不一致や失敗、レビュー対象外の変更.*変更の保全.*停止し、PR を作成しない/);
+  assert.match(publish, /不一致や失敗、レビュー対象外の変更.*変更の保全.*停止し、PR を作成・更新しない/);
   assert.match(publish, /PR の base は開始時に確認した default branch、head は Issue 用ブランチ/);
   assert.match(publish, /`Closes`、`Fixes`、`Resolves` 等の Issue closing keyword を含めない/);
   assert.match(publish, /PR の merge と Issue の Close は別のライフサイクル/);
@@ -294,4 +294,28 @@ await test('DEV-U03: Issue の対象範囲に応じた実装・レビュー手�
   const skill = await read(join(repository, '.agents/skills/issue-development-workflow/SKILL.md'));
   const design = await read(join(repository, 'docs/codex-workflows.md'));
   assert.doesNotMatch([skill, design].join('\n'), /実装(?:とレビュー)?は.*plugin-maintenance.*委ねる/);
+});
+
+await test('DEV-U04: 再開時は未反映の修正を検証・反映して既存 PR を引き継ぐ', async () => {
+  const skillPath = '.agents/skills/issue-development-workflow/references';
+  const resume = await read(join(repository, skillPath, 'resume.md'));
+  const publish = await read(join(repository, skillPath, 'publish-pr.md'));
+  assert.match(resume, /ローカル HEAD.*リモートブランチの先端 SHA.*一致.*clean.*レビュー待ちとして終了/);
+  assert.match(
+    resume,
+    /Open PR 作成済みで未反映の変更や未 Push のコミット.*既存 PR.*implementation-review\.md.*publish-pr\.md/,
+  );
+  assert.match(publish, /一件.*base・head.*対象 Issue.*一致.*既存 PR.*新規 PR を作成しない/);
+  assert.match(publish, /PR の不一致、複数の候補、確認失敗.*停止/);
+  assertContract(publish, {
+    id: 'DEV-U04',
+    ordered: [
+      'リモートブランチを再取得',
+      'git status --short --untracked-files=all',
+      'Issue に関連付けられた Open PR を再取得',
+      'Open PR がない場合だけ',
+      '選択した手段で Issue を参照する Open PR を作成',
+    ],
+    contains: ['未コミットの変更がある場合は', '未 Push のコミットは再作成せず', 'PR を作成・更新しない'],
+  });
 });
