@@ -323,7 +323,8 @@ await test('DEV-U06: 通常の変更依頼は Workflow で製造・レビュー�
   const workflowPath = '.agents/skills/issue-development-workflow';
   const workflow = await read(join(repository, `${workflowPath}/SKILL.md`));
   assert.match(frontmatter(workflow).metadata.description, /具体的な変更依頼/);
-  assert.match(workflow, /具体的な変更依頼では.*別の Issue は選ばない/);
+  assert.match(workflow, /Issue が未指定の具体的な変更依頼では.*別の Issue は選ばない/);
+  assert.match(workflow, /Issue が指定された依頼.*次の手順に従って Issue 開発から PR 作成まで進める/);
   for (const skillPath of [workflowPath, '.agents/skills/plugin-review']) {
     const skillFiles = await files(join(repository, skillPath));
     if (skillFiles.includes('agents/openai.yaml')) {
