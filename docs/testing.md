@@ -158,6 +158,7 @@ npm run ci:select -- --all
 | SCH-U01                  | 定期起動の条件・Open PR と作業状態による中断判断・共通 Workflow への参照                                       | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | DEV-U01                  | Workflow 単体の安全確認・再開・環境準備・GitHub とローカルへの反映・担当境界                                   | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | DEV-U02                  | 指定 Issue の扱い・未指定時の対象限定・実装中と merge 済みの Issue の選定除外                                  | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
+| DEV-U03                  | 対象範囲に応じた実装・レビュー手順と Workflow・担当エージェントの整合                                          | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 
 ### 既存 MCP の対応表
 

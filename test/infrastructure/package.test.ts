@@ -189,8 +189,8 @@ await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映�
   assert.match(workspace, /既存ブランチの再利用は.*正当に特定された再開作業に限る/);
 
   assert.match(implementation, /issue-implementer\.toml.*担当エージェントに実装を委譲/);
-  assert.match(implementation, /plugin-maintenance.*GPT-6 Luna \/ reasoning medium/);
-  assert.match(implementation, /親エージェント.*plugin-review.*GPT-6\.1 Sol \/ reasoning xhigh/);
+  assert.match(implementation, /担当エージェント.*GPT-6 Luna \/ reasoning medium/);
+  assert.match(implementation, /親エージェント.*GPT-6\.1 Sol \/ reasoning xhigh/);
   assert.match(implementation, /指摘があれば実装担当へ修正を戻し、問題がなくなるまでレビューを繰り返す/);
 
   assertContract(publish, {
@@ -256,4 +256,42 @@ await test('DEV-U02: 指定 Issue は依頼範囲で扱い、未指定時は処�
   };
   assert.match(implementer.developer_instructions, /親が指定した Issue と担当範囲/);
   assert.match(implementer.developer_instructions, /レビュー、GitHub PR 作成、対象 Issue の選定は行わない/);
+});
+
+await test('DEV-U03: Issue の対象範囲に応じた実装・レビュー手順が入口と担当エージェントで一致する', async () => {
+  const implementation = await read(
+    join(repository, '.agents/skills/issue-development-workflow/references/implementation-review.md'),
+  );
+  const links = await localLinks(
+    repository,
+    '.agents/skills/issue-development-workflow/references/implementation-review.md',
+  );
+  for (const path of [
+    '.agents/skills/plugin-maintenance/SKILL.md',
+    '.agents/skills/plugin-review/SKILL.md',
+    'AGENTS.md',
+    'docs/manufacturing-review.md',
+    'docs/testing-review.md',
+  ]) {
+    assert.ok(links.includes(path), `DEV-U03: missing scope guidance ${path}`);
+  }
+  assert.match(implementation, /プラグインの新規作成・修正に関わる範囲.*plugin-maintenance.*plugin-review/);
+  assert.match(implementation, /インフラ、CI、リポジトリ文書のみ.*AGENTS\.md.*製造・レビュー観点.*テスト・検証観点/);
+  assert.match(implementation, /混在.*対象範囲ごと.*変更全体.*レビュー/);
+
+  const implementer = parseToml(await read(join(repository, '.codex/agents/issue-implementer.toml'))) as {
+    description: string;
+    developer_instructions: string;
+  };
+  assert.match(implementer.developer_instructions, /プラグインの新規作成・修正に関わる範囲.*plugin-maintenance/);
+  assert.match(
+    implementer.developer_instructions,
+    /インフラ、CI、リポジトリ文書のみ.*AGENTS\.md.*docs\/manufacturing-review\.md.*docs\/testing-review\.md/,
+  );
+  assert.match(implementer.developer_instructions, /混在.*対象範囲ごと/);
+  assert.doesNotMatch(implementer.description, /plugin-maintenance を使い/);
+
+  const skill = await read(join(repository, '.agents/skills/issue-development-workflow/SKILL.md'));
+  const design = await read(join(repository, 'docs/codex-workflows.md'));
+  assert.doesNotMatch([skill, design].join('\n'), /実装(?:とレビュー)?は.*plugin-maintenance.*委ねる/);
 });

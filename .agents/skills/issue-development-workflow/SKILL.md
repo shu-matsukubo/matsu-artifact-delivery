@@ -5,7 +5,7 @@ description: このリポジトリの指定 Issue から実装・レビュー・
 
 # Issue 開発 Workflow
 
-Issue から PR 作成までを統括する。実装は `plugin-maintenance`、レビューは `plugin-review` に委ねる。
+Issue から PR 作成までを統括する。実装・レビューには対象範囲に合う手順を適用する。
 
 Git・GitHub の操作手段と安全確認は [AGENTS.md](../../../AGENTS.md#git-と-github-の操作)に従う。独自の状態ファイルやチェックポイントファイルは作成・永続化しない。状態管理用のラベルは追加しない。実行結果や中断内容は同一スレッドで報告する。
 

@@ -18,7 +18,7 @@ Codex のリポジトリ用スキルは `.agents/skills/` に置く。配布す�
 
 開発用 Skills は Markdown を主体とし、既存コマンドで容易に代替できる処理は手順から直接利用する。配布プラグインの実行コードと共通のビルド・配布・検証基盤は、それぞれの責務に応じて実装する。
 
-[Issue 開発 Workflow](../.agents/skills/issue-development-workflow/SKILL.md) は手動の Issue 対応と定期実行で共用する。未完了作業の再開、対象確認・選定、作業環境の準備、実装・レビュー、PR 作成を統括し、実装とレビューはそれぞれ `plugin-maintenance` と `plugin-review` に委ねる。モデルと推論レベルは `.codex/config.toml` と `.codex/agents/` で設定する。
+[Issue 開発 Workflow](../.agents/skills/issue-development-workflow/SKILL.md) は手動の Issue 対応と定期実行で共用する。未完了作業の再開、対象確認・選定、作業環境の準備、実装・レビュー、PR 作成を統括する。[実装とレビューの調整](../.agents/skills/issue-development-workflow/references/implementation-review.md)で対象範囲に応じた手順を選び、プラグイン変更には `plugin-maintenance` / `plugin-review`、インフラ・CI・リポジトリ文書のみの変更には共通の開発・検証方針を適用する。モデルと推論レベルは `.codex/config.toml` と `.codex/agents/` で設定する。
 
 手動では `$issue-development-workflow Issue #53 を対応して PR を作成する` のように指定する。Issue 指定時は依頼された対象を扱い、未指定時は `AI処理可能` ラベル付きのプラグイン Issue を選ぶ。
 
