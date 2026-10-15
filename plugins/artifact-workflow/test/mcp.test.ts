@@ -207,7 +207,7 @@ await test(
     const directory = await temporaryDirectory(t, cleanup);
     let client = await connect(directory);
     cleanup.push(() => client.close());
-    const empty = snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'boundary' } }));
+    const empty = snapshot(await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'boundary' } }));
     const growth = Buffer.byteLength(JSON.stringify(empty.updatedAt)) - Buffer.byteLength('null');
     const sized = planAtSnapshotSize(empty, 1024 * 1024 - growth);
     const saved = snapshot(
@@ -296,12 +296,14 @@ await test(
     const collected = await client.callTool({ name: 'get_plan', arguments: { sessionId: 'done' } });
     assert.notEqual(collected.isError, true);
     assert.deepEqual(collected.structuredContent, { session: null });
-    const correction = snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'done' } }));
+    const correction = snapshot(
+      await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'done-correction' } }),
+    );
     const updated = snapshot(
       await client.callTool({
         name: 'save_plan',
         arguments: {
-          sessionId: 'done',
+          sessionId: 'done-correction',
           expectedRevision: correction.revision,
           plan: { ...plan, request: '後日の修正を新しいタスクとして計画する' },
         },
@@ -322,7 +324,7 @@ await test(
     cleanup.push(() => first.close());
     const second = await connect(directory);
     cleanup.push(() => second.close());
-    const empty = snapshot(await first.callTool({ name: 'reset_session', arguments: { sessionId: 'shared' } }));
+    const empty = snapshot(await first.callTool({ name: 'initialize_session', arguments: { sessionId: 'shared' } }));
     const results = await Promise.all(
       [first, second].map((client, index) =>
         client.callTool({

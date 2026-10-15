@@ -7,7 +7,8 @@ import type { PlanRepository } from './repository.js';
 // 保存層は失敗理由だけを返し、利用者への操作案内はMCPの境界で補う。
 const errorGuidance: Record<StoreErrorCode, string> = {
   INVALID_DIRECTORY: 'ARTIFACT_WORKFLOW_DATA_DIR または PLUGIN_DATA に絶対パスを設定してください。',
-  INVALID_DATA: '計画を推測・上書きせず、明示的にリセットする前に保存データを確認してください。',
+  INVALID_DATA:
+    '計画を推測・上書きせず保存データを確認してください。reset_session は利用者が対象計画の置換を明示的に許可した場合だけ呼び出してください。',
   NOT_INITIALIZED:
     'initialize_session は新しい生成フローの開始時だけ呼び出してください。後日の修正は新しいタスクとして計画してください。',
   REVISION_CONFLICT:

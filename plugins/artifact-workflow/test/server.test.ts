@@ -82,16 +82,39 @@ await test('the six tools forward their inputs to a repository without filesyste
   }
 });
 
-await test('tool guidance is Japanese while API identifiers remain unchanged', async (t) => {
+await test('tool guidance, annotations, and exposed schema descriptions match their operation contracts', async (t) => {
   const client = await connect(t, repository());
   const tools = (await client.listTools()).tools;
   assert.deepEqual(
     tools.map(({ name }) => name),
     ['initialize_session', 'reset_session', 'collect_completed_sessions', 'save_plan', 'complete_session', 'get_plan'],
   );
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
   for (const tool of tools) assert.match(tool.description ?? '', /[\u3040-\u30ff\u4e00-\u9fff]/);
-  assert.match(tools.find(({ name }) => name === 'initialize_session')!.description!, /別UUID/);
-  assert.match(tools.find(({ name }) => name === 'save_plan')!.description!, /initialize_session.*get_plan/);
+  assert.deepEqual(byName.get('initialize_session')?.annotations, {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  });
+  assert.deepEqual(byName.get('get_plan')?.annotations, {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
+  for (const name of ['reset_session', 'collect_completed_sessions', 'save_plan', 'complete_session']) {
+    assert.equal(byName.get(name)?.annotations?.readOnlyHint, false);
+    assert.equal(byName.get(name)?.annotations?.destructiveHint, true);
+    assert.match(byName.get(name)?.description ?? '', /親だけ/);
+  }
+  assert.match(byName.get('initialize_session')?.description ?? '', /親だけ.*別UUID/);
+  assert.match(byName.get('reset_session')?.description ?? '', /明示的な許可/);
+  assert.match(byName.get('collect_completed_sessions')?.description ?? '', /明示的な許可/);
+  assert.match(byName.get('save_plan')?.description ?? '', /initialize_session.*get_plan/);
+  const schemas = JSON.stringify(tools.map(({ inputSchema, outputSchema }) => ({ inputSchema, outputSchema })));
+  assert.match(schemas, /この生成フロー固有のID/);
+  assert.match(schemas, /会話履歴を含めないユーザーの依頼/);
 });
 
 await test('collection failures remain a successful collection response', async (t) => {
@@ -110,7 +133,7 @@ for (const [code, guidance] of [
   ['SESSION_EXISTS', /新しいUUID.*同一フローの明確な続行/],
   ['PLAN_NOT_SAVED', /save_plan/],
   ['SESSION_BUSY', /書き込み中のプロセス.*ロックファイル/],
-  ['INVALID_DATA', /推測・上書きせず.*保存データを確認/],
+  ['INVALID_DATA', /推測・上書きせず保存データを確認.*対象計画の置換を明示的に許可/],
   ['PLAN_TOO_LARGE', /参照を保存.*1 MiB以内/],
   ['INVALID_DIRECTORY', /絶対パス/],
 ] as const) {

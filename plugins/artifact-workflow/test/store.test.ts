@@ -22,16 +22,45 @@ await test('requires initialization, then round-trips the complete agreed plan t
   assert.deepEqual(JSON.parse(await readFile(join(directory, filename), 'utf8')), saved);
 });
 
-await test('reset discards the whole selected plan and preserves other active sessions', async (t) => {
-  const store = new PlanStore(await temporaryDirectory(t));
+await test('reset replaces only the selected session and preserves other active and completed files', async (t) => {
+  const directory = await temporaryDirectory(t);
+  const store = new PlanStore(directory);
   const a = await store.initialize('session-a');
   const b = await store.initialize('session-b');
+  const done = await store.initialize('session-done');
   await store.save('session-a', a.revision, plan);
   const other = await store.save('session-b', b.revision, { ...plan, request: '別の依頼' });
+  const doneSaved = await store.save('session-done', done.revision, plan);
+  const completed = await store.complete('session-done', doneSaved.revision);
+  const otherBytes = await readFile(snapshotPath(directory, 'session-b'));
+  const completedBytes = await readFile(snapshotPath(directory, 'session-done'));
   const reset = await store.reset('session-a');
   assert.equal(reset.plan, null);
   assert.deepEqual(await store.get('session-b'), other);
+  assert.deepEqual(await store.get('session-done'), completed);
+  assert.deepEqual(await readFile(snapshotPath(directory, 'session-b')), otherBytes);
+  assert.deepEqual(await readFile(snapshotPath(directory, 'session-done')), completedBytes);
   await assert.rejects(store.save('session-a', a.revision, plan), code('REVISION_CONFLICT'));
+});
+
+await test('simultaneous initialization of one ID preserves the winning snapshot', async (t) => {
+  const directory = await temporaryDirectory(t);
+  const first = new PlanStore(directory);
+  const second = new PlanStore(directory);
+  const results = await Promise.allSettled([first.initialize('same-id'), second.initialize('same-id')]);
+  const winners = results.filter((result) => result.status === 'fulfilled');
+  const losers = results.filter((result) => result.status === 'rejected');
+  assert.equal(winners.length, 1);
+  assert.equal(losers.length, 1);
+  const winner = winners[0]!;
+  const loser = losers[0]!;
+  assert.ok(winner.status === 'fulfilled');
+  assert.ok(loser.status === 'rejected');
+  assert.ok(code('SESSION_BUSY')(loser.reason) || code('SESSION_EXISTS')(loser.reason));
+  assert.deepEqual(await second.get('same-id'), winner.value);
+  const saved = await first.save('same-id', winner.value.revision, plan);
+  assert.deepEqual(await second.get('same-id'), saved);
+  assert.notEqual(saved.revision, winner.value.revision);
 });
 
 await test('full writeback replaces removed tasks and fields; stale revisions cannot overwrite it', async (t) => {
@@ -162,11 +191,15 @@ await test('completion requires the current agreed plan and seals it until a new
   await assert.rejects(store.save('finish', saved.revision, plan), code('REVISION_CONFLICT'));
   await assert.rejects(store.save('finish', completed.revision, plan), code('SESSION_COMPLETED'));
 
-  // 完了済みの計画が残っていても、後日の修正は新しいタスクとして初期化する。
-  const correction = await store.reset('finish');
+  // 完了済みの計画が残っていても、後日の修正は新しいIDで初期化する。
+  const correction = await store.initialize('finish-correction');
   assert.equal(correction.completedAt, null);
   assert.equal(correction.plan, null);
-  await assert.rejects(store.save('finish', completed.revision, plan), code('REVISION_CONFLICT'));
-  const corrected = await store.save('finish', correction.revision, { ...plan, request: '既存の成果物を修正する' });
+  assert.deepEqual(await store.get('finish'), completed);
+  await assert.rejects(store.save('finish', completed.revision, plan), code('SESSION_COMPLETED'));
+  const corrected = await store.save('finish-correction', correction.revision, {
+    ...plan,
+    request: '既存の成果物を修正する',
+  });
   assert.equal(corrected.plan?.request, '既存の成果物を修正する');
 });
