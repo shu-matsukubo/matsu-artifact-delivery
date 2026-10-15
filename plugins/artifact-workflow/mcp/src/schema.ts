@@ -8,7 +8,7 @@ const taskId = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/);
 export const sessionIdSchema = z
   .string()
   .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/)
-  .describe('The parent workflow session ID. Reuse it for reads and writes; never use a worker ID.');
+  .describe('A unique ID for this generation flow. Reuse it throughout the flow; never use a worker ID.');
 
 export const planSchema = z
   .strictObject({

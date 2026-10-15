@@ -9,10 +9,12 @@ const errorGuidance: Record<StoreErrorCode, string> = {
   INVALID_DIRECTORY: 'Set ARTIFACT_WORKFLOW_DATA_DIR or PLUGIN_DATA to an absolute path.',
   INVALID_DATA: 'Do not infer or overwrite the plan; inspect the stored data before explicitly resetting.',
   NOT_INITIALIZED:
-    'Call reset_session only at the start of a new generation flow. Plan later corrections as a new task.',
+    'Call initialize_session only at the start of a new generation flow. Plan later corrections as a new task.',
   REVISION_CONFLICT:
     'Read get_plan and reconcile with the approved plan; verify it before retrying. Never reset to bypass a conflict.',
-  SESSION_COMPLETED: 'Plan later corrections as a new task and start a new generation flow with reset_session.',
+  SESSION_COMPLETED: 'Plan later corrections as a new task and use initialize_session with its new session ID.',
+  SESSION_EXISTS:
+    'Read get_plan and preserve the existing session; call reset_session only when the user explicitly authorizes replacing this session.',
   PLAN_NOT_SAVED: 'Save an agreed plan with save_plan before completing a flow.',
   SESSION_BUSY:
     'Retry after the writer finishes. If a process crashed, confirm no writer remains before removing only the reported lock file.',
@@ -43,15 +45,37 @@ async function respond<T extends Record<string, unknown>>(action: () => Promise<
 export function createServer(store: PlanRepository): McpServer {
   const server = new McpServer({ name: 'artifact-task-memory', version: '1.0.0' });
   server.registerTool(
+    'initialize_session',
+    {
+      description:
+        'Begin a NEW generation flow by creating this session only if it does not exist. Never replace an existing plan or delete any other session. If it exists, read get_plan and preserve it; call reset_session only with explicit user authorization to replace this session. Parent only; never call on reconnect, compaction, continued work, or worker startup.',
+      inputSchema: z.strictObject({ sessionId: sessionIdSchema }),
+      outputSchema: z.strictObject({ session: sessionSchema }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    ({ sessionId }) => respond(async () => ({ session: await store.initialize(sessionId) })),
+  );
+  server.registerTool(
     'reset_session',
     {
       description:
-        'Begin a NEW generation flow: reset this session and delete all explicitly completed sessions in the same store. Active sessions are preserved. Returns session and cleanup { deleted, skipped: [{ file, code }] }; skipped files remain for a later start. Parent only; never call on reconnect, compaction, continued work, or worker startup. Later corrections require a new task even if the old plan still exists.',
+        'Destructively replace the state of this session only. This discards its saved plan and completion record. Call only when the user explicitly authorizes replacing this session. Does not delete any other session.',
       inputSchema: z.strictObject({ sessionId: sessionIdSchema }),
-      outputSchema: z.strictObject({ session: sessionSchema, cleanup: cleanupResultSchema }),
+      outputSchema: z.strictObject({ session: sessionSchema }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
-    ({ sessionId }) => respond(() => store.reset(sessionId)),
+    ({ sessionId }) => respond(async () => ({ session: await store.reset(sessionId) })),
+  );
+  server.registerTool(
+    'collect_completed_sessions',
+    {
+      description:
+        'Destructively delete every session in this store that has an explicit completion record. This may remove plans from other conversations. Call only when the user explicitly authorizes collecting completed plans. Incomplete sessions are preserved.',
+      inputSchema: z.strictObject({}),
+      outputSchema: z.strictObject({ cleanup: cleanupResultSchema }),
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    () => respond(async () => ({ cleanup: await store.collectCompleted() })),
   );
   server.registerTool(
     'save_plan',
@@ -69,7 +93,7 @@ export function createServer(store: PlanRepository): McpServer {
     'complete_session',
     {
       description:
-        'Record that the parent has finished ALL tasks, whole-flow verification, and presentation/handoff. The server records this judgment; it does not verify artifacts. Use the latest revision. Do not complete during verification or while handoff still depends on this stored plan. The completed plan becomes read-only and is deleted at a later reset_session in this store. Parent only; later corrections start as a new task.',
+        'Record that the parent has finished ALL tasks, whole-flow verification, and presentation/handoff. The server records this judgment; it does not verify artifacts. Use the latest revision. Do not complete during verification or while handoff still depends on this stored plan. The completed plan becomes read-only and remains stored until explicitly reset by ID or collected with collect_completed_sessions. Parent only; later corrections start as a new task.',
       inputSchema: z.strictObject({ sessionId: sessionIdSchema, expectedRevision: z.uuid() }),
       outputSchema: z.strictObject({ session: sessionSchema }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
