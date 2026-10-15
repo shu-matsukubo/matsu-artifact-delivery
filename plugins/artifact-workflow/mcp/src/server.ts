@@ -6,20 +6,20 @@ import type { PlanRepository } from './repository.js';
 
 // 保存層は失敗理由だけを返し、利用者への操作案内はMCPの境界で補う。
 const errorGuidance: Record<StoreErrorCode, string> = {
-  INVALID_DIRECTORY: 'Set ARTIFACT_WORKFLOW_DATA_DIR or PLUGIN_DATA to an absolute path.',
-  INVALID_DATA: 'Do not infer or overwrite the plan; inspect the stored data before explicitly resetting.',
+  INVALID_DIRECTORY: 'ARTIFACT_WORKFLOW_DATA_DIR または PLUGIN_DATA に絶対パスを設定してください。',
+  INVALID_DATA: '計画を推測・上書きせず、明示的にリセットする前に保存データを確認してください。',
   NOT_INITIALIZED:
-    'Call initialize_session only at the start of a new generation flow. Plan later corrections as a new task.',
+    'initialize_session は新しい生成フローの開始時だけ呼び出してください。後日の修正は新しいタスクとして計画してください。',
   REVISION_CONFLICT:
-    'Read get_plan and reconcile with the approved plan; verify it before retrying. Never reset to bypass a conflict.',
-  SESSION_COMPLETED: 'Plan later corrections as a new task and use initialize_session with its new session ID.',
+    'get_plan で最新状態を読み、承認済み計画と照合・確認してから再試行してください。競合回避のためにリセットしてはいけません。',
+  SESSION_COMPLETED:
+    '後日の修正は新しいタスクとして計画し、新しい sessionId で initialize_session を呼び出してください。',
   SESSION_EXISTS:
-    'Read get_plan and preserve the existing session; call reset_session only when the user explicitly authorizes replacing this session.',
-  PLAN_NOT_SAVED: 'Save an agreed plan with save_plan before completing a flow.',
+    '既存セッションと計画をそのまま保全し、新しいUUIDで initialize_session を呼び出してください。既存計画を続行する場合は、同一フローの明確な続行に限り get_plan を使ってください。',
+  PLAN_NOT_SAVED: 'フローを完了する前に、合意済み計画を save_plan で保存してください。',
   SESSION_BUSY:
-    'Retry after the writer finishes. If a process crashed, confirm no writer remains before removing only the reported lock file.',
-  PLAN_TOO_LARGE:
-    'Store references instead of artifact contents to keep the session, including completion metadata, under 1 MiB.',
+    '書き込み完了後に再試行してください。プロセスが異常終了した場合は、書き込み中のプロセスがないことを確認してから報告されたロックファイルだけを削除してください。',
+  PLAN_TOO_LARGE: '成果物の内容ではなく参照を保存し、完了情報を含むセッションを1 MiB以内にしてください。',
 };
 
 async function respond<T extends Record<string, unknown>>(action: () => Promise<T>) {
@@ -48,7 +48,7 @@ export function createServer(store: PlanRepository): McpServer {
     'initialize_session',
     {
       description:
-        'Begin a NEW generation flow by creating this session only if it does not exist. Never replace an existing plan or delete any other session. If it exists, read get_plan and preserve it; call reset_session only with explicit user authorization to replace this session. Parent only; never call on reconnect, compaction, continued work, or worker startup.',
+        '新しい生成フローの開始時に、親だけが新しいUUIDの sessionId で呼び出します。既存セッションと計画は変更せず保全し、SESSION_EXISTS の場合は別UUIDで再度 initialize_session を呼び出してください。同一フローの明確な続行では get_plan を使います。再接続、会話短縮、作業続行、ワーカー起動時には呼び出しません。',
       inputSchema: z.strictObject({ sessionId: sessionIdSchema }),
       outputSchema: z.strictObject({ session: sessionSchema }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -59,7 +59,7 @@ export function createServer(store: PlanRepository): McpServer {
     'reset_session',
     {
       description:
-        'Destructively replace the state of this session only. This discards its saved plan and completion record. Call only when the user explicitly authorizes replacing this session. Does not delete any other session.',
+        '親だけが、利用者から対象セッションの置換について明示的な許可を得た場合に呼び出します。指定セッションの計画と完了記録を破棄して初期化します。他のセッションは削除・変更しません。',
       inputSchema: z.strictObject({ sessionId: sessionIdSchema }),
       outputSchema: z.strictObject({ session: sessionSchema }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
@@ -70,7 +70,7 @@ export function createServer(store: PlanRepository): McpServer {
     'collect_completed_sessions',
     {
       description:
-        'Destructively delete every session in this store that has an explicit completion record. This may remove plans from other conversations. Call only when the user explicitly authorizes collecting completed plans. Incomplete sessions are preserved.',
+        '親だけが、完了済み計画の回収について利用者から明示的な許可を得た場合に呼び出します。この保存先にある全ての完了記録済みセッションを削除し、他の会話の計画も回収対象になります。未完了セッションは保持します。',
       inputSchema: z.strictObject({}),
       outputSchema: z.strictObject({ cleanup: cleanupResultSchema }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
@@ -81,7 +81,7 @@ export function createServer(store: PlanRepository): McpServer {
     'save_plan',
     {
       description:
-        'Save or replace the COMPLETE agreed plan, including requirements, tasks, and approval evidence. Never store drafts or conversation history. Use the revision from get_plan or reset_session. Parent only; reconcile conflicts, never reset to bypass one.',
+        '親だけが、要件・タスク・承認根拠を含む合意済み計画全体を保存または置換します。草案や会話履歴は保存しません。通常は initialize_session または get_plan で取得した revision を使います。競合時は最新状態と照合し、回避のためにリセットしてはいけません。',
       inputSchema: z.strictObject({ sessionId: sessionIdSchema, expectedRevision: z.uuid(), plan: planSchema }),
       outputSchema: z.strictObject({ session: sessionSchema }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
@@ -93,7 +93,7 @@ export function createServer(store: PlanRepository): McpServer {
     'complete_session',
     {
       description:
-        'Record that the parent has finished ALL tasks, whole-flow verification, and presentation/handoff. The server records this judgment; it does not verify artifacts. Use the latest revision. Do not complete during verification or while handoff still depends on this stored plan. The completed plan becomes read-only and remains stored until explicitly reset by ID or collected with collect_completed_sessions. Parent only; later corrections start as a new task.',
+        '親だけが、全タスク・フロー全体の検証・成果物の提示または引き渡しを終えた後、その判断を記録します。サーバーは成果物を検証しません。最新の revision を使い、検証中や保存済み計画を使った引き渡しが残る間は完了にしません。完了計画は読み取り専用となり、明示的な reset_session または許可済みの collect_completed_sessions まで保存されます。後日の修正は新しいタスクとして扱います。',
       inputSchema: z.strictObject({ sessionId: sessionIdSchema, expectedRevision: z.uuid() }),
       outputSchema: z.strictObject({ session: sessionSchema }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
@@ -105,7 +105,7 @@ export function createServer(store: PlanRepository): McpServer {
     'get_plan',
     {
       description:
-        'Read the latest agreed plan, revision, and completedAt for the parent workflow session ID. Read before delegation, continued work, verification, or a plan update. A null session is uninitialized or already collected; a null plan means no agreed plan has been saved. Completed or collected flows are not resumed; plan later corrections as a new task.',
+        '親ワークフローの sessionId に対応する最新の合意済み計画、revision、completedAt を読み取ります。委任、作業続行、検証、計画更新の前に確認してください。session が null なら未初期化または回収済み、plan が null なら合意済み計画は未保存です。完了・回収済みフローは再開せず、後日の修正は新しいタスクとして計画してください。',
       inputSchema: z.strictObject({ sessionId: sessionIdSchema }),
       outputSchema: z.strictObject({ session: sessionSchema.nullable() }),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

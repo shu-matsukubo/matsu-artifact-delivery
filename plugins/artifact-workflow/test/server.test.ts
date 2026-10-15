@@ -82,6 +82,18 @@ await test('the six tools forward their inputs to a repository without filesyste
   }
 });
 
+await test('tool guidance is Japanese while API identifiers remain unchanged', async (t) => {
+  const client = await connect(t, repository());
+  const tools = (await client.listTools()).tools;
+  assert.deepEqual(
+    tools.map(({ name }) => name),
+    ['initialize_session', 'reset_session', 'collect_completed_sessions', 'save_plan', 'complete_session', 'get_plan'],
+  );
+  for (const tool of tools) assert.match(tool.description ?? '', /[\u3040-\u30ff\u4e00-\u9fff]/);
+  assert.match(tools.find(({ name }) => name === 'initialize_session')!.description!, /別UUID/);
+  assert.match(tools.find(({ name }) => name === 'save_plan')!.description!, /initialize_session.*get_plan/);
+});
+
 await test('collection failures remain a successful collection response', async (t) => {
   const cleanup = { deleted: 1, skipped: [{ file: 'locked.json', code: 'SESSION_BUSY' }] };
   const store = repository({ collectCompleted: async () => cleanup });
@@ -93,14 +105,14 @@ await test('collection failures remain a successful collection response', async 
 
 for (const [code, guidance] of [
   ['NOT_INITIALIZED', /initialize_session/],
-  ['REVISION_CONFLICT', /get_plan.*Never reset/],
-  ['SESSION_COMPLETED', /new task.*initialize_session/],
-  ['SESSION_EXISTS', /Read get_plan.*explicitly authorizes/],
+  ['REVISION_CONFLICT', /get_plan.*リセットしてはいけません/],
+  ['SESSION_COMPLETED', /新しいタスク.*initialize_session/],
+  ['SESSION_EXISTS', /新しいUUID.*同一フローの明確な続行/],
   ['PLAN_NOT_SAVED', /save_plan/],
-  ['SESSION_BUSY', /confirm no writer remains.*reported lock file/],
-  ['INVALID_DATA', /Do not infer or overwrite.*inspect/],
-  ['PLAN_TOO_LARGE', /references.*completion metadata/],
-  ['INVALID_DIRECTORY', /absolute path/],
+  ['SESSION_BUSY', /書き込み中のプロセス.*ロックファイル/],
+  ['INVALID_DATA', /推測・上書きせず.*保存データを確認/],
+  ['PLAN_TOO_LARGE', /参照を保存.*1 MiB以内/],
+  ['INVALID_DIRECTORY', /絶対パス/],
 ] as const) {
   await test(`MCP adds operation guidance to ${code} without changing the stored failure reason`, async (t) => {
     const failure = new StoreError(code, `Failure reason: ${code}.`);

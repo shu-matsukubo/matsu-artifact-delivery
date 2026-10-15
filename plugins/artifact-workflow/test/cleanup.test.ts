@@ -136,7 +136,7 @@ await test('simultaneous starts preserve both new sessions and collect a complet
   assert.equal((await readdir(directory)).length, 2);
 });
 
-await test('directory enumeration failure is reported without undoing a successful reset', async (t) => {
+await test('directory enumeration failures are reported', async (t) => {
   const directory = await temporaryDirectory(t);
   const store = new PlanStore(directory);
   t.mock.method(fs, 'readdir', async () => {
@@ -145,6 +145,20 @@ await test('directory enumeration failure is reported without undoing a successf
   assert.deepEqual(await store.collectCompleted(), { deleted: 0, skipped: [{ file: '.', code: 'EACCES' }] });
   const initialized = await store.initialize('new-flow');
   assert.deepEqual(await store.get('new-flow'), initialized);
+});
+
+await test('collecting from a missing store directory is empty and reports other I/O failures', async (t) => {
+  const root = await temporaryDirectory(t);
+  const missing = new PlanStore(join(root, 'not-created'));
+  assert.deepEqual(await missing.collectCompleted(), { deleted: 0, skipped: [] });
+
+  const directory = await temporaryDirectory(t);
+  const store = new PlanStore(directory);
+  const failure = Object.assign(new Error('Cannot list'), { code: 'EIO' });
+  t.mock.method(fs, 'readdir', async () => {
+    throw failure;
+  });
+  assert.deepEqual(await store.collectCompleted(), { deleted: 0, skipped: [{ file: '.', code: 'EIO' }] });
 });
 
 for (const [failure, expectedCode] of [

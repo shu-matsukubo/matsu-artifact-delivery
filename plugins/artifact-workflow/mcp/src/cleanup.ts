@@ -16,6 +16,7 @@ export async function collectCompleted(files: SnapshotFiles): Promise<CleanupRes
   try {
     entries = await files.listSnapshots();
   } catch (error) {
+    if (systemErrorCode(error) === 'ENOENT') return result;
     skip('.', error);
     return result;
   }
