@@ -136,7 +136,7 @@ npm run ci:select -- --all
 | WF-U06 / WF-U07          | Self Review の責務・返却、共通 5 原則                                                                          | Workflow 契約一覧                                                                         |
 | WF-U08 / WF-U09 / WF-U10 | Independent Review の入力・返却・再レビュー、特化観点 0〜3 件、security の限界                                 | Workflow 契約一覧                                                                         |
 | WF-U11 / WF-U12          | 親のタスク・全体検証、引き渡しと完了、後日の修正                                                               | Workflow 契約一覧                                                                         |
-| WF-U13 / WF-U14          | MCP の親限定更新・保存失敗、任意相談の発見・失敗・回数・フォールバック                                         | Workflow 契約一覧                                                                         |
+| WF-U13 / WF-U14          | MCP の新規初期化・明示的な削除と親限定更新・保存失敗、任意相談の発見・失敗・回数・フォールバック               | Workflow 契約一覧                                                                         |
 | WF-U15 / WF-U16 / WF-U17 | 計画テンプレート、Worker / Reviewer の責務・入出力・再委任禁止                                                 | Workflow 契約一覧                                                                         |
 | WF-U18                   | package / lockfileの版、MCP正本・互換設定・配布先の整合                                                        | Workflow unit                                                                             |
 | WF-U20                   | cachebuster取り込み後のWF-U18、正式版・基底版・suffix・lockfile不一致の拒否                                    | Workflow unit                                                                             |

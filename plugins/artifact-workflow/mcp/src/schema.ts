@@ -8,12 +8,12 @@ const taskId = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/);
 export const sessionIdSchema = z
   .string()
   .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/)
-  .describe('The parent workflow session ID. Reuse it for reads and writes; never use a worker ID.');
+  .describe('この生成フロー固有のID。同じフローの全工程で再利用し、ワーカーのIDは使わない。');
 
 export const planSchema = z
   .strictObject({
-    request: text.describe('Original user request, without the conversation history.'),
-    scope: text.describe('Agreed purpose and scope of this generation flow.'),
+    request: text.describe('会話履歴を含めないユーザーの依頼。'),
+    scope: text.describe('この生成フローで合意した目的と範囲。'),
     requirements: lines,
     constraints: lines,
     inputs: z.array(z.strictObject({ description: text, reference: text })).max(200),
@@ -30,11 +30,11 @@ export const planSchema = z
       )
       .min(1)
       .max(200),
-    acceptanceCriteria: lines.min(1).describe('Completion criteria for the whole generation flow.'),
-    delivery: text.describe('Agreed handoff information and any subsequent user request.'),
+    acceptanceCriteria: lines.min(1).describe('生成フロー全体の完了条件。'),
+    delivery: text.describe('合意した引き渡し情報と後続のユーザー依頼。'),
     approval: z.strictObject({
       mode: z.enum(['approved', 'waived']),
-      evidence: text.describe('User approval, or the explicit instruction and scope waiving approval.'),
+      evidence: text.describe('ユーザーの承認、または承認手続きを省略する明示的な指示とその範囲。'),
     }),
   })
   .superRefine((plan, ctx) => {

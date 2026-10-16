@@ -5,6 +5,7 @@ export type StoreErrorCode =
   | 'NOT_INITIALIZED'
   | 'REVISION_CONFLICT'
   | 'SESSION_COMPLETED'
+  | 'SESSION_EXISTS'
   | 'PLAN_NOT_SAVED'
   | 'SESSION_BUSY'
   | 'PLAN_TOO_LARGE';

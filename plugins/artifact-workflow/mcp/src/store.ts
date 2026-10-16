@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { collectCompleted } from './cleanup.js';
-import type { PlanRepository, ResetResult } from './repository.js';
+import { StoreError } from './errors.js';
+import type { PlanRepository } from './repository.js';
 import { planSchema, type Session } from './schema.js';
 import { completeSession, createSession, replacePlan, type SessionChange } from './session.js';
 import { SnapshotFiles } from './snapshot-files.js';
@@ -24,19 +25,31 @@ export class PlanStore implements PlanRepository {
     return this.files.readSnapshot(this.files.filename(sessionId));
   }
 
-  /**
-   * 指定セッションを初期化し、完了済みの別セッションを回収する。
-   * 回収の失敗はcleanup.skippedに記録し、初期化の成功を取り消さない。
-   */
-  async reset(sessionId: string): Promise<ResetResult> {
+  /** 新規セッションだけを作り、既存状態は保持したまま競合として返す。 */
+  async initialize(sessionId: string): Promise<Session> {
     const filename = this.files.filename(sessionId);
-    const session = await this.files.withLock(filename, async () => {
+    return this.files.withLock(filename, async () => {
+      if (await this.files.readSnapshot(filename)) {
+        throw new StoreError('SESSION_EXISTS', 'The session already exists.');
+      }
       const session = createSession(sessionId, newChange());
       await this.files.writeSnapshot(filename, session);
       return session;
     });
-    // 複数セッションのロックを同時に持たず、同時開始時の競合を減らす。
-    return { session, cleanup: await collectCompleted(this.files, filename) };
+  }
+
+  /** 指定IDの状態だけを明示的に初期化し直す。 */
+  async reset(sessionId: string): Promise<Session> {
+    const filename = this.files.filename(sessionId);
+    return this.files.withLock(filename, async () => {
+      const session = createSession(sessionId, newChange());
+      await this.files.writeSnapshot(filename, session);
+      return session;
+    });
+  }
+
+  async collectCompleted() {
+    return collectCompleted(this.files);
   }
 
   async save(sessionId: string, expectedRevision: string, input: unknown): Promise<Session> {

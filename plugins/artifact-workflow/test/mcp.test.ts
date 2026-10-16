@@ -104,12 +104,14 @@ await test(
     cleanup.push(() => client.close());
     const tools = await client.listTools();
     assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
+      'collect_completed_sessions',
       'complete_session',
       'get_plan',
+      'initialize_session',
       'reset_session',
       'save_plan',
     ]);
-    const empty = snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'parent' } }));
+    const empty = snapshot(await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'parent' } }));
     const saved = snapshot(
       await client.callTool({
         name: 'save_plan',
@@ -119,7 +121,7 @@ await test(
     await client.close();
     client = await connect(directory, standalone);
     assert.deepEqual(snapshot(await client.callTool({ name: 'get_plan', arguments: { sessionId: 'parent' } })), saved);
-    await client.callTool({ name: 'reset_session', arguments: { sessionId: 'other' } });
+    const other = snapshot(await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'other' } }));
     assert.deepEqual(snapshot(await client.callTool({ name: 'get_plan', arguments: { sessionId: 'parent' } })), saved);
     const invalid = await client.callTool({
       name: 'save_plan',
@@ -131,10 +133,9 @@ await test(
     });
     assert.equal(invalid.isError, true);
     assert.deepEqual(snapshot(await client.callTool({ name: 'get_plan', arguments: { sessionId: 'parent' } })), saved);
-    assert.equal(
-      snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'parent' } })).plan,
-      null,
-    );
+    const reset = await client.callTool({ name: 'reset_session', arguments: { sessionId: 'parent' } });
+    assert.equal(snapshot(reset).plan, null);
+    assert.deepEqual(snapshot(await client.callTool({ name: 'get_plan', arguments: { sessionId: 'other' } })), other);
     assert.deepEqual((await readdir(directory)).sort(), [
       'data',
       ...(process.platform === 'win32' ? ['runtime'] : []),
@@ -206,7 +207,7 @@ await test(
     const directory = await temporaryDirectory(t, cleanup);
     let client = await connect(directory);
     cleanup.push(() => client.close());
-    const empty = snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'boundary' } }));
+    const empty = snapshot(await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'boundary' } }));
     const growth = Buffer.byteLength(JSON.stringify(empty.updatedAt)) - Buffer.byteLength('null');
     const sized = planAtSnapshotSize(empty, 1024 * 1024 - growth);
     const saved = snapshot(
@@ -242,15 +243,23 @@ await test(
 );
 
 await test(
-  'completion survives MCP restart and a new flow deletes the plan before later correction work',
+  'initialization preserves existing sessions and completed-session collection is a separate operation',
   { timeout: 30_000 },
   async (t) => {
     const cleanup: Array<() => Promise<void>> = [];
     const directory = await temporaryDirectory(t, cleanup);
     let client = await connect(directory);
     cleanup.push(() => client.close());
-    const active = snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'active' } }));
-    const empty = snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'done' } }));
+    const activeEmpty = snapshot(
+      await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'active' } }),
+    );
+    const active = snapshot(
+      await client.callTool({
+        name: 'save_plan',
+        arguments: { sessionId: 'active', expectedRevision: activeEmpty.revision, plan },
+      }),
+    );
+    const empty = snapshot(await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'done' } }));
     const saved = snapshot(
       await client.callTool({
         name: 'save_plan',
@@ -270,24 +279,31 @@ await test(
       snapshot(await client.callTool({ name: 'get_plan', arguments: { sessionId: 'done' } })),
       completed,
     );
-    const rejected = await client.callTool({
-      name: 'save_plan',
-      arguments: { sessionId: 'done', expectedRevision: completed.revision, plan },
-    });
+    const rejected = await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'done' } });
     assert.equal(rejected.isError, true);
-    const fresh = await client.callTool({ name: 'reset_session', arguments: { sessionId: 'new-flow' } });
-    assert.equal(snapshot(fresh).completedAt, null);
-    assert.deepEqual((fresh.structuredContent as { cleanup: unknown }).cleanup, { deleted: 1, skipped: [] });
-    const missing = await client.callTool({ name: 'get_plan', arguments: { sessionId: 'done' } });
-    assert.notEqual(missing.isError, true);
-    assert.equal((missing.structuredContent as { session: unknown }).session, null);
+    assert.equal(JSON.parse((rejected.content[0] as { text: string }).text).error, 'SESSION_EXISTS');
+    const rejectedActive = await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'active' } });
+    assert.equal(rejectedActive.isError, true);
+    const fresh = snapshot(await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'new-flow' } }));
+    assert.equal(fresh.completedAt, null);
+    assert.deepEqual(
+      snapshot(await client.callTool({ name: 'get_plan', arguments: { sessionId: 'done' } })),
+      completed,
+    );
     assert.deepEqual(snapshot(await client.callTool({ name: 'get_plan', arguments: { sessionId: 'active' } })), active);
-    const correction = snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'done' } }));
+    const collection = await client.callTool({ name: 'collect_completed_sessions', arguments: {} });
+    assert.deepEqual((collection.structuredContent as { cleanup: unknown }).cleanup, { deleted: 1, skipped: [] });
+    const collected = await client.callTool({ name: 'get_plan', arguments: { sessionId: 'done' } });
+    assert.notEqual(collected.isError, true);
+    assert.deepEqual(collected.structuredContent, { session: null });
+    const correction = snapshot(
+      await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'done-correction' } }),
+    );
     const updated = snapshot(
       await client.callTool({
         name: 'save_plan',
         arguments: {
-          sessionId: 'done',
+          sessionId: 'done-correction',
           expectedRevision: correction.revision,
           plan: { ...plan, request: '後日の修正を新しいタスクとして計画する' },
         },
@@ -308,7 +324,7 @@ await test(
     cleanup.push(() => first.close());
     const second = await connect(directory);
     cleanup.push(() => second.close());
-    const empty = snapshot(await first.callTool({ name: 'reset_session', arguments: { sessionId: 'shared' } }));
+    const empty = snapshot(await first.callTool({ name: 'initialize_session', arguments: { sessionId: 'shared' } }));
     const results = await Promise.all(
       [first, second].map((client, index) =>
         client.callTool({
@@ -355,7 +371,7 @@ await test(
     assert.notEqual(missing.isError, true);
     assert.deepEqual(missing.structuredContent, { session: null });
 
-    const reset = await client.callTool({ name: 'reset_session', arguments: { sessionId: 'contract' } });
+    const reset = await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'contract' } });
     const empty = snapshot(reset);
     const save = await client.callTool({
       name: 'save_plan',
@@ -371,7 +387,7 @@ await test(
     assert.deepEqual(snapshot(get), completed);
 
     for (const [name, result] of Object.entries({
-      reset_session: reset,
+      initialize_session: reset,
       save_plan: save,
       complete_session: complete,
       get_plan: get,
@@ -395,7 +411,10 @@ await test(
         name,
       );
     }
-    const validateReset = validators.get('reset_session')!;
+    const validateReset = validators.get('initialize_session')!;
+    assert.equal(validateReset({ session: empty }).valid, true);
+    assert.equal(validateReset({ session: empty, cleanup: { deleted: 0, skipped: [] } }).valid, false);
+    const validateCollection = validators.get('collect_completed_sessions')!;
     for (const invalidCleanup of [
       undefined,
       { deleted: -1, skipped: [] },
@@ -404,7 +423,7 @@ await test(
       { deleted: 0, skipped: [{ file: 'example.json' }] },
       { deleted: 0, skipped: [{ file: 'example.json', code: 123 }] },
     ]) {
-      assert.equal(validateReset({ session: empty, cleanup: invalidCleanup }).valid, false);
+      assert.equal(validateCollection({ cleanup: invalidCleanup }).valid, false);
     }
   },
 );
@@ -414,7 +433,7 @@ await test('output validation preserves cleanup details and tool execution error
   const directory = await temporaryDirectory(t, cleanup);
   const client = await connect(directory);
   cleanup.push(() => client.close());
-  const empty = snapshot(await client.callTool({ name: 'reset_session', arguments: { sessionId: 'done' } }));
+  const empty = snapshot(await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'done' } }));
   const saved = snapshot(
     await client.callTool({
       name: 'save_plan',
@@ -427,9 +446,10 @@ await test('output validation preserves cleanup details and tool execution error
   });
   const brokenFile = createHash('sha256').update('broken').digest('hex') + '.json';
   await writeFile(join(directory, 'data', brokenFile), '{ invalid JSON');
-  const fresh = await client.callTool({ name: 'reset_session', arguments: { sessionId: 'fresh' } });
+  const fresh = await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'fresh' } });
   const active = snapshot(fresh);
-  assert.deepEqual((fresh.structuredContent as { cleanup: unknown }).cleanup, {
+  const collected = await client.callTool({ name: 'collect_completed_sessions', arguments: {} });
+  assert.deepEqual((collected.structuredContent as { cleanup: unknown }).cleanup, {
     deleted: 1,
     skipped: [{ file: brokenFile, code: 'INVALID_DATA' }],
   });

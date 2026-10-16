@@ -96,17 +96,19 @@ try {
               }),
             );
             assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name).sort(), [
+              'collect_completed_sessions',
               'complete_session',
               'get_plan',
+              'initialize_session',
               'reset_session',
               'save_plan',
             ]);
             const response = await client.callTool({
-              name: 'get_plan',
+              name: 'initialize_session',
               arguments: { sessionId: 'distribution-check' },
             });
             assert.notEqual(response.isError, true);
-            assert.deepEqual(response.structuredContent, { session: null });
+            assert.equal((response.structuredContent as { session: { plan: unknown } }).session.plan, null);
           } finally {
             await client.close();
           }
