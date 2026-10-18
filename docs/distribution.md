@@ -35,7 +35,7 @@ npm run package
 
 manifest検証・互換設定の同期確認・MCPの生成物一致確認に成功すると、専用出力先 `dist/` を作り直す。出力先に手作業のファイルは置かない。root manifest を変更した後、互換設定だけなら `npm run sync:manifests`、MCPソースも変えた場合は `npm --prefix plugins/artifact-workflow run build` で同梱 bundle を更新し、Git で管理するファイルとして差分を確認してから実行する。
 
-[配布処理](../scripts/package-plugins.ts)がファイル一覧を管理する。README、LICENSE、共通・互換manifest、Skill一式、Workflow の subagent 役割テンプレート、MCP設定・bundle・Windows runtime・依存ライセンスを含む。利用者が Agent 設定を別途配置する必要はない。開発用のpackage/lockfile、ソース、試験、スクリプト、`node_modules`、`.build`、`.test-build` は含めない。同梱ディレクトリ内のシンボリックリンクも拒否する。
+[配布処理](../scripts/package-plugins.ts)が `dist/` のファイル一覧を管理する。README、LICENSE、共通・互換manifest、Skill一式、Workflow の subagent 役割テンプレート、MCP設定・bundle・Windows runtime・依存ライセンスを含む。利用者が Agent 設定を別途配置する必要はない。開発用のpackage/lockfile、ソース、試験、スクリプト、`node_modules`、`.build`、`.test-build` は含めず、同梱ディレクトリ内のシンボリックリンクも拒否する。GitHub marketplace は Git の Plugin ディレクトリを取得するため、そこに追跡された開発ファイルも GitHub 経路の期待内容に含まれる。`dist/` は `packageFiles` が定める公開ファイル境界である。
 
 `.agents/plugins/marketplace.json` は内容を変えず `dist/.agents/plugins/marketplace.json` にコピーする。`./plugins/<name>` は配布ルート `dist/` 基準の相対パスとなる。生成処理と構成E2Eは同じ配布処理を使い、READMEを含むローカルリンク・アンカーも配布物内で検証する。
 
@@ -100,7 +100,7 @@ npm run test:install
 
 各root `plugin.json` のversionを正式版に変更し、`npm run sync:manifests` で両Pluginの互換設定へ同期する。Workflowは `npm --prefix plugins/artifact-workflow version <正式版> --no-git-tag-version` でpackage.jsonとpackage-lock.jsonも同じ版へ更新する。root manifest・互換manifest・package.json・lockfileの最上位と `packages[""]` の版を照合し、MCPをビルドする。
 
-型・lint・書式・全試験に成功した候補から配布物を生成し、`npm run test:install` でその配布物を検証する。候補を固定して実モデルによる生成・承認待ち・独立レビュー・相談を含む受け入れ試験を行い、その確認後に正式リリースを判断する。CLIとMCPの試験だけで実モデルの受け入れ試験を代替しない。
+型・lint・書式・全試験に成功した候補から配布物を生成し、GitHub に反映済みの40桁コミット SHA を指定して `npm run test:install -- --github-ref <commit-SHA>` を実行し、同じ固定候補の GitHub marketplace 経路と `dist/` 経路を検証する。タグと短縮 SHA は指定できない。結果には候補 SHA と導入経路が記録され、各実キャッシュを経路ごとの期待ファイル一覧・内容と比較する。候補を固定して実モデルによる生成・承認待ち・独立レビュー・相談を含む受け入れ試験を行い、その確認後に正式リリースを判断する。CLIとMCPの試験だけで実モデルの受け入れ試験を代替しない。
 
 ## スキーマの固定と試験
 
@@ -108,4 +108,8 @@ npm run test:install
 
 Codex互換manifestは共通schemaへ混ぜず、専用の整合性・パス検査とplugin-creatorの検証器で検証する。正本との同一性、MCPの実ファイルとパス包含、Node起動の契約はJSON Schema以外でも検査する。
 
-`npm run test:install` はCodex CLIがPATHにある環境で実行する追加のリリース前試験。既に生成した `dist/` を空の一時Codexホームへインストールし、実キャッシュの全ファイル・内容・ローカルリンク・不要ディレクトリ不在と、Windows x64 では同梱ランチャー経由のMCP起動を検証する。子プロセスだけに一時 `CODEX_HOME` を渡し、実ユーザーの登録・インストール・保存済み計画は変更しない。通常CIにはCodex CLIを要求せず、共有配布処理と構成・MCP E2Eを実行する。
+`npm run test:install` はCodex CLIがPATHにある環境で実行する追加のリリース前試験。生成した `dist/` を空の一時Codexホームへ導入し、manifest、Skillの参照、実キャッシュの全ファイル・内容、不要ディレクトリ不在を検証する。`--github-ref <commit-SHA>` を指定すると、同じ候補 SHA を GitHub marketplace 経由でも別の空ホームへ導入し、GitHub から取得した同一コミットのスナップショットと実キャッシュを照合する。両経路の結果には導入経路と候補を記録する。Windows x64 では両経路で同梱ランチャー経由のMCP起動も検証する。子プロセスだけに一時 `CODEX_HOME` を渡し、実ユーザーの登録・インストール・保存済み計画は変更しない。`dist` の成功だけで GitHub 経路の検証済みとは扱わない。通常CIにはCodex CLIを要求せず、共有配布処理と構成・MCP E2Eを実行する。
+
+```sh
+npm run test:install -- --github-ref <commit-SHA>
+```

@@ -66,7 +66,7 @@ npm --prefix plugins/artifact-workflow run format:check
 
 ## 配布・manifest検証
 
-`npm run check:manifests` で固定した公式plugin/MCP schemaと互換manifestの整合性を確認する。`npm run package` が生成した `dist/` をローカルインストールとリリースに共用する。Codex CLIが利用可能な環境では `npm run test:install` で同じ配布物を一時ホームへインストールし、キャッシュの全ファイルと内容、リンク、不要ディレクトリ不在、同梱 runtime を使った Windows x64 での MCP 起動を検証する。詳細は[配布と更新](distribution.md)を参照。
+`npm run check:manifests` で固定した公式plugin/MCP schemaと互換manifestの整合性を確認する。`npm run package` が生成した `dist/` をローカルインストールとリリースに共用する。Codex CLIが利用可能な環境では `npm run test:install` で同じ配布物を一時ホームへ導入し、キャッシュの全ファイルと内容、リンク、不要ディレクトリ不在、同梱 runtime を使った Windows x64 での MCP 起動を検証する。GitHub marketplace 経路を検証するときは `npm run test:install -- --github-ref <commit-SHA>` を実行し、同一 SHA の GitHub スナップショットと実キャッシュを照合する。詳細は[配布と更新](distribution.md)を参照。
 
 追加の回帰試験は [distribution.test.ts](../test/infrastructure/distribution.test.ts) に集約する。
 
@@ -78,6 +78,7 @@ npm --prefix plugins/artifact-workflow run format:check
 | PKG-U05 | 開発依存・ビルド残骸の有無によらない配布内容一致と全Markdownの参照 |
 | PKG-U06 | 生成marketplaceのカタログ一致・再生成時の残骸除去                  |
 | PKG-U07 | 配布元と出力先のリンク拒否・外部ディレクトリの保全                 |
+| PKG-U08 | インストール実キャッシュの余分・欠落・内容変更の検出               |
 | VER-U01 | 両Pluginの正本同期・正しいcachebusterの取り込み・不正な版の拒否    |
 
 ## CI の選択
@@ -155,6 +156,7 @@ npm run ci:select -- --all
 | RUN-U01〜RUN-U08         | 引数、層別実行、MCP 登録の網羅性・欠落・重複・入れ子、MCP 限定 CLI の登録漏れ拒否、環境選択、失敗伝搬、dry-run | [実行コマンドの単体試験](../test/infrastructure/runner.test.ts)                           |
 | HAR-U01〜HAR-U08         | YAML / Markdown、相対パス、参照循環・切断、metadata 不整合、契約欠落・順序変更を拒否                           | [検証器の単体試験](../test/infrastructure/harness.test.ts)                                |
 | PKG-U01〜PKG-U04         | marketplace、Plugin Agent 登録不要とリポジトリ Codex 設定の配布外確認、README 参照、ID 対応                    | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
+| PKG-U08                  | インストール実キャッシュの余分・欠落・内容変更の検出                                                           | [配布試験](../test/infrastructure/distribution.test.ts)                                   |
 | SCH-U01                  | 定期起動の条件・Open PR と作業状態の確認後のレビュー待ち判定・未反映修正の再開・共通 Workflow への参照         | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | DEV-U01                  | Workflow 単体の安全確認・再開・環境準備・GitHub とローカルへの反映・担当境界                                   | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | DEV-U02                  | 指定 Issue の扱い・未指定時の対象限定・実装中と merge 済みの Issue の選定除外                                  | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
