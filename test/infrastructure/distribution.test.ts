@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 import { packageMarketplace, packagePlugin } from '../../scripts/package-plugins.ts';
+import { compareInstallDirectories } from '../../scripts/compare-install.ts';
 import { syncManifests } from '../../scripts/sync-manifests.ts';
 import {
   files,
@@ -24,6 +25,25 @@ const execute = promisify(execFile);
 const writeJson = (path: string, value: unknown) => writeFile(path, JSON.stringify(value, null, 2) + '\n');
 const snapshot = async (root: string) =>
   Promise.all((await files(root)).map(async (path) => [path, (await readFile(join(root, path))).toString('base64')]));
+
+await test('PKG-U08: installation comparison rejects extra, missing and changed files', async (t) => {
+  const root = await temporaryDirectory(t);
+  const expected = join(root, 'expected');
+  const actual = join(root, 'actual');
+  await mkdir(expected);
+  await mkdir(actual);
+  await writeFile(join(expected, 'manifest.json'), '{"version":"1"}\n');
+  await writeFile(join(actual, 'manifest.json'), '{"version":"1"}\n');
+  assert.deepEqual(await compareInstallDirectories(actual, expected, 'test'), { files: 1, bytes: 16 });
+
+  await writeFile(join(actual, 'unexpected.txt'), 'extra');
+  await assert.rejects(compareInstallDirectories(actual, expected, 'test'), /file list differs/);
+  await unlink(join(actual, 'unexpected.txt'));
+  await unlink(join(actual, 'manifest.json'));
+  await assert.rejects(compareInstallDirectories(actual, expected, 'test'), /file list differs/);
+  await writeFile(join(actual, 'manifest.json'), '{"version":"2"}\n');
+  await assert.rejects(compareInstallDirectories(actual, expected, 'test'), /content differs/);
+});
 
 await test('MAN-U01: portable manifest schema rejects Codex fields, unsupported versions and invalid nested metadata', async (t) => {
   const plugin = await stagePlugin(t, 'expert-escalation');
