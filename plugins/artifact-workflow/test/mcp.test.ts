@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -13,7 +14,7 @@ import { plan, planAtSnapshotSize, temporaryDirectory } from './fixtures.js';
 const bundledServer = fileURLToPath(new URL('../../mcp/task-memory.cjs', import.meta.url));
 const windowsLauncher = fileURLToPath(new URL('../../mcp/start.ps1', import.meta.url));
 
-async function connect(directory: string, entry = bundledServer, manifestEnvironment = false) {
+async function connect(directory: string, entry = bundledServer, manifestEnvironment = false, pluginData?: string) {
   const inheritedEnvironment = getDefaultEnvironment();
   if (process.platform === 'win32') delete inheritedEnvironment.PATHEXT;
   const command = process.platform === 'win32' ? 'powershell.exe' : process.execPath;
@@ -56,7 +57,7 @@ async function connect(directory: string, entry = bundledServer, manifestEnviron
     environment.LOCALAPPDATA = undefined;
     environment.ARTIFACT_WORKFLOW_RUNTIME_DIR = undefined;
     environment.PLUGIN_ROOT = fileURLToPath(new URL('../../', import.meta.url));
-    environment.PLUGIN_DATA = join(directory, 'plugin-data');
+    environment.PLUGIN_DATA = pluginData ?? join(directory, 'plugin-data');
     environment.ARTIFACT_WORKFLOW_DATA_DIR = join(environment.PLUGIN_DATA, 'task-memory');
     const sdkEnvironment = { ...getDefaultEnvironment(), ...environment };
     assert.equal(sdkEnvironment.LOCALAPPDATA, undefined);
@@ -141,6 +142,79 @@ await test(
       ...(process.platform === 'win32' ? ['runtime'] : []),
       'standalone.cjs',
     ]);
+  },
+);
+
+await test(
+  'starts from a long PLUGIN_DATA path and keeps session data there across restart',
+  { skip: process.platform !== 'win32', timeout: 30_000 },
+  async (t) => {
+    const cleanup: Array<() => Promise<void>> = [];
+    const directory = await temporaryDirectory(t, cleanup);
+    const base = join(directory, 'plugin-data');
+    const targetLength = 192;
+    const suffixLength = targetLength - base.length - 1;
+    const suffix = `${'日本語 path '.repeat(Math.ceil((suffixLength - 1) / 8)).slice(0, suffixLength - 1)}X`;
+    const pluginData = join(base, suffix);
+    const archive = await readFile(fileURLToPath(new URL('../../mcp/node-win-x64.zip', import.meta.url)));
+    const runtime = createHash('sha256').update(archive).digest('hex');
+    const nodePath = join(pluginData, 'runtime', runtime, 'node.exe');
+    assert.ok(pluginData.length < 260, `PLUGIN_DATA length: ${pluginData.length}`);
+    assert.ok(nodePath.length > 260, `node.exe path length: ${nodePath.length}`);
+    t.diagnostic(`PLUGIN_DATA path length ${pluginData.length}; node.exe path length ${nodePath.length}`);
+    const otherPluginData = join(pluginData, 'other-plugin');
+    await mkdir(otherPluginData, { recursive: true });
+    await writeFile(join(otherPluginData, 'settings.json'), '{"preserve":true}\n');
+    const client = await connect(directory, bundledServer, true, pluginData);
+    cleanup.push(() => client.close());
+    const initialized = snapshot(
+      await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'long-path' } }),
+    );
+    const saved = snapshot(
+      await client.callTool({
+        name: 'save_plan',
+        arguments: { sessionId: 'long-path', expectedRevision: initialized.revision, plan },
+      }),
+    );
+    await client.close();
+    const restarted = await connect(directory, bundledServer, true, pluginData);
+    cleanup.push(() => restarted.close());
+    assert.deepEqual(
+      snapshot(await restarted.callTool({ name: 'get_plan', arguments: { sessionId: 'long-path' } })),
+      saved,
+    );
+    assert.equal(await readFile(join(otherPluginData, 'settings.json'), 'utf8'), '{"preserve":true}\n');
+    assert.ok((await readdir(join(pluginData, 'runtime', runtime))).includes('node.exe'));
+  },
+);
+
+await test(
+  'native Windows launch preserves child standard streams and exit code',
+  { skip: process.platform !== 'win32', timeout: 30_000 },
+  async (t) => {
+    const cleanup: Array<() => Promise<void>> = [];
+    const directory = await temporaryDirectory(t, cleanup);
+    const entry = join(directory, 'exit-check.cjs');
+    await writeFile(
+      entry,
+      "process.stdout.write('stdout-marker\\n'); process.stderr.write('stderr-marker\\n'); process.exit(37);\n",
+    );
+    const environment = {
+      ...process.env,
+      PLUGIN_DATA: join(directory, 'plugin-data'),
+      ARTIFACT_WORKFLOW_RUNTIME_DIR: join(directory, 'runtime'),
+      ARTIFACT_WORKFLOW_DATA_DIR: join(directory, 'data'),
+    };
+    Reflect.deleteProperty(environment, 'PATHEXT');
+    const result = spawnSync(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', windowsLauncher, '-Entry', entry],
+      { cwd: directory, env: environment, encoding: 'utf8', timeout: 30_000, windowsHide: true },
+    );
+    assert.equal(result.error, undefined, result.error?.message);
+    assert.equal(result.status, 37, result.stderr);
+    assert.match(result.stdout, /stdout-marker/);
+    assert.match(result.stderr, /stderr-marker/);
   },
 );
 
