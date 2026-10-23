@@ -12,9 +12,9 @@ const escalation = ['escalation', 'integration'];
 const packageChecks = ['mcp', ...workflow];
 const cases: [string, string[]][] = [
   ['plugins/artifact-workflow/skills/artifact-workflow/SKILL.md', workflow],
-  ['plugins/artifact-workflow/skills/artifact-workflow/references/self-review.md', workflow],
+  ['plugins/artifact-workflow/skills/artifact-workflow/references/approval.md', workflow],
   ['plugins/artifact-workflow/skills/artifact-workflow/agents/openai.yaml', workflow],
-  ['plugins/artifact-workflow/skills/artifact-workflow/assets/subagent-roles.md', workflow],
+  ['plugins/artifact-workflow/skills/artifact-generation/assets/worker.md', workflow],
   ['test/workflow/contracts.json', workflow],
   ['test/workflow/e2e.test.ts', workflow],
   ['plugins/artifact-workflow/mcp/src/server.ts', ['mcp']],
@@ -43,6 +43,9 @@ const cases: [string, string[]][] = [
   ['test/integration/consultation.test.ts', ['integration']],
   ['README.md', ['infrastructure']],
   ['docs/testing.md', ['infrastructure']],
+  ['plugins/artifact-workflow/skills/task-planning/SKILL.md', workflow],
+  ['plugins/artifact-workflow/skills/artifact-review/SKILL.md', workflow],
+  ['plugins/artifact-workflow/skills/artifact-review/assets/reviewer.md', workflow],
 ];
 
 await test('CI-U01: each owned path selects exactly its dependent suites', async (t) => {

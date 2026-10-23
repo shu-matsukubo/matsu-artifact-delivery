@@ -1,6 +1,6 @@
 # artifact-workflow
 
-成果物を作る作業を計画し、承認後に生成・セルフレビュー・独立レビュー・検証を行う Plugin です。完成品と検証結果を提示し、必要な引き渡し情報を親へ返します。
+成果物の範囲を計画・承認し、生成、独立レビュー、完了条件の検証を調停する Plugin です。完成品と検証結果を提示し、必要な引き渡し情報を親へ返します。
 
 `artifact-workflow` は標準 subagent を使い、worker と reviewer の役割指示を Plugin 内の Skill にまとめています。対応環境は Windows x64 です。
 
@@ -25,14 +25,18 @@ codex plugin marketplace upgrade matsu-artifact-delivery
 
 | 場所                                                                                                               | 責務                                             |
 | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| [SKILL.md](skills/artifact-workflow/SKILL.md)                                                                      | 計画、承認、生成、レビュー、検証、引き渡しの正本 |
-| [task-plan-template.md](skills/artifact-workflow/assets/task-plan-template.md)                                     | ユーザーに提示するタスク計画                     |
-| [subagent-roles.md](skills/artifact-workflow/assets/subagent-roles.md)                                             | worker / reviewer の役割指示                     |
+| [artifact-workflow](skills/artifact-workflow/SKILL.md)                                                             | 工程調停、承認、検証、引き渡し                   |
+| [task-planning](skills/task-planning/SKILL.md)                                                                     | 範囲、タスク分解、計画提示                       |
+| [artifact-generation](skills/artifact-generation/SKILL.md)                                                         | 生成原則、拡張、worker 委任、作成・修正・返却     |
+| [artifact-review](skills/artifact-review/SKILL.md)                                                                 | 独立レビュー、共通・特化観点、指摘、再レビュー   |
+| [task-plan-template.md](skills/task-planning/assets/task-plan-template.md)                                           | ユーザーに提示するタスク計画                     |
+| [worker.md](skills/artifact-generation/assets/worker.md)                                                           | 成果物を作成・修正する worker の委任指示          |
+| [reviewer.md](skills/artifact-review/assets/reviewer.md)                                                           | 独立レビューを行う reviewer の委任指示            |
 | [mcp.json](mcp.json)                                                                                               | `artifact-task-memory` MCP の起動設定            |
 | [extension-management](skills/extension-management/SKILL.md)                                                       | 再利用する生成・レビュー指示の登録と管理         |
 | [MCP source](https://github.com/shu-matsukubo/matsu-artifact-delivery/tree/main/plugins/artifact-workflow/mcp/src) | MCP の保守用 TypeScript 実装                     |
 
-生成とセルフレビューには標準 subagent を使い、独立レビューには生成担当とは別の標準 subagent を使います。各役割の指示は Plugin 内の `subagent-roles.md` にまとめます。subagent は親のモデル、推論設定、利用可能なツールを継承するため、親がタスク全体に適した設定を選びます。reviewer にはプロンプトで読み取り専用の振る舞いを求めますが、これは実行環境の権限を変更しません。親が全 subagent の実行を管理します。
+生成 worker と reviewer には役割別の Asset を使います。subagent は親のモデル、推論設定、利用可能なツールを継承するため、親がタスク全体に適した設定を選びます。reviewer には読み取り専用の手順を指示しますが、これは実行環境の権限を変更しません。親が全 subagent の実行を管理します。
 
 MCP の依存 bundle、Windows x64 Node.js runtime、初回起動時に runtime をユーザーデータ領域へ展開するランチャーを同梱します。計画データは `PLUGIN_DATA/task-memory/`、登録拡張は計画回収から独立した `PLUGIN_DATA/extensions/` に保存されます。`PLUGIN_DATA` がない場合、拡張は OS のユーザー状態ディレクトリへ永続保存されます。
 

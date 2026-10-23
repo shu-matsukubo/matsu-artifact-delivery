@@ -1,0 +1,6 @@
+interface:
+  display_name: "タスク計画"
+  short_description: "範囲を定め、承認可能なタスク計画を提示する"
+
+policy:
+  allow_implicit_invocation: false

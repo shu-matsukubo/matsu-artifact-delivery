@@ -1,0 +1,6 @@
+interface:
+  display_name: "成果物レビュー"
+  short_description: "生成担当から独立して成果物をレビューする"
+
+policy:
+  allow_implicit_invocation: false
