@@ -13,23 +13,12 @@
 | 原理原則、起動主体、呼び出し元との責務境界 | [principles.md](skills/expert-escalation/references/principles.md) |
 | 相談役の役割・入力・返却項目 | [advisor-contract.md](skills/expert-escalation/references/advisor-contract.md) |
 | 相談結果と親の対応判断のテンプレート | [escalation-result-template.md](skills/expert-escalation/assets/escalation-result-template.md) |
-| 唯一の相談役の役割指示 | [advisor-contract.md](skills/expert-escalation/references/advisor-contract.md) |
-
-相談役の役割指示は [Skill 内の契約](skills/expert-escalation/references/advisor-contract.md)にまとめ、起動時に標準 subagent へ渡します。subagent は親のモデルと推論設定を継承します。
-
-相談役には再委任しないようプロンプトで指示します。
 
 ## 親・ワーカーからの利用
 
-例えば「`$expert-escalation` で、この設計案が必須条件を満たせるか相談してください」と依頼します。Codex では `allow_implicit_invocation: true` とし、通常のモデル向け一覧へ名前・説明・パスを公開します。設定上は暗黙選択を許可し、相談の開始条件は Skill の description と本文で「ユーザーまたは呼び出し元の親の明示依頼」に制限します。一覧への掲載や本文の読み込みだけでは相談を開始しません。[公式の呼び出し設定](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。
+例えば「`$expert-escalation` で、この設計案が必須条件を満たせるか相談してください」と依頼します。Codex は `allow_implicit_invocation: true` で一覧へ公開しますが、開始は description と Skill 本文の明示依頼に限ります。一覧掲載・読み込みだけでは起動しません。[公式の呼び出し設定](https://learn.chatgpt.com/docs/build-skills#optional-metadata)も参照してください。
 
-呼び出し元の親は、現在のタスクで利用可能として提示された実際のパスから `SKILL.md` を読み、その契約に従って1件の相談を明示的に依頼します。client の正式な一覧機能を使う場合も、現在のタスクの設定が反映された一覧に限ります。`artifact-workflow` には[発見・読み込み手順](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/plugins/artifact-workflow/skills/artifact-workflow/references/escalation.md#相談-skill-の発見読み込み)を定義しています。候補が見つからない・無効・本文を読めない場合は相談を見送り、発見のための Python や Codex CLI の追加起動は行いません。
-
-相談役の起動は現在の作業全体の親だけが行います。子ワーカーは問い・証拠・試した方法を親へ返し、本 Skill や相談役を直接起動しません。子の依頼を受けた親が、相談の必要性と今回の呼び出しを判断します。単独作業では自分が親になります。親の識別には実行環境のID・正規名（取得できなければ作業IDと一意な親ラベルの組）を使い、相談IDとともに結果へ引き継ぎます。固定の親名や専用の親役割を追加する必要はありません。
-
-相談役は生成ワーカーとは別の役割として管理します。ただし client の同時起動枠が共通なら、親が相談用に1枠を予約するか、成果物・実行状態・再開情報を保全して枠を解放します。全ワーカーが相談待ちのまま完了を待ち続けません。枠を確保できなければ起動を試さず、利用不能として親の判断へ戻します。
-
-既存の Workflow と組み合わせる場合は、親へ相談依頼を返す経路と、親側の呼び出し方針を用意します。このリポジトリの `artifact-workflow` は[呼び出し元の方針](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/plugins/artifact-workflow/skills/artifact-workflow/references/escalation.md)に自律相談の上限とフォールバックを持ち、本 Plugin を必須依存にはしていません。工程の責任、計画への承認、通常のレビュー・完了判定は元の Workflow が保持します。生成中の設計判断にも、後続の GitHub 提出・公開に関する判断にも、同じ相談契約を利用できます。
+親は利用可能な実際の Skill パスを読み、契約に従って1件を起動します。相談役の役割、入力、返却項目は[相談役の契約](skills/expert-escalation/references/advisor-contract.md)、起動主体・実行枠・失敗時の扱いは[原理原則](skills/expert-escalation/references/principles.md)に記載しています。`artifact-workflow` の発見手順と呼び出し方針は[発見・起動](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/plugins/artifact-workflow/skills/artifact-workflow/references/escalation.md#発見起動)を参照してください。
 
 ## 共通規格と Codex 互換設定
 
@@ -66,14 +55,6 @@ codex plugin marketplace upgrade matsu-artifact-delivery
 ```
 
 更新後は Codex を再起動し、新しいタスクを開始してください。起動時の設定エラーは[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md#更新後の起動確認)を参照してください。
-
-## 実行上の境界
-
-- 事前確認でマルチエージェント機能・実行環境の利用不能や枠不足が分かった場合は `unavailable`、`attempted: false` を返します。起動を試した後の失敗・結果未取得は `no_result`、`attempted: true` と実行状態を返します。
-- 相談役には読み取り専用の振る舞いと再委任禁止をプロンプトで指示します。この指示は sandbox や承認設定による技術的な強制ではありません。親が利用可能なツールや実行環境を制限できる場合は、読み取り専用にします。
-- 消費回数と上限到達は呼び出し元が判定します。相談結果から自力での継続・該当作業だけの停止・全体停止を選ぶのも親です。本 Plugin は全ワーカーの停止を要求せず、相談役も回数を理由に依頼を拒否しません。
-
-設定の詳細は OpenAI 公式の [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference)を参照してください。
 
 ## ライセンス
 
