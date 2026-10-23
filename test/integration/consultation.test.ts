@@ -26,7 +26,7 @@ await test('INT-E01: installed optional Skill is discoverable and its return con
     assert.ok(callee.includes(field), `Escalation does not provide ${field}`);
   }
   assert.ok(caller.includes('合計最大3回'));
-  assert.ok(consultation.body.includes('累計の回数上限・リセット・自動再相談を持たない'));
+  assert.ok(consultation.body.includes('回数・実行枠・失敗後の扱い・継続や停止は呼び出し元が管理します'));
 });
 
 await test('INT-E02: reviewer findings return through Parent to the advisor, then back to the correct roles', async (t) => {

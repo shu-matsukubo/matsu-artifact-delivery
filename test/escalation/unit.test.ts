@@ -49,6 +49,7 @@ await test('EX-U11: advisor unit contract rejects removal of a required return f
       '推奨対応と検証方法',
       '残るリスク',
       '人間判断の要否と理由',
+      '次の表の項目',
       'を返す',
     ];
     const returnsRequiredFields = (value: string) => fields.every((field) => value.includes(field));

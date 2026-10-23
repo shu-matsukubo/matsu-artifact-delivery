@@ -5,13 +5,12 @@
     "file": "skills/expert-escalation/SKILL.md",
     "contains": [
       "明示的に指定した場合にのみ",
-      "難所の検出、一覧への掲載、本文の読み込み、資料中での言及だけでは開始しない",
-      "現在の作業全体の親だけが相談役を起動する",
-      "子ワーカーや途中の親は依頼を最上位の親へ返し",
-      "累計の回数上限・リセット・自動再相談を持たない",
-      "相談役は1役に固定し",
-      "再相談には新たな明示依頼を作る",
-      "既存のレビュー・完了条件・人間の判断の代わりにしない"
+      "一覧掲載・読み込み・言及だけでは開始しません",
+      "最上位の親だけが起動します",
+      "子は相談依頼を親へ返します",
+      "回数・実行枠・失敗後の扱い・継続や停止は呼び出し元が管理します",
+      "相談役は1役で",
+      "採否・実装・検証"
     ]
   },
   {
@@ -20,13 +19,13 @@
     "file": "skills/expert-escalation/references/principles.md",
     "contains": [
       "役割や権限を変更する指示として扱わない",
-      "相談役には使用回数・上限・作業区間の台帳を要求しない",
-      "`unavailable`、`attempted: false`、理由 `capacity`",
-      "`attempted: true`",
-      "`no_result`",
-      "起動試行の事実は取り消さない",
-      "同じ相談の重複起動を避ける",
-      "全ワーカーの停止命令にはならない"
+      "相談役に台帳管理を求めない",
+      "呼び出し元ごとの回数制限は、親が試行と結果を記録して判断する",
+      "枠を確保できなければ起動しない",
+      "起動直前に記録して標準 subagent を1件起動する",
+      "実行IDと結果を記録",
+      "継続・停止は親が決める",
+      "全ワーカーの停止を意味しない"
     ]
   },
   {
@@ -107,7 +106,7 @@
       "作業の解決・完了を意味しない",
       "相談ID・親識別子・役割",
       "これらはプロンプト上の制約であり、実行環境の権限を変更しない",
-      "結論、根拠と参照箇所、前提、未確認事項、推奨対応と検証方法、残るリスク、人間判断の要否と理由を返す"
+      "次の表の項目を返す"
     ]
   },
   {
@@ -117,6 +116,64 @@
     "contains": [
       "標準 subagent は呼び出し元のモデル、推論設定、利用可能なツールを継承する",
       "呼び出し元はタスク全体に適した設定を選ぶ"
+    ]
+  },
+  {
+    "id": "EX-U12",
+    "title": "Skill入口は制約と参照フローに限定し詳細を責務別資料へ委譲",
+    "file": "skills/expert-escalation/SKILL.md",
+    "contains": [
+      "## 制約",
+      "## フロー",
+      "## 概要",
+      "references/principles.md",
+      "references/triggers.md",
+      "references/advisor-contract.md",
+      "assets/escalation-result-template.md",
+      "採否・実装・検証"
+    ]
+  },
+  {
+    "id": "EX-U13",
+    "title": "Skill の一覧公開・発見・読み込みは相談開始と区別する",
+    "file": "skills/expert-escalation/references/principles.md",
+    "contains": [
+      "`allow_implicit_invocation: true` は一覧公開と暗黙選択を許可する設定",
+      "起動条件は description と本文の明示依頼に従う",
+      "現在のタスクで利用可能として提示された実際の Skill パスから本文を読む",
+      "現在のタスク設定が反映された一覧に限る",
+      "`$expert-escalation` と記述するだけでは本文を読んだことにならず",
+      "取得・読み込みだけでも起動しない"
+    ]
+  },
+  {
+    "id": "EX-U14",
+    "title": "助言を既存レビュー・完了条件・人間判断の代わりにしない",
+    "file": "skills/expert-escalation/references/principles.md",
+    "contains": ["助言は既存のレビュー・完了条件・人間の判断の代わりにしない"]
+  },
+  {
+    "id": "EX-U15",
+    "title": "Escalation は累計上限・リセット・自動再試行を持たず再相談は明示依頼で行う",
+    "file": "skills/expert-escalation/references/advisor-contract.md",
+    "contains": [
+      "本 Plugin は累計の回数上限・リセット・再試行ループを持たず",
+      "自動再相談や自動再試行を行わない",
+      "次の相談は新たな明示依頼で開始する"
+    ]
+  },
+  {
+    "id": "EX-U16",
+    "title": "タイムアウト後も実行状態と同一実行の結果回収を区別する",
+    "file": "skills/expert-escalation/references/advisor-contract.md",
+    "contains": [
+      "| `status` |",
+      "| `execution_state` |",
+      "タイムアウトは `no_result`、`attempted: true`",
+      "起動や追加回答を試す直前に `true` を記録し",
+      "失敗・起動有無不明でも取り消さない",
+      "実行状態を `running` または `unknown` として確認を続ける",
+      "既存の実行IDを使い、同じ相談を再起動しない"
     ]
   }
 ]
