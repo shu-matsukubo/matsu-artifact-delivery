@@ -1,0 +1,6 @@
+interface:
+  display_name: '拡張指示の管理'
+  short_description: '生成・レビューの指示を登録・検索・更新・削除する'
+
+policy:
+  allow_implicit_invocation: true

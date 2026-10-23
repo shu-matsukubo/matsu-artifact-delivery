@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import test from 'node:test';
-import { dataDirectory } from '../mcp/src/config.js';
+import { dataDirectory, extensionsDirectory } from '../mcp/src/config.js';
 import { code } from './fixtures.js';
 
 await test('storage defaults outside the project and accepts only absolute overrides', () => {
@@ -23,4 +23,6 @@ await test('an explicit data directory takes precedence over plugin data', () =>
     explicit,
   );
   assert.throws(() => dataDirectory({ PLUGIN_DATA: './relative' }), code('INVALID_DIRECTORY'));
+  assert.throws(() => extensionsDirectory({ PLUGIN_DATA: './relative' }), code('INVALID_DIRECTORY'));
+  assert.throws(() => extensionsDirectory({ XDG_STATE_HOME: './relative' }), code('INVALID_DIRECTORY'));
 });

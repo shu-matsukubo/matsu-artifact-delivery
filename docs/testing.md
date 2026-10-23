@@ -135,15 +135,16 @@ npm run ci:select -- --all
 | WF-U03                   | 明示呼び出し、必須役割、承認、9 工程の順序                                                                     | Workflow 契約一覧                                                                         |
 | WF-U04 / WF-U05          | タスクの境界、生成入力、担当範囲、相談の親返却                                                                 | Workflow 契約一覧                                                                         |
 | WF-U06 / WF-U07          | Self Review の責務・返却、共通 5 原則                                                                          | Workflow 契約一覧                                                                         |
-| WF-U08 / WF-U09 / WF-U10 | Independent Review の入力・返却・再レビュー、特化観点 0〜3 件、security の限界                                 | Workflow 契約一覧                                                                         |
+| WF-U08 / WF-U09 / WF-U10 | Independent Review の返却契約、登録観点 0〜3 件の選定、利用者登録 Skill の意図・安全な管理                     | Workflow 契約一覧                                                                         |
 | WF-U11 / WF-U12          | 親のタスク・全体検証、引き渡しと完了、後日の修正                                                               | Workflow 契約一覧                                                                         |
 | WF-U13 / WF-U14          | MCP の新規初期化・明示的な削除と親限定更新・保存失敗、任意相談の発見・失敗・回数・フォールバック               | Workflow 契約一覧                                                                         |
 | WF-U15 / WF-U16 / WF-U17 | 計画テンプレート、Worker / Reviewer の責務・入出力・再委任禁止                                                 | Workflow 契約一覧                                                                         |
 | WF-U18                   | package / lockfileの版、MCP正本・互換設定・配布先の整合                                                        | Workflow unit                                                                             |
 | WF-U20                   | cachebuster取り込み後のWF-U18、正式版・基底版・suffix・lockfile不一致の拒否                                    | Workflow unit                                                                             |
 | WF-U21                   | 生成の共通原理、承認済み計画との整合、レビュー工程との責務分離                                                 | Workflow 契約一覧                                                                         |
-| WF-U22 / WF-U23          | 生成拡張の選定、コード変更前後のテスト失敗の分類・再開条件、セルフレビュー後の返却順                           | Workflow 契約一覧                                                                         |
+| WF-U22 / WF-U23          | 生成拡張の選定、登録指示の依存・保存失敗・revision 競合の扱い                                                  | Workflow 契約一覧                                                                         |
 | WF-U24                   | Reviewer のプロンプト制約と、sandbox 権限を強制しない限界                                                      | Workflow 契約一覧                                                                         |
+| WF-U25                   | 管理 Skill の自然言語による登録・一覧・詳細・更新・削除                                                        | Workflow 契約一覧                                                                         |
 | EX-U01 / EX-U02          | manifest、Skill 発見 policy、相談役のプロンプト上の読み取り専用・子起動禁止、参照・契約網羅                    | [Escalation unit](../test/escalation/unit.test.ts)、共通検証                              |
 | EX-U03 / EX-U04          | 親の明示依頼、単発起動、回数・枠管理、失敗時の返却                                                             | Escalation 契約一覧                                                                       |
 | EX-U05 / EX-U06 / EX-U07 | 入出力契約・実行状態、相談例の非自動性、結果テンプレート                                                       | Escalation 契約一覧                                                                       |
@@ -188,7 +189,7 @@ npm run ci:select -- --all
 | ID                | シナリオ                                                                                    | 実装                                                 |
 | ----------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | WF-E01 / WF-E02   | 単体パッケージの発見、9 工程、Self Review → Independent Review → 親の検証・引き渡しへの参照 | [Workflow E2E](../test/workflow/e2e.test.ts)         |
-| WF-E03            | 特化観点なし／security ありの双方で共通 5 原則と返却契約が参照できる                        | Workflow E2E                                         |
+| WF-E03            | 登録特化指示なし／ありの双方で共通 5 原則と返却契約が参照できる                             | Workflow E2E                                         |
 | WF-E04            | Escalation 未導入の単独配布で、任意相談の参照先へ到達できる                                 | Workflow E2E                                         |
 | EX-E01 / EX-E02   | Escalation 単独配布、唯一の相談役とテンプレートの識別子・状態整合                           | [Escalation E2E](../test/escalation/e2e.test.ts)     |
 | INT-E01 / INT-E02 | 任意相談先の発見と入出力の一致、Reviewer → Parent → Advisor → Worker / Reviewer の責務整合  | [連携 E2E](../test/integration/consultation.test.ts) |
@@ -199,7 +200,7 @@ npm run ci:select -- --all
 
 実モデルの動作 E2E / AI RV は別の検証用タスクで任意に行う。モデル課金を伴うため通常 CI の必須条件にしない。実行環境の条件、記録項目、相談ケースの状態判定は[実モデル受け入れ手順](model-acceptance.md)を参照する。結果は手順書へ混ぜず、必要なら履歴目的の記録に分ける。以下は準備済みの観点であり、CI で実施済みとは扱わない。
 
-1. 公開文章の生成：承認済み計画 → Worker の生成・Self Review → 特化観点 0 件の独立レビュー → 親の実物検証 → 引き渡し。
+1. 公開文章の生成：承認済み計画 → Worker の生成・Self Review → 登録特化指示 0 件の独立レビュー → 親の実物検証 → 引き渡し。
 2. security が必要な設定成果物：親が選ぶ 1 観点でレビューし、指摘を親が元タスクの Worker へ戻し、変更版を再レビューする。
 3. Reviewer から相談依頼：子が直接相談役を起動せず、親が利用判断し、実装は Worker、再レビューは Reviewer に戻る。
 4. Escalation の未導入・無効・曖昧・読み込み不能・起動失敗：未取得の助言を成功とせず、影響する作業だけを親が判断する。

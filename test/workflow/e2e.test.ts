@@ -7,7 +7,7 @@ import { files, localLinks, markdown, read, stagePlugin, walkReferences } from '
 
 await test('WF-E01: isolated package discovers its Skill, role templates and complete document graph', async (t) => {
   const plugin = await stagePlugin(t, 'artifact-workflow');
-  assert.deepEqual([...plugin.skills.keys()], ['artifact-workflow']);
+  assert.deepEqual([...plugin.skills.keys()].sort(), ['artifact-workflow', 'extension-management'].sort());
   assert.deepEqual([...plugin.agents.keys()], []);
   await localLinks(plugin.root, 'README.md');
   assert.ok(!(await readdir(plugin.root)).includes('node_modules'));
@@ -57,27 +57,23 @@ await test('WF-E02: all nine workflow steps reach their shipped instructions in 
   assert.ok(review.includes('references/escalation.md'));
 });
 
-for (const selected of [[], ['security']]) {
-  await test(`WF-E03: Independent Review documents with ${selected.length} specialized perspectives`, async (t) => {
-    const plugin = await stagePlugin(t, 'artifact-workflow');
-    const root = plugin.skills.get('artifact-workflow')!.root;
-    const review = await read(join(root, 'references/independent-review.md'));
-    const index = await read(join(root, 'references/review-perspectives/index.md'));
-    assert.ok(review.includes('**0〜3個**'));
-    assert.ok(index.includes('該当なしなら0個'));
-    const common = await read(join(root, 'references/review-principles.md'));
-    const principles = markdown(common).tokens.find((token): token is Tokens.Table => token.type === 'table');
-    assert.ok(principles, 'Missing review principles');
-    assert.equal(principles.rows.length, 5);
-    const indexLinks = await localLinks(root, 'references/review-perspectives/index.md');
-    for (const id of selected) {
-      const path = `references/review-perspectives/${id}.md`;
-      assert.ok(indexLinks.includes(path));
-      assert.ok((await localLinks(root, path)).includes('references/independent-review.md'));
-    }
-    assert.ok((await read(join(root, 'assets/subagent-roles.md'))).includes('0〜3個'));
-  });
-}
+await test('WF-E03: registered review selection keeps the common five principles outside the 0-3 module cap', async (t) => {
+  const plugin = await stagePlugin(t, 'artifact-workflow');
+  const root = plugin.skills.get('artifact-workflow')!.root;
+  const review = await read(join(root, 'references/independent-review.md'));
+  assert.ok(review.includes('**0〜3個**'));
+  assert.ok(review.includes('type: review'));
+  assert.ok(review.includes('get_extension'));
+  assert.ok(review.includes('同じ論点を複数指示に分けて上限を回避しない'));
+  const common = await read(join(root, 'references/review-principles.md'));
+  const principles = markdown(common).tokens.find((token): token is Tokens.Table => token.type === 'table');
+  assert.ok(principles, 'Missing review principles');
+  assert.equal(principles.rows.length, 5);
+  assert.ok((await read(join(root, 'assets/subagent-roles.md'))).includes('0〜3個'));
+  const management = plugin.skills.get('extension-management')!;
+  assert.equal(management.settings.policy.allow_implicit_invocation, true);
+  assert.ok(management.body.includes('成果物の生成・レビュー依頼では起動せず'));
+});
 
 await test('WF-E04: package alone has no hard dependency on an optional consultation plugin', async (t) => {
   const plugin = await stagePlugin(t, 'artifact-workflow');

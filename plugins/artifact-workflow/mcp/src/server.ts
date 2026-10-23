@@ -3,9 +3,10 @@ import * as z from 'zod/v4';
 import { cleanupResultSchema, planSchema, sessionIdSchema, sessionSchema } from './schema.js';
 import { StoreError, type StoreErrorCode } from './errors.js';
 import type { PlanRepository } from './repository.js';
+import { extensionSchema, extensionSummariesSchema, ExtensionStore, storedExtensionSchema } from './extensions.js';
 
 // 保存層は失敗理由だけを返し、利用者への操作案内はMCPの境界で補う。
-const errorGuidance: Record<StoreErrorCode, string> = {
+const errorGuidance: Partial<Record<StoreErrorCode, string>> = {
   INVALID_DIRECTORY: 'ARTIFACT_WORKFLOW_DATA_DIR または PLUGIN_DATA に絶対パスを設定してください。',
   INVALID_DATA:
     '計画を推測・上書きせず保存データを確認してください。reset_session は利用者が対象計画の置換を明示的に許可した場合だけ呼び出してください。',
@@ -23,7 +24,7 @@ const errorGuidance: Record<StoreErrorCode, string> = {
   PLAN_TOO_LARGE: '成果物の内容ではなく参照を保存し、完了情報を含むセッションを1 MiB以内にしてください。',
 };
 
-async function respond<T extends Record<string, unknown>>(action: () => Promise<T>) {
+async function respond<T extends Record<string, unknown>>(action: () => Promise<T>, failureGuidance?: string) {
   try {
     const result = await action();
     return {
@@ -34,7 +35,7 @@ async function respond<T extends Record<string, unknown>>(action: () => Promise<
     const code = error instanceof StoreError ? error.code : 'STORE_ERROR';
     const message =
       error instanceof StoreError
-        ? `${error.message} ${errorGuidance[error.code]}`
+        ? `${error.message} ${failureGuidance ?? errorGuidance[error.code] ?? '保存データと保存先を確認し、内容を推測して続行しないでください。'}`
         : error instanceof Error
           ? error.message
           : 'Unable to access the plan store.';
@@ -43,7 +44,7 @@ async function respond<T extends Record<string, unknown>>(action: () => Promise<
 }
 
 /** 保存実装を受け取り、MCPの入力・出力とエラー応答の契約を提供する。 */
-export function createServer(store: PlanRepository): McpServer {
+export function createServer(store: PlanRepository, extensions?: ExtensionStore): McpServer {
   const server = new McpServer({ name: 'artifact-task-memory', version: '1.0.0' });
   server.registerTool(
     'initialize_session',
@@ -113,5 +114,87 @@ export function createServer(store: PlanRepository): McpServer {
     },
     ({ sessionId }) => respond(async () => ({ session: await store.get(sessionId) })),
   );
+  if (extensions) {
+    const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/);
+    const revision = z.uuid();
+    server.registerTool(
+      'register_extension',
+      {
+        description:
+          '生成またはレビューの実行指示を登録します。保存のみを行い、他Skillやコマンドを実行しません。既存IDは上書きせず、別IDを指定してください。',
+        inputSchema: extensionSchema,
+        outputSchema: z.strictObject({ extension: storedExtensionSchema }),
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      },
+      (input) =>
+        respond(
+          async () => ({ extension: await extensions.create(input) }),
+          '拡張登録の保存に失敗しました。計画セッションのID変更・初期化・リセットは行わず、拡張保存先とデータを確認してください。',
+        ),
+    );
+    server.registerTool(
+      'list_extensions',
+      {
+        description:
+          '登録済み指示の軽量メタデータを一覧または絞り込みで返します。全文取得には get_extension を使います。',
+        inputSchema: z.strictObject({
+          type: z.enum(['generation', 'review']).optional(),
+          query: z.string().trim().min(1).max(200).optional(),
+        }),
+        outputSchema: z.strictObject({ extensions: extensionSummariesSchema }),
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      },
+      ({ type, query }) =>
+        respond(
+          async () => ({
+            extensions: await extensions.list({ ...(type ? { type } : {}), ...(query ? { query } : {}) }),
+          }),
+          '拡張一覧を取得できませんでした。保存データを空の一覧へ置き換えず、拡張保存先を確認してください。',
+        ),
+    );
+    server.registerTool(
+      'get_extension',
+      {
+        description: 'IDで登録指示の全文・依存情報・revisionを取得します。',
+        inputSchema: z.strictObject({ id }),
+        outputSchema: z.strictObject({ extension: storedExtensionSchema.nullable() }),
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      },
+      ({ id: extensionId }) =>
+        respond(
+          async () => ({ extension: await extensions.get(extensionId) }),
+          '拡張詳細を取得できませんでした。計画セッションの操作に切り替えず、拡張保存先を確認してください。',
+        ),
+    );
+    server.registerTool(
+      'update_extension',
+      {
+        description:
+          '現在のrevisionを指定して登録指示を更新します。revisionが変わっていたら競合として拒否します。指示や依存コマンドは実行しません。',
+        inputSchema: z.strictObject({ id, expectedRevision: revision, extension: extensionSchema }),
+        outputSchema: z.strictObject({ extension: storedExtensionSchema.nullable() }),
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+      },
+      ({ id: extensionId, expectedRevision, extension }) =>
+        respond(
+          async () => ({ extension: await extensions.update(extensionId, expectedRevision, extension) }),
+          '拡張更新に失敗しました。revision競合は最新詳細を再取得して確認し、保存失敗時は内容を上書きせず保存先を確認してください。',
+        ),
+    );
+    server.registerTool(
+      'delete_extension',
+      {
+        description: '現在のrevisionを指定して登録指示を削除します。revisionが変わっていたら競合として拒否します。',
+        inputSchema: z.strictObject({ id, expectedRevision: revision }),
+        outputSchema: z.strictObject({ deleted: z.boolean() }),
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+      },
+      ({ id: extensionId, expectedRevision }) =>
+        respond(
+          async () => ({ deleted: await extensions.delete(extensionId, expectedRevision) }),
+          '拡張削除に失敗しました。revision競合を最新詳細で確認し、保存データを推測して置き換えないでください。',
+        ),
+    );
+  }
   return server;
 }
