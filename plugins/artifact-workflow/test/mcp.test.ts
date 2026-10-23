@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -14,7 +14,13 @@ import { plan, planAtSnapshotSize, temporaryDirectory } from './fixtures.js';
 const bundledServer = fileURLToPath(new URL('../../mcp/task-memory.cjs', import.meta.url));
 const windowsLauncher = fileURLToPath(new URL('../../mcp/start.ps1', import.meta.url));
 
-async function connect(directory: string, entry = bundledServer, manifestEnvironment = false, pluginData?: string) {
+async function connect(
+  directory: string,
+  entry = bundledServer,
+  manifestEnvironment = false,
+  pluginData?: string,
+  extensionsDirectory?: string,
+) {
   const inheritedEnvironment = getDefaultEnvironment();
   if (process.platform === 'win32') delete inheritedEnvironment.PATHEXT;
   const command = process.platform === 'win32' ? 'powershell.exe' : process.execPath;
@@ -33,6 +39,7 @@ async function connect(directory: string, entry = bundledServer, manifestEnviron
     ...process.env,
     ...inheritedEnvironment,
     ARTIFACT_WORKFLOW_DATA_DIR: join(directory, 'data'),
+    ARTIFACT_WORKFLOW_EXTENSIONS_DIR: extensionsDirectory ?? join(directory, 'extensions'),
     ...(process.platform === 'win32'
       ? {
           ARTIFACT_WORKFLOW_RUNTIME_DIR: join(directory, 'runtime'),
@@ -59,6 +66,7 @@ async function connect(directory: string, entry = bundledServer, manifestEnviron
     environment.PLUGIN_ROOT = fileURLToPath(new URL('../../', import.meta.url));
     environment.PLUGIN_DATA = pluginData ?? join(directory, 'plugin-data');
     environment.ARTIFACT_WORKFLOW_DATA_DIR = join(environment.PLUGIN_DATA, 'task-memory');
+    environment.ARTIFACT_WORKFLOW_EXTENSIONS_DIR = join(environment.PLUGIN_DATA, 'extensions');
     const sdkEnvironment = { ...getDefaultEnvironment(), ...environment };
     assert.equal(sdkEnvironment.LOCALAPPDATA, undefined);
     assert.equal(sdkEnvironment.ARTIFACT_WORKFLOW_RUNTIME_DIR, undefined);
@@ -107,10 +115,15 @@ await test(
     assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
       'collect_completed_sessions',
       'complete_session',
+      'delete_extension',
+      'get_extension',
       'get_plan',
       'initialize_session',
+      'list_extensions',
+      'register_extension',
       'reset_session',
       'save_plan',
+      'update_extension',
     ]);
     const empty = snapshot(await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'parent' } }));
     const saved = snapshot(
@@ -142,6 +155,138 @@ await test(
       ...(process.platform === 'win32' ? ['runtime'] : []),
       'standalone.cjs',
     ]);
+  },
+);
+
+await test(
+  'an invalid extension directory does not block mandatory plan-memory tools',
+  { timeout: 30_000 },
+  async (t) => {
+    const cleanup: Array<() => Promise<void>> = [];
+    const directory = await temporaryDirectory(t, cleanup);
+    const client = await connect(directory, bundledServer, false, undefined, 'relative/extensions');
+    cleanup.push(() => client.close());
+    const planSession = await client.callTool({
+      name: 'initialize_session',
+      arguments: { sessionId: 'plan-store-available' },
+    });
+    assert.notEqual(planSession.isError, true, JSON.stringify(planSession));
+    const extensionList = await client.callTool({ name: 'list_extensions', arguments: {} });
+    assert.equal(extensionList.isError, true);
+  },
+);
+
+await test(
+  'extension CRUD uses stdio and survives restart plus completed-plan collection',
+  { timeout: 30_000 },
+  async (t) => {
+    const cleanup: Array<() => Promise<void>> = [];
+    const directory = await temporaryDirectory(t, cleanup);
+    let client = await connect(directory);
+    cleanup.push(() => client.close());
+    const emptyList = await client.callTool({ name: 'list_extensions', arguments: {} });
+    assert.deepEqual(emptyList.structuredContent, { extensions: [] });
+    const generation = {
+      id: 'registered-generation',
+      name: 'Generation rule',
+      type: 'generation',
+      target: 'text report',
+      applicability: 'a report is requested from supplied data',
+      summary: 'Preserve the supplied values.',
+      instructions: 'Use only the supplied values. Do not add new sections.',
+      dependencies: [],
+    };
+    const marker = join(directory, 'must-not-be-created');
+    const review = {
+      id: 'registered-review',
+      name: 'Review rule',
+      type: 'review',
+      target: 'text report',
+      applicability: 'reviewing a generated report',
+      summary: 'Review links and claims.',
+      instructions: `Read only. Do not execute: ${process.execPath} -e "require('fs').writeFileSync('${marker}', 'executed')"`,
+      dependencies: [
+        'Skill: optional-review-skill',
+        `command: ${process.execPath} -e "console.log('registered-only')"`,
+      ],
+    };
+    const created = await client.callTool({ name: 'register_extension', arguments: generation });
+    assert.notEqual(created.isError, true, JSON.stringify(created));
+    const generationRecord = (created.structuredContent as { extension: { revision: string } }).extension;
+    const createdReview = await client.callTool({ name: 'register_extension', arguments: review });
+    assert.notEqual(createdReview.isError, true, JSON.stringify(createdReview));
+    const reviewRecord = (
+      createdReview.structuredContent as {
+        extension: { revision: string; instructions: string; dependencies: string[] };
+      }
+    ).extension;
+    assert.ok(reviewRecord.instructions.includes(marker));
+    assert.equal(reviewRecord.dependencies.length, 2);
+    const reviews = await client.callTool({ name: 'list_extensions', arguments: { type: 'review' } });
+    assert.equal((reviews.structuredContent as { extensions: unknown[] }).extensions.length, 1);
+    const update = await client.callTool({
+      name: 'update_extension',
+      arguments: {
+        id: generation.id,
+        expectedRevision: generationRecord.revision,
+        extension: { ...generation, summary: 'Updated summary.' },
+      },
+    });
+    assert.notEqual(update.isError, true, JSON.stringify(update));
+    const updated = (update.structuredContent as { extension: { revision: string } }).extension;
+    const conflict = await client.callTool({
+      name: 'update_extension',
+      arguments: { id: generation.id, expectedRevision: generationRecord.revision, extension: generation },
+    });
+    assert.equal(conflict.isError, true);
+    assert.equal(
+      (await client.callTool({ name: 'register_extension', arguments: { ...generation, type: 'invalid' } })).isError,
+      true,
+    );
+    assert.equal((await client.callTool({ name: 'register_extension', arguments: generation })).isError, true);
+    const initialized = snapshot(
+      await client.callTool({ name: 'initialize_session', arguments: { sessionId: 'extensions-cleanup' } }),
+    );
+    const saved = snapshot(
+      await client.callTool({
+        name: 'save_plan',
+        arguments: { sessionId: initialized.sessionId, expectedRevision: initialized.revision, plan },
+      }),
+    );
+    await client.callTool({
+      name: 'complete_session',
+      arguments: { sessionId: saved.sessionId, expectedRevision: saved.revision },
+    });
+    const collected = await client.callTool({ name: 'collect_completed_sessions', arguments: {} });
+    assert.deepEqual((collected.structuredContent as { cleanup: unknown }).cleanup, { deleted: 1, skipped: [] });
+    assert.equal(
+      await stat(marker).then(
+        () => true,
+        () => false,
+      ),
+      false,
+    );
+    await client.close();
+    client = await connect(directory);
+    cleanup.push(() => client.close());
+    const persisted = await client.callTool({ name: 'get_extension', arguments: { id: review.id } });
+    assert.deepEqual((persisted.structuredContent as { extension: unknown }).extension, reviewRecord);
+    const deletion = await client.callTool({
+      name: 'delete_extension',
+      arguments: { id: generation.id, expectedRevision: updated.revision },
+    });
+    assert.deepEqual(deletion.structuredContent, { deleted: true });
+    await client.close();
+    await mkdir(join(directory, 'data'), { recursive: true });
+    await mkdir(join(directory, 'extensions'), { recursive: true });
+    await writeFile(join(directory, 'extensions', 'extensions.json'), '{invalid');
+    client = await connect(directory);
+    assert.deepEqual(
+      (await client.callTool({ name: 'get_plan', arguments: { sessionId: 'unrelated' } })).structuredContent,
+      { session: null },
+    );
+    const failedRegistry = await client.callTool({ name: 'list_extensions', arguments: {} });
+    assert.equal(failedRegistry.isError, true);
   },
 );
 

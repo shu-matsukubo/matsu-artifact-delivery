@@ -34,6 +34,7 @@ await registerContracts(
     implicit: false,
     agents: [],
     readOnly: [],
+    skills: ['artifact-workflow', 'extension-management'],
   },
   new URL('./contracts.json', import.meta.url),
 );
@@ -63,7 +64,10 @@ await test('WF-U18: MCP manifests and package metadata resolve to the shipped ru
   assert.equal(server.type, 'stdio');
   assert.equal(server.command, 'powershell.exe');
   assert.deepEqual(server.args, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '${PLUGIN_ROOT}/mcp/start.ps1']);
-  assert.deepEqual(server.env, { ARTIFACT_WORKFLOW_DATA_DIR: '${PLUGIN_DATA}/task-memory' });
+  assert.deepEqual(server.env, {
+    ARTIFACT_WORKFLOW_DATA_DIR: '${PLUGIN_DATA}/task-memory',
+    ARTIFACT_WORKFLOW_EXTENSIONS_DIR: '${PLUGIN_DATA}/extensions',
+  });
   assert.ok((await stat(inside(root, server.args.at(-1)!.replace('${PLUGIN_ROOT}/', '')))).isFile());
   const nodeRuntime = await json<{
     version: string;

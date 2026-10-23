@@ -107,7 +107,10 @@ export async function validateManifests(root: string) {
       '-File',
       '${PLUGIN_ROOT}/mcp/start.ps1',
     ]);
-    assert.deepEqual(server.env, { ARTIFACT_WORKFLOW_DATA_DIR: '${PLUGIN_DATA}/task-memory' });
+    assert.deepEqual(server.env, {
+      ARTIFACT_WORKFLOW_DATA_DIR: '${PLUGIN_DATA}/task-memory',
+      ARTIFACT_WORKFLOW_EXTENSIONS_DIR: '${PLUGIN_DATA}/extensions',
+    });
     await packagePath(root, server.args.at(-1)!.slice('${PLUGIN_ROOT}/'.length));
     for (const runtimeFile of [
       'mcp/task-memory.cjs',

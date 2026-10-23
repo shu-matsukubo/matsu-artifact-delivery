@@ -19,7 +19,8 @@ export async function registerContracts(
     implicit,
     agents,
     readOnly,
-  }: { name: string; prefix: string; implicit: boolean; agents: string[]; readOnly: string[] },
+    skills = [name],
+  }: { name: string; prefix: string; implicit: boolean; agents: string[]; readOnly: string[]; skills?: string[] },
   casesUrl: URL,
 ) {
   const root = pluginRoot(name);
@@ -28,7 +29,7 @@ export async function registerContracts(
     const plugin = await loadPlugin(root);
     assert.equal(await read(join(root, 'LICENSE')), await read(join(repository, 'LICENSE')));
     await localLinks(repository, `plugins/${name}/README.md`);
-    assert.deepEqual([...plugin.skills.keys()], [name]);
+    assert.deepEqual([...plugin.skills.keys()].sort(), skills.toSorted());
     assert.equal(plugin.skills.get(name)!.settings.policy.allow_implicit_invocation, implicit);
     assert.deepEqual([...plugin.agents.keys()].sort(), agents.toSorted());
     readOnly.forEach((role) => assertReadOnly(plugin.agents.get(role)));

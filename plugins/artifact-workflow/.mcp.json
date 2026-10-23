@@ -11,7 +11,8 @@
         "${PLUGIN_ROOT}/mcp/start.ps1"
       ],
       "env": {
-        "ARTIFACT_WORKFLOW_DATA_DIR": "${PLUGIN_DATA}/task-memory"
+        "ARTIFACT_WORKFLOW_DATA_DIR": "${PLUGIN_DATA}/task-memory",
+        "ARTIFACT_WORKFLOW_EXTENSIONS_DIR": "${PLUGIN_DATA}/extensions"
       }
     }
   }

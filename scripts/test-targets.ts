@@ -15,6 +15,7 @@ export const tests: TestRegistry = {
       'build',
       'cleanup',
       'config',
+      'extensions',
       'schema',
       'server',
       'session',

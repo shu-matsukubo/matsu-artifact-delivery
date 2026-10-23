@@ -169,10 +169,15 @@ try {
               assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name).sort(), [
                 'collect_completed_sessions',
                 'complete_session',
+                'delete_extension',
+                'get_extension',
                 'get_plan',
                 'initialize_session',
+                'list_extensions',
+                'register_extension',
                 'reset_session',
                 'save_plan',
+                'update_extension',
               ]);
               const response = await client.callTool({
                 name: 'initialize_session',
