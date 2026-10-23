@@ -15,7 +15,7 @@
 
 実行順は `skills/list` → `thread/start` → 隔離 home の `expert-escalation` 本文を退避 → `turn/start`（正式 `artifact-workflow` Skill input）である。turn 中に Workflow 本文の読み込みは成功し、発見済み `expert-escalation` の本文 `Get-Content` は実際の対象 `SKILL.md` 不在で失敗した。親への返却は相談を起動しておらず助言を得ていないと明示した。
 
-この試験で追加確認できたのは、発見後の本文 read が実際に失敗したことと、相談役を起動しなかったことまでである。親の観測から `unavailable` / `attempted:false` / `not_started` / 起動 0 回に分類できるが、client の明示的な状態返却ではない。未取得助言を成功または判断済みとして扱っていない。
+この試験では発見後の本文 read が実際に失敗し、相談役は起動しなかった。親は証跡を照合して `unavailable` / `attempted:false` / `not_started` / 起動 0 回と分類した。未取得助言を成功または判断済みとして扱っていない。
 
 - 親 thread: `01a159c1-5b8f-7113-b6dc-b64c2b60d9ff`
 - turn: `01a159c1-5bd2-7113-8115-621f021a0467`
@@ -29,7 +29,7 @@
   ```
 
 - 実効 thread 設定: model `gpt-6-sol`、reasoning effort `xhigh`、approval policy `on-request`、reviewer `auto_review`、`activePermissionProfile.id` `:workspace`。
-- 短い証跡: Workflow 本文 `Get-Content -Raw` 成功（event `exec-cd610106-49d8-46ff-81e2-d0fc72ef0c08`）。expert 本文 read は失敗・exit 1（events `exec-a465119c-0b93-44d3-b574-4f4da419624a`、`exec-3852d1f8-9992-4ab7-ba8e-bfdc2b08ed89`）。Advisor の spawn/collabAgentToolCall/subAgentActivity 完了イベントは 0 件。turn は `turn/completed` し、最終返却は「必要な Skill が欠けているため、手順に従ってここで停止します」「相談は起動しておらず」とした。
+- 短い証跡: Workflow 本文 `Get-Content -Raw` 成功（event `exec-cd610106-49d8-46ff-81e2-d0fc72ef0c08`）。expert 本文 read は失敗・exit 1（events `exec-a465119c-0b93-44d3-b574-4f4da419624a`、`exec-3852d1f8-9992-4ab7-ba8e-bfdc2b08ed89`）。試験ルートの `formal-read-test/workflow-structured.jsonl` では同一 thread/turn の `item/started` と `item/completed` が各24件でID集合が一致し、内訳は user message 1、reasoning 8、agent message 2、command execution 13、相談役の起動 item なし。`formal-read-test/workflow-structured-result.json` の最終結果は対象 turn `completed`、items 24件で同じ ID 集合だった。隔離 home 内 `sessions/2026/10/20/rollout-2026-10-20T23-40-06-01a159c1-5b8f-7113-b6dc-b64c2b60d9ff.jsonl` のモデル要求5件はすべて `exec` で、実呼出しは `tools.exec_command` のみ、起動要求は0件。`collabAgentToolCall` / `subAgentActivity` は開始・完了各0件だった。最終返却は「必要な Skill が欠けているため、手順に従ってここで停止します」「相談は起動しておらず」とした。
 - 一時保存した `workflow-structured-thread.json` は thread/start 全 response ではなく、上記の thread ID・実効設定・permission profile・sandbox・work path を抜粋した要約。raw イベントは試験ルートの `formal-read-test/workflow-structured.jsonl`（一時ログ、リポジトリ外）。
 
 この入力は `expert-escalation` の利用と助言受領後の判断を明示的に求めていたため、相談不能時に無関係な作業を継続する判断は確認していない。返却は Skill を利用可能にして再開するよう求めており、この入力条件で停止したこと自体を製品不具合とは判定しない。実行ログに Plugin cache の探索が含まれ、Workflow の探索範囲制約への適合も確認できていない。
