@@ -1,0 +1,6 @@
+interface:
+  display_name: "成果物生成"
+  short_description: "承認済み計画に基づき成果物を作成・修正する"
+
+policy:
+  allow_implicit_invocation: false

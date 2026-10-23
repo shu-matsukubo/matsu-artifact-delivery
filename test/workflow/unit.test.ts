@@ -34,7 +34,7 @@ await registerContracts(
     implicit: false,
     agents: [],
     readOnly: [],
-    skills: ['artifact-workflow', 'extension-management'],
+    skills: ['artifact-workflow', 'task-planning', 'artifact-generation', 'artifact-review', 'extension-management'],
   },
   new URL('./contracts.json', import.meta.url),
 );

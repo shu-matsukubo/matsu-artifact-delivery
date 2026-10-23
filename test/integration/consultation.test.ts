@@ -32,12 +32,14 @@ await test('INT-E01: installed optional Skill is discoverable and its return con
 await test('INT-E02: reviewer findings return through Parent to the advisor, then back to the correct roles', async (t) => {
   const workflow = await stagePlugin(t, 'artifact-workflow');
   const escalation = await stagePlugin(t, 'expert-escalation');
-  const roles = await read(join(workflow.skills.get('artifact-workflow')!.root, 'assets/subagent-roles.md'));
-  assert.ok(roles.includes('## artifact-reviewer'));
+  const reviewer = await read(join(workflow.skills.get('artifact-review')!.root, 'assets/reviewer.md'));
+  assert.ok(reviewer.includes('## artifact-reviewer'));
   const caller = await read(join(workflow.skills.get('artifact-workflow')!.root, 'references/escalation.md'));
-  assert.ok(caller.includes('発見元のレビュワーと修正担当のワーカーを区別'));
+  assert.ok(caller.includes('発見元 reviewer と修正 worker を区別'));
   assert.ok(caller.includes('生成・修正はワーカー、独立再レビューはレビュワー'));
-  assert.ok(caller.includes('親が指摘の採否と通常の完了条件を判断する'));
+  assert.ok(caller.includes('採否・完了検証は親が行う'));
+  const review = await read(join(workflow.skills.get('artifact-review')!.root, 'references/independent-review.md'));
+  assert.ok(review.includes('親は全指摘の採否と理由を記録'));
   const advisor = await read(join(escalation.skills.get('expert-escalation')!.root, 'references/advisor-contract.md'));
   assert.ok(advisor.includes('子ワーカーから直接依頼された場合は調査を始めず'));
   assert.ok(advisor.includes('他のエージェントやタスクの起動・再委任を行わない'));

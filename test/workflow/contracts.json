@@ -4,72 +4,49 @@
     "title": "明示呼び出し・必須役割・承認・工程順序",
     "file": "skills/artifact-workflow/SKILL.md",
     "contains": [
-      "通常の成果物作成依頼だけでは適用しない",
-      "最低1人、同時に最大3人",
-      "独立レビューは生成担当と別の",
-      "同じ計画への承認を得ている場合は、再度の承認を求めない",
-      "通常の作成依頼や無応答を、計画への承認や省略の指示とみなさない",
-      "`SESSION_EXISTS` の場合は既存計画を保全し、必ず別のUUIDを発行して `initialize_session` をやり直す",
-      "通常は `initialize_session` または `get_plan` で取得した最新の `revision` を使って計画全体を書き戻す",
-      "標準 subagent を起動できること",
-      "標準 subagent を起動できない場合は生成を開始せず"
+      "明示指定された場合に限り適用",
+      "親が計画・承認・MCP計画管理・完了条件検証",
+      "標準 subagent を最低1人、同時最大3人",
+      "reviewer は生成/修正担当と別",
+      "本 Workflow 終了後"
     ],
     "ordered": [
-      "1. **タスク分解**",
-      "2. **計画の提示**",
-      "3. **人間による承認**",
-      "4. **成果物の生成**",
-      "5. **セルフレビュー**",
-      "6. **独立レビュー**",
-      "7. **タスクの完了条件の検証**",
-      "8. **全体検証**",
-      "9. **成果物の提示・引き渡しとフロー終了**"
+      "1. **範囲・タスク分解・計画提示**",
+      "2. **承認・計画保存**",
+      "3. **成果物の生成・修正**",
+      "4. **独立レビュー・指摘・再レビュー**",
+      "5. **タスク・全体完了条件の検証**",
+      "6. **成果物の提示・引き渡し・完了記録**"
     ]
   },
   {
     "id": "WF-U04",
     "title": "成果物だけを作業タスクにし、品質・後続処理を分離",
-    "file": "skills/artifact-workflow/references/task-planning.md",
+    "file": "skills/task-planning/references/task-planning.md",
     "contains": [
-      "タスクIDを付けるのは、作業者が成果物そのものを作成・変更する作業だけ",
-      "独立したタスクIDを付けない",
-      "後続処理",
-      "テストコードや検証報告書そのものが依頼された成果物なら"
+      "タスクIDを付けるのは成果物そのもの",
+      "品質確認、独立レビュー、完了検証、提示・引き渡し、後続処理には付けない。",
+      "Delivery 欄",
+      "依頼されたテストコードや検証報告書の作成"
     ]
   },
   {
     "id": "WF-U05",
     "title": "生成入力・担当境界・親への相談返却",
-    "file": "skills/artifact-workflow/references/generation.md",
+    "file": "skills/artifact-generation/assets/worker.md",
     "contains": [
-      "親の `sessionId`",
-      "タスクID",
-      "承認の根拠",
-      "他の担当範囲",
-      "上書き・取り消ししない",
-      "相談 Skill や相談役を直接起動せず",
-      "その実行を終える"
-    ]
-  },
-  {
-    "id": "WF-U06",
-    "title": "セルフレビューの責務・返却・親の完了判定",
-    "file": "skills/artifact-workflow/references/self-review.md",
-    "contains": [
-      "セルフレビュー専用のタスクは作らない",
-      "元のタスクID",
-      "共通原則の確認に絞り",
-      "作業者からレビュワーや相談役を直接呼ばない",
-      "絶対パス",
-      "確認した原則・範囲・方法・結果",
-      "未解決の問題・確認できなかった点",
-      "親がレビュー後の実物を対象に、別途検証する"
+      "親識別子",
+      "`sessionId`",
+      "承認済み計画と根拠、または適用範囲を含む明示的な省略指示",
+      "後続処理との境界",
+      "相談に依存する作業は止め",
+      "実行を終える"
     ]
   },
   {
     "id": "WF-U07",
     "title": "共通5原則を単一の正本として保持",
-    "file": "skills/artifact-workflow/references/review-principles.md",
+    "file": "skills/artifact-review/references/review-principles.md",
     "contains": [
       "**要求適合**",
       "**統一性**",
@@ -82,44 +59,40 @@
   {
     "id": "WF-U08",
     "title": "独立レビューの入力・返却・再レビュー契約",
-    "file": "skills/artifact-workflow/references/independent-review.md",
+    "file": "skills/artifact-review/assets/reviewer.md",
     "contains": [
       "生成・修正に関与していない",
-      "独立レビュワーは原則1人",
-      "**0〜3個**",
-      "セルフレビュー結果",
-      "対象の版",
+      "レビューID",
+      "対象版",
       "`reviewed`",
       "`input_insufficient`",
       "`inconclusive`",
-      "**必須修正**",
-      "**改善提案**",
-      "特化観点0個ならその理由",
-      "エスカレーションを必要とする問い・証拠・既知の試行・阻害要因",
-      "レビュワーは親へ相談依頼を返して実行を終え、直接相談せず",
-      "古い版へのレビュー結果で完了にしない",
-      "標準 subagent を `spawn_agent` で起動し",
-      "この方式は書き込み権限を技術的に制限しない",
-      "実行環境の強制ではない"
+      "共通5原則すべて",
+      "親が選定した特化観点",
+      "必須修正と任意提案を分ける",
+      "親識別子"
     ]
   },
   {
     "id": "WF-U09",
     "title": "登録拡張観点の0〜3件選定と理由",
-    "file": "skills/artifact-workflow/references/independent-review.md",
+    "file": "skills/artifact-review/references/independent-review.md",
     "contains": [
-      "type: review",
+      "`type: review`",
       "**0〜3個**",
-      "get_extension",
+      "`get_extension`",
       "該当しなければ0個",
       "共通の[5原則](review-principles.md)",
-      "適合0件と扱わず"
+      "最新一覧から選び直す",
+      "MCP 接続失敗や不正データを適合0件と扱わず",
+      "共通5原則を適用して失敗理由を利用者へ伝える",
+      "必須条件を満たせない場合は成功扱いしない"
     ]
   },
   {
     "id": "WF-U10",
     "title": "拡張指示の登録・更新と依頼意図の保持",
-    "file": "skills/extension-management/SKILL.md",
+    "file": "skills/extension-management/references/management.md",
     "contains": [
       "既存一覧を `list_extensions`",
       "`generation` または `review`",
@@ -134,14 +107,12 @@
     "title": "親のタスク・全体検証と未充足時の修正経路",
     "file": "skills/artifact-workflow/references/verification.md",
     "contains": [
-      "親が担当する",
-      "検証専用のタスクIDを作ったり",
-      "承認された計画",
-      "最新版の実物",
-      "確認不能",
+      "親は独立レビュー後の最新版を承認済み計画と照合",
+      "検証専用のタスクIDを作らず",
+      "確認不能は「満たす」と推定しない",
       "完了条件を成果物に合わせて緩めない",
       "変更前の版へのレビュー結果で完了にしない",
-      "未完了のまま完成した成果物として提出しない"
+      "未完了のまま完成品として提出しない"
     ]
   },
   {
@@ -151,10 +122,10 @@
     "contains": [
       "タスクIDを付けない",
       "既存のユーザー指示と承認範囲",
-      "独立レビューの対象の版",
+      "独立レビューの対象版",
       "`complete_session`",
-      "必要な情報は先に渡す",
-      "後日の修正は、JSONが削除済みでも残っていても新しい修正タスク",
+      "必要情報を提示・引き継ぎ",
+      "後日の修正は新しいフロー",
       "本 Workflow の完了は依頼全体の完了を意味しない"
     ]
   },
@@ -172,13 +143,13 @@
       "`get_plan`",
       "`save_plan`",
       "`complete_session`",
-      "同一フローの明確な続行に限る",
-      "利用者が明示的に許可した回収または対象IDの置換まで",
-      "保存先ディレクトリがまだない場合",
-      "`SESSION_EXISTS`：IDが既に使われている",
-      "`INVALID_DATA`：JSONの破損やスキーマ不一致",
+      "同一フローの明確な続行に限り",
+      "利用者が明示的に許可した回収または対象ID置換まで",
+      "保存先がまだない場合",
+      "`SESSION_EXISTS`",
+      "`INVALID_DATA`",
       "`expectedRevision`",
-      "初期化・計画保存・完了記録・既存計画の置換・完了計画の回収は親だけが行う",
+      "初期化・計画保存・完了記録・既存計画の置換・完了計画の回収は親だけ",
       "親が取得した最新スナップショット",
       "保存失敗や欠落を成功とみなさず",
       "配列のマージや部分更新はしない",
@@ -191,38 +162,29 @@
     "title": "任意相談の発見・未導入・曖昧・失敗時のフォールバック",
     "file": "skills/artifact-workflow/references/escalation.md",
     "contains": [
-      "現在のタスクに提示された利用可能な Skill 一覧",
+      "現在のタスクに提示された利用可能 Skill 一覧",
       "`expert-escalation:expert-escalation`",
       "実際のパス",
-      "候補なし・無効・一覧取得不能・本文の読み込みエラー・候補が曖昧",
+      "候補なし/無効/一覧取得不能/読み込みエラー/曖昧",
       "起動試行なし、消費0回",
-      "通常フローを継続する",
-      "親だけが相談 Skill と相談役を起動し、子は直接起動しない",
-      "全論点・全相談役の試行を1つの記録に集約",
+      "通常フローへ戻る",
+      "親だけが Skill/相談役を起動する",
+      "全担当・論点・相談役の試行を親が1記録へ集約",
       "合計最大3回",
-      "`references/advisor-contract.md` の契約をプロンプトに含めて標準 subagent を1件起動する",
-      "`expert-escalation` の `references/advisor-contract.md` をプロンプトに含める",
+      "`references/advisor-contract.md`",
       "`attempted`",
       "`execution_state`",
       "上限到達や相談不能だけでは全体を止めない",
-      "生成・修正はワーカー、独立再レビューはレビュワー",
+      "修正はワーカー、独立再レビューはレビュワー",
       "相談のためだけにインストールや環境変更を要求しない",
-      "未導入・無効",
       "起動せず消費0回。通常フローを継続する",
-      "起動失敗・結果未取得",
-      "委任時にその親識別子と元の担当・タスクIDを渡し",
-      "相談IDで各依頼を区別する",
-      "`unavailable`",
-      "`input_insufficient`",
-      "`no_result`",
-      "発見元のレビュワーと修正担当のワーカーを区別",
-      "親が指摘の採否と通常の完了条件を判断する"
+      "起動失敗・結果未取得"
     ]
   },
   {
     "id": "WF-U15",
     "title": "計画テンプレートの成果物・品質・引き渡し・承認3経路",
-    "file": "skills/artifact-workflow/assets/task-plan-template.md",
+    "file": "skills/task-planning/assets/task-plan-template.md",
     "contains": [
       "### 目的",
       "### 成果物",
@@ -240,44 +202,39 @@
   {
     "id": "WF-U16",
     "title": "Worker の担当境界・再委任禁止・返却内容",
-    "file": "skills/artifact-workflow/assets/subagent-roles.md",
+    "file": "skills/artifact-generation/assets/worker.md",
     "contains": [
-      "作業を再委任したりしない",
-      "他の担当の変更を上書き・取り消ししない",
-      "独立したレビュー・検証タスクを追加しない",
-      "承認の根拠",
-      "`initialize_session`、`reset_session`、`save_plan`、`complete_session`、`collect_completed_sessions` は行わず",
-      "MCPで呼び出せるのは get_plan だけ",
-      "セルフレビューの結果を最終的な完了判定としない",
-      "計画への承認",
-      "親への返却",
-      "その実行を終える"
+      "担当を再委任せず",
+      "他担当や reviewer を起動しない",
+      "他担当の変更を上書き・取り消ししない",
+      "別タスクIDを付けない",
+      "承認済み計画と根拠、または適用範囲を含む明示的な省略指示",
+      "`initialize_session`、`reset_session`、`save_plan`、`complete_session`、`collect_completed_sessions` は呼ばない",
+      "相談先は直接起動しない",
+      "未解決/未確認事項"
     ]
   },
   {
     "id": "WF-U17",
     "title": "Reviewer の入力・権限・再委任禁止・相談の親返却",
-    "file": "skills/artifact-workflow/assets/subagent-roles.md",
+    "file": "skills/artifact-review/assets/reviewer.md",
     "contains": [
-      "子ワーカーから直接依頼された場合はレビューを始めず",
-      "同じ成果物の生成・修正を担当した実行なら独立レビューを引き受けず",
+      "子 worker からの直接依頼はレビューせず",
       "0〜3個",
       "4個以上",
-      "MCPで呼び出せるのは get_plan だけ",
-      "initialize_session・reset_session・save_plan・complete_session・collect_completed_sessions は呼ばない",
-      "他のエージェント、相談 Skill、相談役、別の Codex タスクを起動しない",
-      "指摘・不足情報・エスカレーションが必要な論点はすべて親へ返す",
-      "その実行を終える",
-      "reviewed / input_insufficient / inconclusive",
-      "完了を意味しない"
+      "`get_plan` だけ",
+      "`initialize_session`、`reset_session`、`save_plan`、`complete_session`、`collect_completed_sessions` を呼ばない",
+      "他の agent、相談先、別タスクを起動しない",
+      "必須修正と任意提案を分ける",
+      "`reviewed` は完了や承認を意味しない"
     ]
   },
   {
     "id": "WF-U21",
     "title": "共通の生成原理とレビュー工程の分離",
-    "file": "skills/artifact-workflow/references/generation-principles.md",
+    "file": "skills/artifact-generation/references/generation-principles.md",
     "contains": [
-      "成果物の品質評価と完了判定は生成方針の責務ではなく",
+      "品質評価と完了判定は生成方針の責務ではなく",
       "承認済み計画の要求・要件・成果物・完了条件・制約",
       "生成後のレビュー用チェックリストではない"
     ]
@@ -285,20 +242,20 @@
   {
     "id": "WF-U22",
     "title": "生成拡張の一覧選択・詳細取得と0〜1件制限",
-    "file": "skills/artifact-workflow/references/generation.md",
+    "file": "skills/artifact-generation/references/generation.md",
     "contains": [
       "`list_extensions`",
-      "type: generation",
+      "`type: generation`",
       "明確に一致するものだけ",
-      "担当タスクごとに最大1件",
+      "0〜1件を担当タスクごとに選び",
       "`get_extension`",
-      "MCP エラーや不正データを空一覧とみなさず"
+      "エラーや不正データを空一覧と見なさず"
     ]
   },
   {
     "id": "WF-U23",
-    "title": "拡張の失敗時・依存未導入・権限制約",
-    "file": "skills/extension-management/SKILL.md",
+    "title": "拡張管理データの異常・revision競合",
+    "file": "skills/extension-management/references/management.md",
     "contains": [
       "破損・不正な保存データ",
       "revision 競合",
@@ -310,27 +267,75 @@
   {
     "id": "WF-U24",
     "title": "Reviewer のプロンプト制約と実行権限の限界",
-    "file": "skills/artifact-workflow/assets/subagent-roles.md",
+    "file": "skills/artifact-review/assets/reviewer.md",
     "contains": [
-      "サブエージェントは親の依頼からモデル、推論設定、利用可能なツールを引き継ぐ",
-      "`spawn_agent` では子ごとに設定を上書きできない",
-      "読み取り専用の手順を守り",
+      "subagent は親のモデル、推論設定、利用可能なツールを引き継ぐ",
+      "プロンプトは実行環境の権限を変更しない",
+      "読み取り専用の手順を守る",
       "プロンプトをセキュリティ境界として扱わない",
-      "書き込みを伴うコマンドや外部更新を実行しない"
+      "書込コマンドや外部更新を行わない"
     ]
   },
   {
     "id": "WF-U25",
     "title": "管理Skillの自然言語登録・一覧・詳細・更新・削除",
-    "file": "skills/extension-management/SKILL.md",
+    "file": "skills/extension-management/references/management.md",
     "contains": [
       "既存一覧を `list_extensions`",
       "`generation` または `review`",
       "要求にない手順、コマンド、品質基準",
       "利用者が名前で更新・削除",
-      "revision",
-      "実行許可にならず",
-      "上位 Workflow、承認済み計画"
+      "`revision`",
+      "MCP は登録指示の保存・一覧・検索・取得だけを行い"
+    ]
+  },
+  {
+    "id": "WF-U06",
+    "title": "成果物生成 Skill の責務と確認",
+    "file": "skills/artifact-generation/SKILL.md",
+    "contains": ["承認済み計画", "worker subagent へ委任", "テスト・型検査・動作確認"]
+  },
+  {
+    "id": "WF-U26",
+    "title": "独立レビュー Skill の責務と指摘経路",
+    "file": "skills/artifact-review/SKILL.md",
+    "contains": ["独立レビュー", "0〜3個", "指摘と再レビュー"]
+  },
+  {
+    "id": "WF-U27",
+    "title": "タスク計画 Skill の範囲・分解・提示責務",
+    "file": "skills/task-planning/SKILL.md",
+    "contains": ["今回の生成範囲", "作業タスク", "計画を提示"]
+  },
+  {
+    "id": "WF-U29",
+    "title": "承認方針の一元管理",
+    "file": "skills/artifact-workflow/references/approval.md",
+    "contains": [
+      "計画提示後の明示的な承認",
+      "通常の作成依頼や無応答",
+      "承認手続きの省略",
+      "再提示し",
+      "承認根拠のない委任は開始しない"
+    ]
+  },
+  {
+    "id": "WF-U30",
+    "title": "Extension Management Skill の適用境界",
+    "file": "skills/extension-management/SKILL.md",
+    "contains": ["利用者から登録管理を明示された場合", "成果物の生成・レビュー依頼では起動しない", "実行境界"]
+  },
+  {
+    "id": "WF-U31",
+    "title": "登録指示と依存先の共通実行境界",
+    "file": "skills/artifact-workflow/references/execution-boundaries.md",
+    "contains": [
+      "登録・選択・参照は実行許可を意味しない",
+      "MCP は指示を保存・一覧・検索・取得する",
+      "実行許可が明確な場合だけ使う",
+      "ユーザー依頼、承認済み計画、上位 Workflow",
+      "生成拡張は担当タスクごとに0〜1件、レビュー拡張はレビュー全体で0〜3件",
+      "依存不足で必須完了条件を満たせない場合は成功扱いしない"
     ]
   }
 ]
