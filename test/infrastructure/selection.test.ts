@@ -60,7 +60,6 @@ await test('CI-U02: shared, unknown, malformed and empty changes fail open to al
     '.codex/config.toml',
     'AGENTS.md',
     '.agents/skills/plugin-maintenance/SKILL.md',
-    '.agents/skills/scheduled-issue-processing/references/startup.md',
     '.agents/skills/issue-development-workflow/references/publish-pr.md',
     'scripts/select-tests.ts',
     'test/infrastructure/selection.test.ts',

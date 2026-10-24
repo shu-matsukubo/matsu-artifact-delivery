@@ -19,10 +19,9 @@
 - [Issue 開発 Workflow](../.agents/skills/issue-development-workflow/SKILL.md)
 - [プラグイン保守](../.agents/skills/plugin-maintenance/SKILL.md)
 - [プラグインレビュー](../.agents/skills/plugin-review/SKILL.md)
-- [定期 Issue 処理](../.agents/skills/scheduled-issue-processing/SKILL.md)
 
 配置と責務は上表、実行手順は各 Skill、Git・GitHub 安全条件は [AGENTS.md](../AGENTS.md#git-と-github-の操作)に従う。モデル設定は `.codex/config.toml` と `.codex/agents/` に置く。
 
-呼び出し例: `$issue-development-workflow <変更内容>`、`$issue-development-workflow Issue #53 を対応して PR を作成する`、`$issue-development-workflow 対応する Issue を選んで進める`、`$scheduled-issue-processing を実行する`。
+呼び出し例: `$issue-development-workflow <変更内容>`、`$issue-development-workflow Issue #53 を対応して PR を作成する`、`$issue-development-workflow 対応する Issue を選んで進める`。
 
 構成は[Codex のスキル配置・構成](https://developers.openai.com/codex/skills)、[スキル仕様](https://agentskills.io/specification)、[プラグインのスキル作成ガイド](https://developers.openai.com/plugins/build/skills)に従う。スキルは `SKILL.md` と任意の `references/`、`assets/`、`scripts/` から構成できる。
