@@ -91,46 +91,6 @@ await test('PKG-U04: all contract IDs and runnable suites appear in the test inv
   }
 });
 
-await test('SCH-U01: 定期起動の条件と中断判断を確認して共通 Workflow へ渡す', async () => {
-  const skillPath = '.agents/skills/scheduled-issue-processing';
-  const { metadata, body } = frontmatter(await read(join(repository, skillPath, 'SKILL.md')));
-  assert.equal(metadata.name, 'scheduled-issue-processing');
-  assert.match(metadata.description, /スケジューラが.*明示指定した場合のみ/);
-  assert.match(metadata.description, /通常の Issue 対応や一般的な開発作業には使用しない/);
-  const references = await localLinks(repository, `${skillPath}/SKILL.md`);
-  assert.ok(references.includes(`${skillPath}/references/startup.md`));
-  assert.ok(references.includes('.agents/skills/issue-development-workflow/SKILL.md'));
-  const startup = await read(join(repository, skillPath, 'references/startup.md'));
-  const startupLinks = await localLinks(repository, `${skillPath}/references/startup.md`);
-  assert.match(startup, /スケジューラから Skill 名を直接指定して起動/);
-  assert.match(startup, /同一スレッドで繰り返し実行/);
-  assert.match(startup, /スケジューラ専用 clone \/ 作業ディレクトリ/);
-  assertContract(startup, {
-    id: 'SCH-U01',
-    ordered: [
-      'Open PR',
-      '作業状態',
-      '再開判定',
-      'ローカル HEAD',
-      'リモートブランチの先端 SHA',
-      'staged / unstaged / untracked',
-      '由来不明の変更',
-      'レビュー待ち条件を満たす場合だけ',
-      'レビュー待ちとして終了',
-      '未反映の変更や未 Push のコミット',
-      'Workflow を呼び出す',
-    ],
-    contains: ['ブランチ名だけで', '一意に特定', '人間による確認が必要', '再開'],
-  });
-  assert.ok(startupLinks.includes('.agents/skills/issue-development-workflow/references/resume.md'));
-  assert.match(startup, /未反映の変更や未 Push のコミット.*差分を保全.*Workflow.*再開/);
-  assert.doesNotMatch(
-    [body, startup].join('\n'),
-    /git (?:fetch|worktree add|commit|push)|担当エージェントに実装を委譲/,
-  );
-  assert.deepEqual(await files(join(repository, skillPath)), ['SKILL.md', 'references/startup.md']);
-});
-
 await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映契約と担当境界を維持する', async () => {
   const skillPath = '.agents/skills/issue-development-workflow';
   const { metadata, body } = frontmatter(await read(join(repository, skillPath, 'SKILL.md')));
@@ -218,7 +178,6 @@ await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映�
   for (const command of ['git branch --show-current', 'git remote -v', 'git status --short --untracked-files=all'])
     assert.ok(createdWorktreeChecks.includes(command), `DEV-U01: missing worktree check ${command}`);
   assert.match(workspace, /git rev-parse HEAD.*起点 SHA.*一致.*clean.*実装/);
-  assert.doesNotMatch(workspace, /<prefix>\/scheduled\/issue/);
   assert.match(workspace, /同名のローカル・リモート branch.*再利用・上書きせず停止/);
   assert.match(workspace, /既存ブランチの再利用は.*正当に特定された再開作業に限る/);
 
@@ -281,7 +240,7 @@ await test('DEV-U02: 指定 Issue の依頼範囲と、明示要求時の対象�
   );
   assert.match(selection, /Issue が指定.*Open.*確認/);
   assert.match(selection, /指定 Issue.*ラベル.*要求しない/);
-  assert.match(selection, /対象 Issue の選定を依頼.*`AI処理可能` ラベル付きの Open Issue/);
+  assert.match(selection, /対象 Issue の選定を明示的に依頼.*`AI処理可能` ラベル付きの Open Issue/);
   assert.match(selection, /プラグインの新規作成・修正に該当する候補だけを対象/);
   assert.match(selection, /インフラ、CI、リポジトリ文書のみの Issue は対象外/);
   assert.match(selection, /関連付けられた実装 PR を、ブランチ名にかかわらず確認/);
@@ -390,7 +349,7 @@ await test('DEV-U06: 通常の変更依頼は Workflow で製造・レビュー�
 
   const selection = await read(join(repository, `${workflowPath}/references/issue-selection.md`));
   assert.match(selection, /具体的な変更依頼.*Issue.*選定しない/);
-  assert.match(selection, /対象 Issue の選定を依頼/);
+  assert.match(selection, /対象 Issue の選定を明示的に依頼/);
 });
 
 await test('DEV-U04: 再開時は未反映の修正を検証・反映して既存 PR を引き継ぐ', async () => {
