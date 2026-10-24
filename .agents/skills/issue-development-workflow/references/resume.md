@@ -1,16 +1,19 @@
 # 前回作業の判定と再開
 
-単体実行でも、`git branch --show-current`、`git remote -v`、`git status --short --untracked-files=all` で接続先・ブランチ・差分を確認する。確認失敗、競合、Git 操作中の状態では変更を進めず停止する。
-
-前回作業の特定には、同一スレッドの過去の会話・実行ログ、前回実行時の結果や中断内容、利用可能な Memory 等を補助情報として参照する。これらは状態の正本ではなく、過去ログや Memory 等が利用できないこと自体をエラーや停止理由にしない。GitHub とローカル workspace の現在状態を最終的な判断材料とする。
-
-新規 Issue の処理より前に、利用可能な補助情報と、選択した手段で取得した Issue・PR・branch・commit、ローカル HEAD・branch・worktree・staged / unstaged / untracked の現在状態を照合し、未完了作業の有無を確認する。
-
-指定 Issue がある場合は、その Issue の作業だけを再開する。別の Issue の未完了作業は再開しない。別の作業が現在の作業ツリーに残っている場合は保全して停止する。
+- 現在状態を確認する: `git branch --show-current`、`git remote -v`、`git status --short --untracked-files=all`。
+- 確認失敗、競合、Git 操作中の状態では停止する。
+- 同一スレッドの過去の会話・実行ログ、前回実行時の結果や中断内容、利用可能な Memory は状態の正本ではなく補助情報とする。過去ログや Memory 等が利用できないこと自体をエラーや停止理由にしない。
+- GitHub とローカル workspace の現在状態を最終的な判断材料とする。
+- 新規 Issue の処理前に、利用可能な補助情報と選択した手段で取得した Issue・PR・branch・commit を確認する。
+- ローカル HEAD・branch・worktree・staged / unstaged / untracked と照合し、未完了作業を判定する。
+- 指定 Issue だけを再開し、別の Issue は再開しない。現在の作業ツリーに別作業が残る場合は保全して停止する。
 
 ## 作業を一意に特定できる場合
 
-制限到達、エラー、その他の中断による未完了作業について、過去ログ等と現在状態から対応する Open Issue、branch、workspace および差分の対応を安全に一意に特定できる場合は、新しい Issue を選ばず、現在状態で確認できた未完了の段階から再開する。
+制限到達、エラー、その他の中断で未完了作業がある場合:
+
+- 過去ログ等と現在状態から Open Issue、branch、workspace、差分を安全に一意に特定する。
+- 特定した作業は新しい Issue を選ばず、現在状態で確認できた未完了の段階から再開する。
 
 - 再開対象として確認できた既存ブランチのみ再利用し、その作業によるローカル変更を利用する。
 - 現在状態から確認できる base branch・起点 SHA と既存の作業ツリーを引き継ぐ。
@@ -21,10 +24,11 @@
 
 ## 作業を特定できない場合
 
-前回作業を一意に特定できない場合はローカル workspace の staged / unstaged / untracked とブランチを確認する。clean で、未完了作業を示す Issue ブランチ等もなければ[新規 Issue の選定](issue-selection.md)へ進む。変更がある場合は由来を推測せず、人間による確認が必要と報告して停止する。由来不明の Issue ブランチが残っている場合も停止する。
-
-新規開始では staged、unstaged、untracked file がなく clean であることを確認する。この条件は正当に特定した再開作業には適用しない。
+- ローカル workspace の staged / unstaged / untracked とブランチを確認する。
+- clean で未完了作業を示す Issue branch 等がなければ[新規 Issue の選定](issue-selection.md)へ進む。
+- 変更がある場合は由来を推測せず、人間による確認が必要と報告して停止する。由来不明の Issue branch でも停止する。
+- 新規開始は staged、unstaged、untracked file がなく clean であることを確認する。正当に特定した再開作業には適用しない。
 
 ## 変更の保全
 
-全段階で異常状態は自動修復しない。`reset`、変更破棄のための `checkout` / `restore`、`stash`、`clean`、未追跡ファイルの削除、その他既存のローカル変更を失わせる操作は行わない。
+- 全段階で異常状態は自動修復しない。`reset`、変更破棄のための `checkout` / `restore`、`stash`、`clean`、未追跡ファイルの削除など、既存の変更を失わせる操作は行わない。

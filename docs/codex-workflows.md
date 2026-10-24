@@ -1,6 +1,6 @@
-# Codex 開発ルールの設計
+# Codex 開発ルールの配置と責務
 
-Codex のリポジトリ用スキルは `.agents/skills/` に置く。配布するプラグインのスキルは各プラグインの `skills/` に置き、両者を混在させない。
+リポジトリ用スキルは `.agents/skills/`、配布するスキルは各プラグインの `skills/` に置く。
 
 | 場所 | 役割 |
 | --- | --- |
@@ -14,16 +14,15 @@ Codex のリポジトリ用スキルは `.agents/skills/` に置く。配布す�
 | `docs/` | 現行の設計、契約、開発・配布の詳細資料 |
 | `plugins/*/skills/` | 利用者へ配布するプラグインのワークフロー |
 
-リポジトリ用スキルはリポジトリの作業手順を定義し、責務を分けて他のスキルと連携する。`SKILL.md` にスキルの前提と手順を記し、手順の詳細を references、再利用する文面を assets に分ける。設計資料と実行手順を重複して記述しない。
+## Workflow の使い分け
 
-開発用 Skills は Markdown を主体とし、既存コマンドで容易に代替できる処理は手順から直接利用する。配布プラグインの実行コードと共通のビルド・配布・検証基盤は、それぞれの責務に応じて実装する。
+- [Issue 開発 Workflow](../.agents/skills/issue-development-workflow/SKILL.md)
+- [プラグイン保守](../.agents/skills/plugin-maintenance/SKILL.md)
+- [プラグインレビュー](../.agents/skills/plugin-review/SKILL.md)
+- [定期 Issue 処理](../.agents/skills/scheduled-issue-processing/SKILL.md)
 
-[Issue 開発 Workflow](../.agents/skills/issue-development-workflow/SKILL.md) は具体的な変更依頼、手動の Issue 対応、定期実行を扱う。Issue 未指定の具体的な変更依頼では別の Issue を選定せず、依頼された範囲を実装・レビューする。Issue が指定された依頼では未完了作業の再開、作業環境の準備、実装・レビュー、PR 作成の手順を通す。Issue 選定は明示的な選定依頼または定期実行で行う。[実装とレビューの調整](../.agents/skills/issue-development-workflow/references/implementation-review.md)で対象範囲に応じた手順を選ぶ。プラグイン変更では担当への委任メッセージに `$plugin-maintenance` を含めて明示的な実行を指示し、`plugin-review` でレビューする。`plugin-review` は単独レビューにも使える。インフラ・CI・リポジトリ文書のみの変更には共通の開発・検証方針を適用する。モデルと推論レベルは `.codex/config.toml` と `.codex/agents/` で設定する。
+配置と責務は上表、実行手順は各 Skill、Git・GitHub 安全条件は [AGENTS.md](../AGENTS.md#git-と-github-の操作)に従う。モデル設定は `.codex/config.toml` と `.codex/agents/` に置く。
 
-Issue 未指定の具体的な変更依頼では `$issue-development-workflow <変更内容>` のように指定する。Issue の対応は `$issue-development-workflow Issue #53 を対応して PR を作成する`、Issue 選定は `$issue-development-workflow 対応する Issue を選んで進める` のように依頼する。
+呼び出し例: `$issue-development-workflow <変更内容>`、`$issue-development-workflow Issue #53 を対応して PR を作成する`、`$issue-development-workflow 対応する Issue を選んで進める`、`$scheduled-issue-processing を実行する`。
 
-[定期 Issue 処理](../.agents/skills/scheduled-issue-processing/SKILL.md) はスケジューラが名前を明示して起動する。専用 clone / 作業ディレクトリで、同じ定期処理の Open PR や作業状態から中断を判断し、実行可能な場合に Issue 開発 Workflow を呼び出す。スケジューラには `$scheduled-issue-processing を実行する` と指定する。
-
-Git・GitHub の操作手段、Issue ブランチから PR までの手順と停止条件は [AGENTS.md](../AGENTS.md#git-と-github-の操作)に従う。Workflow は単体実行でも作業ツリー・ブランチの安全性を確認する。
-
-この構成は[Codex のスキル配置・構成](https://developers.openai.com/codex/skills)、[スキル仕様](https://agentskills.io/specification)、[プラグインのスキル作成ガイド](https://developers.openai.com/plugins/build/skills)に従う。Codex はリポジトリの `.agents/skills/` を探索し、スキルは `SKILL.md` と任意の `references/`、`assets/`、`scripts/` から構成できる。
+構成は[Codex のスキル配置・構成](https://developers.openai.com/codex/skills)、[スキル仕様](https://agentskills.io/specification)、[プラグインのスキル作成ガイド](https://developers.openai.com/plugins/build/skills)に従う。スキルは `SKILL.md` と任意の `references/`、`assets/`、`scripts/` から構成できる。
