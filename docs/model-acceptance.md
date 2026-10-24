@@ -32,7 +32,7 @@
 {"id":4,"method":"skills/list","params":{"cwds":["<temp>/work"],"forceReload":true}}
 {"id":5,"method":"permissionProfile/list","params":{"cwd":"<temp>/work","limit":100}}
 {"id":6,"method":"thread/start","params":{"cwd":"<temp>/work","model":"gpt-6-sol","permissions":":workspace","approvalPolicy":"on-request","approvalsReviewer":"auto_review"}}
-{"id":7,"method":"turn/start","params":{"threadId":"<thread-id>","input":[{"type":"text","text":"<試験入力>","text_elements":[]},{"type":"skill","name":"artifact-workflow","path":"<skills/listで取得したWorkflow本文の実パス>"}]}}
+{"id":7,"method":"turn/start","params":{"threadId":"<thread-id>","input":[{"type":"text","text":"<試験入力>","text_elements":[]},{"type":"skill","name":"<skills/listで取得したWorkflowの正式名>","path":"<skills/listで取得したWorkflow本文の実パス>"}]}}
 ```
 
 次の `thread/read` は、`turn/completed` notification を確認した後に別途送る。完了前に送って最終結果を回収した扱いにしない。

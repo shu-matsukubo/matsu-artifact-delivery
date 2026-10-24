@@ -11,7 +11,11 @@ codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery
 codex plugin add artifact-workflow@matsu-artifact-delivery
 ```
 
-Plugin をインストールし、新しいタスクで `artifact-workflow` の利用を指定してください。親が計画を提示し、承認後に作業を進めます。
+Plugin をインストールしたら、新しいタスクを開き、Codex の `$` メニューまたは Skill セレクターで「成果物生成ワークフロー」を選択してから、依頼を入力します。たとえば「新入社員向けの案内文を Markdown で1ページ作成してください。」のように入力します。依頼文に `artifact-workflow` や `$artifact-workflow` と書くことと、メニューで Skill を選択することは別の操作です。対象 Skill を明示的に使うには、メニューから選択してください。
+
+CLI / IDE では `/skills` または `$` から選択できます。App Server では `skills/list` が返す正式な `name` と `path` を使い、`turn/start` の `skill` input として指定します。詳細は[実モデル受け入れ手順](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/model-acceptance.md#app-server-を使う再現手順)を参照してください。
+
+選択後は親が計画を提示し、承認後に作業を進めます。
 
 更新する場合は、marketplace を更新してインストール済みファイルを反映します。
 
