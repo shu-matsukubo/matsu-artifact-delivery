@@ -33,7 +33,7 @@
 
 `.codex-plugin/plugin.json` と Skill の `agents/openai.yaml` は、Codex の既存の読み込み位置を維持する互換性上の例外です。共通規格のコンポーネントを増やす独自の検出方式ではなく、Codex 固有の設定として扱います。[Plugin パッケージ](https://developers.openai.com/plugins/build/plugins)と[Skill の optional metadata](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。manifest の共通フィールドは root を正本とし、変更時はリポジトリルートの `npm run sync:manifests` で互換 manifest を同期します。
 
-Custom Agent、モデル選択、sandbox、同時起動枠の管理は Agent Plugins の共通仕様に含まれません。他の client では同等の役割と親による明示呼び出しの経路を用意してください。
+Custom Agent、モデル選択、sandbox、同時起動枠の管理は Agent Plugins の共通仕様に含まれません。相談時のモデル・推論強度は最上位の親が実際の client/API で利用可能と確認した候補から選び、指定できない場合は client/親の既定へ戻します。他の client では同等の役割と親による明示呼び出しの経路を用意してください。
 
 ## Codex への登録
 
