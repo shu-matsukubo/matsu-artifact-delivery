@@ -26,6 +26,11 @@ await test('INT-E01: installed optional Skill is discoverable and its return con
     assert.ok(callee.includes(field), `Escalation does not provide ${field}`);
   }
   assert.ok(caller.includes('合計最大3回'));
+  assert.ok(caller.includes('読み込んだ Skill の `references/advisor-contract.md`'));
+  assert.ok(caller.includes('実際に提示された API schema と制約'));
+  assert.ok(callee.includes('難易度・性質・要求精度とコスト・時間'));
+  assert.ok(callee.includes('呼び出し元/client の既定'));
+  assert.ok(callee.includes('明示指定か既定継承か'));
   assert.ok(consultation.body.includes('回数・実行枠・失敗後の扱い・継続や停止は呼び出し元が管理します'));
 });
 

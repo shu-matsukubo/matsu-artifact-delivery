@@ -14,6 +14,7 @@
 | 起動試行 `attempted` | 〈true / false〉 |
 | 実行状態 `execution_state`・実行ID | 〈not_started / running / completed / stopped / unknown、得られたID〉 |
 | 利用不能・未取得の理由 | 〈マルチエージェント機能未利用、capacity、起動エラーなど。該当する場合〉 |
+| 起動設定 | 〈モデル・推論強度、明示指定／既定継承、選択理由、実効値。指定省略時や実効値が未確認の場合はその理由〉 |
 
 ## 助言と確認結果
 
