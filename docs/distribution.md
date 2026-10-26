@@ -8,20 +8,20 @@ Plugin の正本は Git で管理する `plugins/<plugin-name>/` とルートの
 
 同梱 Node.js の更新は `npm --prefix plugins/artifact-workflow run runtime:update -- <version>` で行う。スクリプトは Node.js 公式 `SHASUMS256.txt` と照合して Windows x64 の `node.exe` を取得し、ZIP、バイナリ、ライセンスを生成してチェックサムを記録する。`npm --prefix plugins/artifact-workflow run runtime:verify` は配布前に ZIP 内のバイナリと記録済み公式チェックサム、ライセンスの一致を検証し、`npm run package` と MCP のテストでも自動実行される。更新では Node.js の公式配布元と同じ版の LICENSE を使う。
 
-配布経路は目的で分ける。
+目的に応じて配布経路を使い分ける。
 
 - **開発・小規模な Git 配布:** `codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery` で GitHub marketplace を追加する。Codex がリポジトリを取得する。MCP bundle と Windows x64 runtime はリポジトリに同梱済みである。
 - **OpenAI の公開 Plugins Directory:** Platform の提出ポータルで Plugin ごとに提出し、審査後に公開する。公開後の利用者は Directory で検索して Install する。
 
-Agent Plugins 仕様は `plugin.json`、`skills/`、任意の `mcp.json` などパッケージの構造とメタデータを定めるもので、公開レジストリや配布ホスティングを提供するものではない。[仕様](https://agent-plugins.org/specification)と[公式の Plugin packaging guide](https://developers.openai.com/plugins/build/plugins)を参照。
+Agent Plugins 仕様は `plugin.json`、`skills/`、任意の `mcp.json` などパッケージの構造とメタデータを定める。公開レジストリや配布ホスティングは対象外である。[仕様](https://agent-plugins.org/specification)と[公式の Plugin packaging guide](https://developers.openai.com/plugins/build/plugins)を参照。
 
 ### 公開 Directory に提出する場合
 
-公開提出は GitHub 上の marketplace 追加とは別の手続きである。[Plugin submission portal](https://developers.openai.com/plugins/deploy/submission)に Plugin のパッケージ、掲載情報、スタータープロンプト、正例・負例の試験、提供地域などを提出する。OpenAI の審査に通った後、発行者がポータルから公開すると ChatGPT と Codex 共通の Plugins Directory に載る。提出しただけでは公開されない。掲載済みの Plugin 更新も新しい版の提出・審査・公開が必要。
+公開提出は GitHub 上の marketplace 追加とは別の手続きである。[Plugin submission portal](https://developers.openai.com/plugins/deploy/submission)に Plugin のパッケージ、掲載情報、スタータープロンプト、正例・負例の試験、提供地域などを提出する。OpenAI の審査に通った後、発行者がポータルから公開すると ChatGPT と Codex 共通の Plugins Directory に載る。提出しただけでは公開されない。掲載済みの Plugin を更新する場合も、新しい版を提出して審査・公開する必要がある。
 
 このリポジトリの `artifact-workflow` はローカル stdio MCP を同梱する。現行の公開手順では MCP を含む Plugin は安定した公開 HTTPS endpoint を提出する必要があり、ローカル MCP のままでは通常の公開提出要件を満たさない。公開したい場合は、まずローカル MCP サポートについて OpenAI に問い合わせるか、リモート MCP として運用する設計・ホスティングを別途判断する。MCP 機能を外した skills-only 版を検討する場合は、Skill が単独で正しく動作することを確認して別パッケージとして提出する。**この条件が解決するまでは公開 Directory に掲載済みとは案内しない。**
 
-公開候補は `npm run package` で `dist/plugins/<plugin-name>/` に生成し、Plugin 単位でポータルへアップロードする候補としてレビューする。これを長期保管したり Git にコミットしたりする必要はない。手動公開を選ぶ段階でだけポータル用のアーカイブを作ればよく、リリース資産を自動生成・ホストする CI は追加しない。
+公開候補は `npm run package` で `dist/plugins/<plugin-name>/` に生成し、Plugin 単位でポータルへのアップロード候補としてレビューする。長期保管や Git へのコミットは不要。手動公開を選ぶ段階でだけポータル用のアーカイブを作ればよいため、リリース資産を自動生成・ホストする CI は追加しない。
 
 公開前の版は root `plugin.json` で管理し、互換 manifest や Workflow の package/lockfile に同期する。公開された版とソースを対応付けるため、Git のタグは任意で付けてもよいが、配布に必須ではない。バージョンの更新方法は「正式版の確定」を参照。
 
@@ -33,7 +33,7 @@ npm --prefix plugins/artifact-workflow ci
 npm run package
 ```
 
-manifest検証・互換設定の同期確認・MCPの生成物一致確認に成功すると、専用出力先 `dist/` を作り直す。出力先に手作業のファイルは置かない。root manifest を変更した後、互換設定だけなら `npm run sync:manifests`、MCPソースも変えた場合は `npm --prefix plugins/artifact-workflow run build` で同梱 bundle を更新し、Git で管理するファイルとして差分を確認してから実行する。
+manifest検証・互換設定の同期確認・MCPの生成物一致確認に成功すると、専用の `dist/` を再生成する。手作業のファイルは出力先に置かない。root manifest を変更した後、互換設定だけなら `npm run sync:manifests`、MCPソースも変えた場合は `npm --prefix plugins/artifact-workflow run build` で同梱 bundle を更新し、Git で管理するファイルとして差分を確認してから実行する。
 
 [配布処理](../scripts/package-plugins.ts)が `dist/` のファイル一覧を管理する。README、LICENSE、共通・互換manifest、Skill一式、Workflow の subagent 役割テンプレート、MCP設定・bundle・Windows runtime・依存ライセンスを含む。利用者が Agent 設定を別途配置する必要はない。開発用のpackage/lockfile、ソース、試験、スクリプト、`node_modules`、`.build`、`.test-build` は含めず、同梱ディレクトリ内のシンボリックリンクも拒否する。GitHub marketplace は Git の Plugin ディレクトリを取得するため、そこに追跡された開発ファイルも GitHub 経路の期待内容に含まれる。`dist/` は `packageFiles` が定める公開ファイル境界である。
 
@@ -62,7 +62,7 @@ codex plugin add expert-escalation@matsu-artifact-delivery
 
 必要な Plugin だけインストールする。既に同名 marketplace が別の場所を指す場合は、一覧で場所を確認し、切り替えるときだけ `codex plugin marketplace remove matsu-artifact-delivery` を実行してから正しいソースを追加する。
 
-アプリとCLIで見える一覧が異なる場合は、アプリが選択しているmarketplaceとインストール元も確認する。配布物の再生成だけではインストール済みキャッシュは更新されない。再インストール後、アプリでPluginが有効であることを確認し、**新しいタスク**で試す。既存の実行中タスクへ更新が反映される前提にしない。
+アプリとCLIで一覧が異なる場合は、アプリで選択中のmarketplaceとインストール元を確認する。配布物の再生成だけではインストール済みキャッシュは更新されない。再インストール後、アプリでPluginが有効であることを確認し、**新しいタスク**で試す。既存の実行中タスクへ更新が反映される前提にしない。
 
 ### 更新後の起動確認
 
@@ -74,7 +74,7 @@ marketplace を更新した後は Codex を再起動し、新しいタスクで 
 
 両Pluginともrootの `plugin.json` を正本とする。外部の `plugin-creator/scripts/update_plugin_cachebuster.py` は互換manifestだけを更新するため、実行後にそのcachebusterを正本へ取り込み、互換設定を生成し直す。
 
-以下の `<plugin-creator>` は現在利用可能な同スキルの実際のディレクトリに置き換える。Pythonを利用できる環境で、リポジトリルートから実行する。helperのデフォルトUTC timestampを使い、既存の `+codex.*` は置き換える。
+次の `<plugin-creator>` は、利用可能な同スキルの実際のディレクトリに置き換える。Pythonを利用できる環境で、リポジトリルートから実行する。helperのデフォルトUTC timestampを使い、既存の `+codex.*` は置き換える。
 
 ```sh
 python <plugin-creator>/scripts/read_marketplace_name.py --marketplace-path .agents/plugins/marketplace.json
@@ -100,7 +100,7 @@ npm run test:install
 
 各root `plugin.json` のversionを正式版に変更し、`npm run sync:manifests` で両Pluginの互換設定へ同期する。Workflowは `npm --prefix plugins/artifact-workflow version <正式版> --no-git-tag-version` でpackage.jsonとpackage-lock.jsonも同じ版へ更新する。root manifest・互換manifest・package.json・lockfileの最上位と `packages[""]` の版を照合し、MCPをビルドする。
 
-型・lint・書式・全試験に成功した候補から配布物を生成し、GitHub に反映済みの40桁コミット SHA を指定して `npm run test:install -- --github-ref <commit-SHA>` を実行し、同じ固定候補の GitHub marketplace 経路と `dist/` 経路を検証する。タグと短縮 SHA は指定できない。結果には候補 SHA と導入経路が記録され、各実キャッシュを経路ごとの期待ファイル一覧・内容と比較する。候補を固定して実モデルによる生成・承認待ち・独立レビュー・相談を含む受け入れ試験を行い、その確認後に正式リリースを判断する。CLIとMCPの試験だけで実モデルの受け入れ試験を代替しない。
+型・lint・書式・全試験に成功した候補で配布物を生成し、GitHub に反映済みの40桁コミット SHA を指定して `npm run test:install -- --github-ref <commit-SHA>` を実行し、同じ固定候補の GitHub marketplace 経路と `dist/` 経路を検証する。タグと短縮 SHA は指定できない。結果には候補 SHA と導入経路が記録され、各実キャッシュを経路ごとの期待ファイル一覧・内容と比較する。候補を固定して実モデルによる生成・承認待ち・独立レビュー・相談を含む受け入れ試験を行い、その確認後に正式リリースを判断する。CLIとMCPの試験だけで実モデルの受け入れ試験を代替しない。
 
 ## スキーマの固定と試験
 

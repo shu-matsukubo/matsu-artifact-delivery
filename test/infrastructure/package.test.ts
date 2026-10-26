@@ -133,7 +133,7 @@ await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映�
     '新規 Issue の処理前',
     '利用可能な補助情報',
     '選択した手段で取得した Issue・PR・branch・commit',
-    'ローカル HEAD・branch・worktree・staged / unstaged / untracked',
+    'ローカル HEAD・branch・worktree および staged / unstaged / untracked',
     '未完了作業を判定する',
   ])
     assert.ok(resume.includes(requirement), `DEV-U01: missing resume check ${requirement}`);
@@ -147,13 +147,13 @@ await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映�
   assert.match(resume, /その作業によるローカル変更を利用/);
   assert.match(resume, /現在の差分に対する検証・レビュー完了を確認できなければ.*\(implementation-review\.md\).*戻す/);
   assert.ok(resume.includes('## 作業を特定できない場合'));
-  assert.ok(resume.includes('ローカル workspace の staged / unstaged / untracked とブランチを確認する'));
+  assert.ok(resume.includes('ローカル workspace の branch と staged / unstaged / untracked の差分を確認する'));
   assert.match(resume, /clean.*未完了作業を示す Issue branch 等がなければ.*新規 Issue の選定/);
   assert.match(resume, /変更がある場合は由来を推測せず、人間による確認が必要と報告して停止/);
   assert.match(resume, /base branch・起点 SHA と既存の作業ツリーを引き継ぐ/);
   assert.match(resume, /全段階で異常状態は自動修復しない/);
   assert.match(resume, /`reset`.*`checkout`.*`restore`.*`stash`.*`clean`.*未追跡ファイルの削除.*行わない/);
-  assert.match(resume, /PR 作成済み.*base・head.*差分が検証・レビュー済みの作業と一致.*レビュー待ちとして終了/);
+  assert.match(resume, /PR が作成済み.*base・head.*差分が検証・レビュー済みの作業と一致.*レビュー待ちとして終了/);
 
   assert.match(selection, /対象 Issue がない場合は終了/);
   assert.match(resume, /指定 Issue.*別の Issue.*再開しない/);
@@ -162,18 +162,18 @@ await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映�
   assert.match(resume, /新規開始.*正当に特定した再開作業には適用しない/);
 
   assert.match(workspace, /選択した手段.*default branch とその最新コミット SHA/);
-  assert.match(workspace, /Codex のユーザー設定の prefix/);
-  assert.match(workspace, /prefix が取得できない場合は `codex`/);
-  assert.ok(workspace.includes('取得 SHA を起点に'));
+  assert.match(workspace, /Codex のユーザー設定から branch prefix を取得/);
+  assert.match(workspace, /取得できない場合は `codex` を使い/);
+  assert.ok(workspace.includes('取得した SHA を起点に'));
   assert.ok(workspace.includes('隔離 worktree'));
-  assert.match(workspace, /前回 branch、ローカル HEAD、未マージまたは破棄済み作業は引き継がない/);
-  assert.match(workspace, /用意できなければ停止して環境準備が必要と報告する/);
+  assert.match(workspace, /前回の branch やローカル HEAD、未マージまたは破棄済みの作業を引き継がない/);
+  assert.match(workspace, /用意できない場合は停止し、環境準備が必要だと報告する/);
   assert.match(workspace, /<prefix>\/issue\/<Issue 番号>/);
   assertContract(workspace, {
     id: 'DEV-U01',
     ordered: ['git fetch <remote> <default branch>', 'git worktree add -b', '作業ツリー内で', 'git rev-parse HEAD'],
   });
-  assert.ok(workspace.includes('元 checkout 外の未使用パス'));
+  assert.ok(workspace.includes('元の checkout の外にある未使用パス'));
   const createdWorktreeChecks = workspace.slice(workspace.indexOf('作業ツリー内で'));
   for (const command of ['git branch --show-current', 'git remote -v', 'git status --short --untracked-files=all'])
     assert.ok(createdWorktreeChecks.includes(command), `DEV-U01: missing worktree check ${command}`);
@@ -204,7 +204,7 @@ await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映�
   const agentsLinks = await localLinks(repository, 'AGENTS.md');
   for (const reference of ['workspace-setup.md', 'resume.md', 'publish-pr.md'])
     assert.ok(agentsLinks.includes(`${skillPath}/references/${reference}`));
-  assert.match(publish, /コミットに `--no-gpg-sign`、Push に `--no-signed`/);
+  assert.match(publish, /コミットでは `--no-gpg-sign`、Push では `--no-signed`/);
   assert.match(publish, /AGENTS\.md#git-と-github-の操作/);
   assert.match(agents, /git remote get-url --push --all <remote>.*URL が一件だけ.*対象リポジトリ/);
   assert.match(
@@ -213,7 +213,7 @@ await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映�
   );
   assert.match(publish, /新規 branch.*起点 SHA.*GitHub 手段で作成.*同名なら停止/);
   assert.match(publish, /再開.*一意に特定した既存 branch.*この工程で作成したリモート branch だけを再利用/s);
-  assert.match(publish, /現在 branch と Push 先が当該 Issue branch.*確認できたときだけ/s);
+  assert.match(publish, /現在の branch と Push 先が当該 Issue branch.*確認できたときだけ/s);
   assert.match(publish, /反映結果を確認できない場合も同様/);
   assert.match(publish, /staged、unstaged、untracked file.*clean/);
   assert.match(publish, /不一致、失敗、レビュー対象外の変更.*変更の保全.*停止し、PR を作成・更新しない/);
@@ -306,7 +306,7 @@ await test('DEV-U06: 通常の変更依頼は Workflow で製造・レビュー�
   const workflowPath = '.agents/skills/issue-development-workflow';
   const workflow = await read(join(repository, `${workflowPath}/SKILL.md`));
   assert.match(frontmatter(workflow).metadata.description, /具体的な変更依頼/);
-  assert.match(workflow, /Issue が未指定の具体的な変更依頼では.*別の Issue は選ばない/);
+  assert.match(workflow, /Issue が未指定の具体的な変更依頼では.*別の Issue を選ばず/);
   assert.match(workflow, /Issue 未指定の具体的な変更依頼は.*implementation-review\.md.*へ進む/);
   assert.match(workflow, /新規開始時は.*workspace-setup\.md.*準備/);
   assert.match(workflow, /再開・新規を問わず.*implementation-review\.md/);
@@ -359,7 +359,7 @@ await test('DEV-U04: 再開時は未反映の修正を検証・反映して既�
   assert.match(resume, /ローカル HEAD.*リモートブランチの先端 SHA.*一致.*clean.*レビュー待ちとして終了/);
   assert.match(
     resume,
-    /Open PR 作成済みで未反映の変更や未 Push のコミット.*既存 PR.*implementation-review\.md.*publish-pr\.md/,
+    /Open PR が作成済みで未反映の変更や未 Push のコミット.*既存 PR.*implementation-review\.md.*publish-pr\.md/,
   );
   assert.ok(publish.includes('Issue・base・head が一致する候補が一件だけ'));
   assert.ok(publish.includes('既存 PR を引き継ぎ、必要な本文を更新する。新規 PR は作成しない'));
