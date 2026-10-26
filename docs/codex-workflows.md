@@ -25,3 +25,13 @@
 呼び出し例: `$issue-development-workflow <変更内容>`、`$issue-development-workflow Issue #53 を対応して PR を作成する`、`$issue-development-workflow 対応する Issue を選んで進める`。
 
 構成は[Codex のスキル配置・構成](https://developers.openai.com/codex/skills)、[スキル仕様](https://agentskills.io/specification)、[プラグインのスキル作成ガイド](https://developers.openai.com/plugins/build/skills)に従う。スキルは `SKILL.md` と任意の `references/`、`assets/`、`scripts/` から構成できる。
+
+## 日本語文書の推敲
+
+明示的に依頼された場合は、[yomiyasu](https://github.com/nanaism/yomiyasu) を使って日本語文書を推敲する。既存の構造と意味を保ち、変更は差分で採否を判断する。
+
+Codex にユーザー共通でインストールするには、次を実行する。
+
+```sh
+npx skills add nanaism/yomiyasu -a codex -g
+```
