@@ -1,10 +1,12 @@
 # Codex 開発ルールの配置と責務
 
+Codex 向け資料は役割に応じて段階的に参照する。`AGENTS.md` から開発原則へ、作業に該当する Skill から手順へ、必要な Reference と `docs/` から詳しい判断基準・契約へ進む。
+
 リポジトリ用スキルは `.agents/skills/`、配布するスキルは各プラグインの `skills/` に置く。
 
 | 場所 | 役割 |
 | --- | --- |
-| `AGENTS.md` | 常時適用する短い開発方針、検証コマンド、必要な資料への案内 |
+| `AGENTS.md` | 開発時の入口と、重要な共通方針への案内 |
 | `.codex/config.toml` | このリポジトリで使う Codex のモデルとエージェント設定 |
 | `.codex/agents/*.toml` | 専用サブエージェントの責務、モデル、推論レベル |
 | `.agents/skills/<name>/SKILL.md` | 作業を選ぶ条件、スキルの前提と手順 |
@@ -20,9 +22,7 @@
 - [プラグイン保守](../.agents/skills/plugin-maintenance/SKILL.md)
 - [プラグインレビュー](../.agents/skills/plugin-review/SKILL.md)
 
-配置と責務は上表、実行手順は各 Skill、Git・GitHub 安全条件は [AGENTS.md](../AGENTS.md#git-と-github-の操作)に従う。モデル設定は `.codex/config.toml` と `.codex/agents/` に置く。
-
-呼び出し例: `$issue-development-workflow <変更内容>`、`$issue-development-workflow Issue #53 を対応して PR を作成する`、`$issue-development-workflow 対応する Issue を選んで進める`。
+artifact-workflow のタスク計画レビュー設計と実装確認事項は[タスク計画レビュー](task-plan-review.md)を参照する。各 Skill が作業手順と必要な Reference を案内する。Git・GitHub の共通安全条件は [Git と GitHub の操作](git-workflow.md)、設計・実装観点は [製造・レビュー観点](manufacturing-review.md)、検証選択は [テスト・検証観点](testing-review.md)、コマンドと契約一覧は [試験と差分 CI](testing.md) を参照する。モデル設定は `.codex/config.toml` と `.codex/agents/` に置く。
 
 構成は[Codex のスキル配置・構成](https://developers.openai.com/codex/skills)、[スキル仕様](https://agentskills.io/specification)、[プラグインのスキル作成ガイド](https://developers.openai.com/plugins/build/skills)に従う。スキルは `SKILL.md` と任意の `references/`、`assets/`、`scripts/` から構成できる。
 
