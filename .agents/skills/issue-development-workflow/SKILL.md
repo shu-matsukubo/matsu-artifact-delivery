@@ -17,6 +17,8 @@ description: このリポジトリの具体的な変更依頼を実装・レビ�
 
 ## フロー
 
+開始時は[仕様の明確化](references/spec-clarification.md)を確認し、仕様上の判断待ちがあれば回答の確認まで先へ進まない。
+
 Issue 未指定の具体的な変更依頼は[実装とレビュー](references/implementation-review.md)へ進む。
 
 Issue が指定された依頼、Issue 選定では次の順に進む。
