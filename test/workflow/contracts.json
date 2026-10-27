@@ -206,7 +206,7 @@
     "contains": [
       "担当を再委任せず",
       "他担当や reviewer を起動しない",
-      "他担当の変更を上書き・取り消ししない",
+      "他担当の変更を上書きしたり取り消したりしない",
       "別タスクIDを付けない",
       "承認済み計画と根拠、または適用範囲を含む明示的な省略指示",
       "`initialize_session`、`reset_session`、`save_plan`、`complete_session`、`collect_completed_sessions` は呼ばない",

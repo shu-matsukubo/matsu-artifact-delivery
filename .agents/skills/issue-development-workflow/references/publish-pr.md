@@ -1,6 +1,6 @@
 # GitHub 反映と PR 作成
 
-GitHub 手段と結果確認は [AGENTS.md](../../../../AGENTS.md#git-と-github-の操作)に従う。書き込み結果が不明なら状態を再取得し、確認できなければ停止する。コミットに `--no-gpg-sign`、Push に `--no-signed` を指定する。
+GitHub の操作手段と結果確認は [AGENTS.md](../../../../AGENTS.md#git-と-github-の操作)に従う。書き込み結果が不明なら状態を再取得し、確認できなければ停止する。コミットでは `--no-gpg-sign`、Push では `--no-signed` を指定する。
 
 ## 既存 PR の確認
 
@@ -24,7 +24,7 @@ GitHub 手段と結果確認は [AGENTS.md](../../../../AGENTS.md#git-と-github
 
 ## Push
 
-- Push URL を確認し、現在 branch と Push 先が当該 Issue branch であることを確認する。
+- Push URL を確認し、現在の branch と Push 先が当該 Issue branch であることを確かめる。
 - 確認できたときだけ実行する: `git push --no-follow-tags --no-signed <remote> HEAD:refs/heads/<Issue 用ブランチ>`。
 - [AGENTS.md](../../../../AGENTS.md#git-と-github-の操作)の禁止事項に従う。branch を確認できない場合は停止して報告する。
 

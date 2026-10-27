@@ -3,7 +3,7 @@
 ## 起点と名前
 
 - 選択した手段で default branch とその最新コミット SHA を確認する。
-- Codex のユーザー設定の prefix を使い、`<prefix>/issue/<Issue 番号>` を決める。prefix が取得できない場合は `codex` を使い、末尾の `/` を除く。
+- Codex のユーザー設定から branch prefix を取得し、`<prefix>/issue/<Issue 番号>` を決める。取得できない場合は `codex` を使い、prefix の末尾にある `/` を除く。
 
 ## 作成前の確認
 
@@ -12,9 +12,9 @@
 
 ## 隔離 worktree
 
-- `git fetch <remote> <default branch>` の取得 SHA を起点に、元 checkout 外の未使用パスへ作る。
+- `git fetch <remote> <default branch>` で取得した SHA を起点に、元の checkout の外にある未使用パスへ作る。
 - 実行: `git worktree add -b <Issue 用ブランチ> '<未使用の絶対パス>' <取得した SHA>`。
-- 前回 branch、ローカル HEAD、未マージまたは破棄済み作業は引き継がない。用意できなければ停止して環境準備が必要と報告する。
+- 前回の branch やローカル HEAD、未マージまたは破棄済みの作業を引き継がない。用意できない場合は停止し、環境準備が必要だと報告する。
 
 ## 作成後の確認
 
