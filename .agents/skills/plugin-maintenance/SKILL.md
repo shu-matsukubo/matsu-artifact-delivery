@@ -18,6 +18,8 @@ Issue 開発 Workflow から明示的に呼び出され、プラグインを実�
 
 ## フロー
 
+開始時は[仕様の明確化](../issue-development-workflow/references/spec-clarification.md)を確認し、仕様上の判断待ちがあれば回答の確認まで実装へ進まない。
+
 1. 要件と既存契約を[実装方針](references/implementation.md)で確認する。
 2. [テスト設計](references/test-design.md)に沿って必要な試験を実装前に実行し、維持する挙動を確認する。
 3. 既存の責務と正本・生成物の境界を守って実装する。

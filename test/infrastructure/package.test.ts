@@ -303,6 +303,32 @@ await test('DEV-U06: 通常の変更依頼は Workflow で製造・レビュー�
   const review = await read(join(repository, '.agents/skills/plugin-review/SKILL.md'));
   assert.match(frontmatter(review).metadata.description, /レビュー/);
 
+  const clarificationPath = '.agents/skills/issue-development-workflow/references/spec-clarification.md';
+  const clarification = await read(join(repository, clarificationPath));
+  assert.match(clarification, /依頼内容、既存の仕様・資料、関係するコードを読み/);
+  assert.match(clarification, /曖昧さ、矛盾、判断待ち.*質問/);
+  assert.match(clarification, /回答を受けたら仕様を再確認/);
+  assert.match(clarification, /回答が揃うまで.*設計、タスク分解、実装を始めず/);
+  assert.match(clarification, /新たな仕様上の疑問.*該当箇所を止めて確認/);
+  assert.match(clarification, /仕様を変えない技術的な判断は AI が行う/);
+  assert.match(clarification, /仕様が明確なら質問を追加せず/);
+  assert.match(clarification, /未確定の仕様に依存する結論は保留/);
+  for (const [path, content] of [
+    [
+      '.agents/skills/issue-development-workflow/SKILL.md',
+      await read(join(repository, '.agents/skills/issue-development-workflow/SKILL.md')),
+    ],
+    [
+      '.agents/skills/plugin-maintenance/SKILL.md',
+      await read(join(repository, '.agents/skills/plugin-maintenance/SKILL.md')),
+    ],
+    ['.agents/skills/plugin-review/SKILL.md', review],
+  ] as const) {
+    const links = await localLinks(repository, path);
+    assert.ok(links.includes(clarificationPath), `Missing specification guidance link in ${path}`);
+    assert.ok(content.includes('仕様の明確化'));
+  }
+
   const workflowPath = '.agents/skills/issue-development-workflow';
   const workflow = await read(join(repository, `${workflowPath}/SKILL.md`));
   assert.match(frontmatter(workflow).metadata.description, /具体的な変更依頼/);
