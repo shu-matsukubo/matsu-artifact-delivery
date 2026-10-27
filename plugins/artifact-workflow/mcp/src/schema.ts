@@ -4,6 +4,22 @@ import { validateTaskDependencies } from './task-dependencies.js';
 const text = z.string().trim().min(1).max(100_000);
 const lines = z.array(text).max(500);
 const taskId = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/);
+const extensionPolicySelection = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal('selected'),
+    id: z.string().min(1),
+    name: text.max(200),
+    revision: z.uuid(),
+    target: text,
+    applicability: text,
+    summary: text.max(2_000),
+    instructions: text,
+    dependencies: z.array(text.max(2_000)).max(100),
+    reason: text,
+  }),
+  z.strictObject({ status: z.literal('none'), reason: text }),
+  z.strictObject({ status: z.literal('unavailable'), reason: text }),
+]);
 
 export const sessionIdSchema = z
   .string()
@@ -26,6 +42,7 @@ export const planSchema = z
           deliverable: text,
           acceptanceCriteria: lines.min(1),
           dependsOn: z.array(taskId).max(200),
+          extensionPolicy: extensionPolicySelection.nullable().default(null),
         }),
       )
       .min(1)

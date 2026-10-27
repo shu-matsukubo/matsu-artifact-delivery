@@ -22,6 +22,21 @@ await test('requires initialization, then round-trips the complete agreed plan t
   assert.deepEqual(JSON.parse(await readFile(join(directory, filename), 'utf8')), saved);
 });
 
+await test('legacy plan snapshots without extensionPolicy read as null without rewriting their bytes', async (t) => {
+  const directory = await temporaryDirectory(t);
+  const store = new PlanStore(directory);
+  const empty = await store.initialize('legacy-policy');
+  const saved = await store.save('legacy-policy', empty.revision, plan);
+  const filename = snapshotPath(directory, 'legacy-policy');
+  const raw = JSON.parse(await readFile(filename, 'utf8')) as typeof saved;
+  delete (raw.plan!.tasks[0] as Partial<(typeof plan.tasks)[number]>).extensionPolicy;
+  const legacyBytes = `${JSON.stringify(raw, null, 2)}\n`;
+  await writeFile(filename, legacyBytes);
+  const loaded = await new PlanStore(directory).get('legacy-policy');
+  assert.equal(loaded?.plan?.tasks[0]?.extensionPolicy, null);
+  assert.equal(await readFile(filename, 'utf8'), legacyBytes);
+});
+
 await test('reset replaces only the selected session and preserves other active and completed files', async (t) => {
   const directory = await temporaryDirectory(t);
   const store = new PlanStore(directory);

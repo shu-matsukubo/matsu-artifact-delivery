@@ -15,9 +15,7 @@ await test('WF-E01: workflow entry and each Skill own their document graph and r
   assert.ok(!(await readdir(plugin.root)).includes('node_modules'));
 
   const markdownFiles = (await files(join(plugin.root, 'skills'))).filter((path) => path.endsWith('.md'));
-  const workflowDocs = markdownFiles
-    .filter((path) => !path.startsWith('extension-management/'))
-    .map((path) => `skills/${path}`);
+  const workflowDocs = markdownFiles.map((path) => `skills/${path}`);
   assert.deepEqual(
     (await walkReferences(plugin.root, 'skills/artifact-workflow/SKILL.md')).toSorted(),
     workflowDocs.toSorted(),
@@ -69,17 +67,20 @@ await test('WF-E02: workflow entry links planning, generation, review, verificat
     'skills/artifact-workflow/references/task-memory.md',
   ])
     assert.ok(links.includes(path), `Missing workflow reference: ${path}`);
+  const deliveryLinks = await localLinks(plugin.root, 'skills/artifact-workflow/references/delivery.md');
+  assert.ok(
+    deliveryLinks.includes('skills/extension-management/SKILL.md'),
+    'Missing completion proposal management route',
+  );
   assert.ok(!(await files(join(plugin.root, 'skills'))).some((path) => path.includes('self-review')));
 });
 
-await test('WF-E03: reviewer applies all common principles and only the parent-selected 0-3 modules', async (t) => {
+await test('WF-E03: reviewer applies the common policy fixed in the approved plan', async (t) => {
   const plugin = await stagePlugin(t, 'artifact-workflow');
   const root = join(plugin.root, 'skills/artifact-review');
   const review = await read(join(root, 'references/independent-review.md'));
-  assert.ok(review.includes('0〜3個'));
-  assert.ok(review.includes('type: review'));
-  assert.ok(review.includes('get_extension'));
-  assert.ok(review.includes('同じ論点を複数指示に分けて上限を回避しない'));
+  assert.ok(review.includes('共通方針0〜1件'));
+  assert.ok(review.includes('同じ本文・revision'));
   const common = await read(join(root, 'references/review-principles.md'));
   const principles = markdown(common).tokens.find((token) => token.type === 'table');
   assert.ok(
@@ -88,10 +89,9 @@ await test('WF-E03: reviewer applies all common principles and only the parent-s
   );
   const reviewer = await read(join(root, 'assets/reviewer.md'));
   assert.ok(reviewer.includes('共通5原則はすべて適用する'));
-  assert.ok(reviewer.includes('親が選定したものだけを適用し'));
-  assert.ok(reviewer.includes('4個以上'));
+  assert.ok(reviewer.includes('方針を独自に追加・差し替えない'));
   const extension = plugin.skills.get('extension-management')!;
-  assert.ok(extension.body.includes('成果物の生成・レビュー依頼では起動しない'));
+  assert.ok(extension.body.includes('計画・worker・reviewer・承認ゲートを起動しない'));
 });
 
 await test('WF-E04: package alone has no hard dependency on an optional consultation plugin', async (t) => {

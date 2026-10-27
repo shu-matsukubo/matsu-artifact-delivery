@@ -32,7 +32,7 @@ codex plugin marketplace upgrade matsu-artifact-delivery
 | [artifact-workflow](skills/artifact-workflow/SKILL.md)                                                             | 工程調停、承認、検証、引き渡し                   |
 | [task-planning](skills/task-planning/SKILL.md)                                                                     | 範囲、タスク分解、計画提示                       |
 | [artifact-generation](skills/artifact-generation/SKILL.md)                                                         | 生成原則、拡張、worker 委任、作成・修正・返却     |
-| [artifact-review](skills/artifact-review/SKILL.md)                                                                 | 独立レビュー、共通・特化観点、指摘、再レビュー   |
+| [artifact-review](skills/artifact-review/SKILL.md)                                                                 | 独立レビュー、共通方針の遵守確認、指摘、再レビュー   |
 | [task-plan-template.md](skills/task-planning/assets/task-plan-template.md)                                           | ユーザーに提示するタスク計画                     |
 | [worker.md](skills/artifact-generation/assets/worker.md)                                                           | 成果物を作成・修正する worker の委任指示          |
 | [reviewer.md](skills/artifact-review/assets/reviewer.md)                                                           | 独立レビューを行う reviewer の委任指示            |
@@ -48,9 +48,11 @@ MCP の依存 bundle、Windows x64 Node.js runtime、初回起動時に runtime 
 
 ## 拡張指示の登録
 
-「今後のTypeScript生成用に、この手順を指示として登録して」のように、登録意図を自然言語で明示して頼みます。`extension-management` Skill が生成・レビュー指示の登録管理を扱います。登録前に既存の指示を調べ、内容を `generation` / `review`、対象、適用条件、概要、実行指示、任意の依存先へ整理します。要求にないコマンドや品質基準は追加しません。
+「今後のReact画面実装にこの方針を適用して」のように、登録・更新や今後にも適用したい意向を明確に伝えます。`extension-management` Skill が成果物単位の共通方針を管理します。方針には対象、適用条件、概要、実装指示、関連する lint・型検査・実行コマンド・注意をまとめ、同じ内容を生成時の実装指示と独立レビュー時の遵守確認に使います。登録前に既存候補を調べ、差分への明示同意後に保存します。要求にないコマンドや品質基準は追加しません。
 
-「登録済みの生成指示を一覧して」「ID `csv-report` の内容を見せて」「この指示の概要を変更して」「この名前の指示を削除して」のような管理依頼も行えます。名前が重複して対象を特定できない場合は ID を確認します。登録指示が0件、またはタスクに適合する指示がない場合は、共通 Workflow の指示で続行します。登録データは計画セッションから独立して保持されます。MCP は指示を保存・検索・取得するだけで、依存 Skill やコマンドを登録時に実行しません。
+「登録済みの共通方針を一覧して」「ID `react-ui` の内容を見せて」「この方針の概要を変更して」「この名前の方針を削除して」のような管理依頼も行えます。名前が重複して対象を特定できない場合は ID を確認します。共通方針がない、またはタスクに適合する方針がない場合は、ユーザー依頼と共通原則で続行します。登録データは計画セッションから独立して保持されます。MCP は方針を保存・検索・取得するだけで、依存 Skill やコマンドを実行しません。
+
+会話の内容から今後にも適用できる共通方針を提案する場合、client が `extension-management` Skill を選び実行できることが前提です。Skill を自然言語から選ぶ方法や MCP が公開する操作は client により異なり、全会話を常時監視して候補を自動検出する仕組みではありません。Workflow 完了時の提案導線は [delivery.md](skills/artifact-workflow/references/delivery.md) に記載しています。
 
 ## 開発と配布
 

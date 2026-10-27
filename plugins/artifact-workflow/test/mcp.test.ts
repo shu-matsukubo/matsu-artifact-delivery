@@ -223,7 +223,12 @@ await test(
     assert.ok(reviewRecord.instructions.includes(marker));
     assert.equal(reviewRecord.dependencies.length, 2);
     const reviews = await client.callTool({ name: 'list_extensions', arguments: { type: 'review' } });
-    assert.equal((reviews.structuredContent as { extensions: unknown[] }).extensions.length, 1);
+    assert.equal((reviews.structuredContent as { extensions: unknown[] }).extensions.length, 2);
+    assert.ok(
+      (reviews.structuredContent as { extensions: { type: string }[] }).extensions.every(
+        ({ type }) => type === 'artifact',
+      ),
+    );
     const update = await client.callTool({
       name: 'update_extension',
       arguments: {

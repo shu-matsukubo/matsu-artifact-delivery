@@ -20,6 +20,7 @@ export const plan: Plan = {
       deliverable: 'C:/outputs/report.md',
       acceptanceCriteria: ['提供データと整合する'],
       dependsOn: [],
+      extensionPolicy: null,
     },
   ],
   acceptanceCriteria: ['完成したレポートを参照できる'],

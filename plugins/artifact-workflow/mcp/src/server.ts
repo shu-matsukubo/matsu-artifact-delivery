@@ -121,7 +121,7 @@ export function createServer(store: PlanRepository, extensions?: ExtensionStore)
       'register_extension',
       {
         description:
-          '生成またはレビューの実行指示を登録します。保存のみを行い、他Skillやコマンドを実行しません。既存IDは上書きせず、別IDを指定してください。',
+          '成果物単位の共通方針を登録します。生成では実装指示、独立レビューでは同じ内容の遵守確認として使います。保存のみを行い、他Skillやコマンドを実行しません。既存IDは上書きしません。',
         inputSchema: extensionSchema,
         outputSchema: z.strictObject({ extension: storedExtensionSchema }),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -136,9 +136,9 @@ export function createServer(store: PlanRepository, extensions?: ExtensionStore)
       'list_extensions',
       {
         description:
-          '登録済み指示の軽量メタデータを一覧または絞り込みで返します。全文取得には get_extension を使います。',
+          '登録済み共通方針の軽量メタデータを一覧または検索で返します。旧 type フィルターは互換入力として受理しますが、一覧をgeneration/reviewに分けません。全文取得には get_extension を使います。',
         inputSchema: z.strictObject({
-          type: z.enum(['generation', 'review']).optional(),
+          type: z.enum(['artifact', 'generation', 'review']).optional(),
           query: z.string().trim().min(1).max(200).optional(),
         }),
         outputSchema: z.strictObject({ extensions: extensionSummariesSchema }),
@@ -170,7 +170,7 @@ export function createServer(store: PlanRepository, extensions?: ExtensionStore)
       'update_extension',
       {
         description:
-          '現在のrevisionを指定して登録指示を更新します。revisionが変わっていたら競合として拒否します。指示や依存コマンドは実行しません。',
+          '同意済みの共通方針を現在のrevisionを指定して更新します。revisionが変わっていたら競合として拒否します。指示や依存コマンドは実行しません。',
         inputSchema: z.strictObject({ id, expectedRevision: revision, extension: extensionSchema }),
         outputSchema: z.strictObject({ extension: storedExtensionSchema.nullable() }),
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
@@ -178,7 +178,7 @@ export function createServer(store: PlanRepository, extensions?: ExtensionStore)
       ({ id: extensionId, expectedRevision, extension }) =>
         respond(
           async () => ({ extension: await extensions.update(extensionId, expectedRevision, extension) }),
-          '拡張更新に失敗しました。revision競合は最新詳細を再取得して確認し、保存失敗時は内容を上書きせず保存先を確認してください。',
+          '拡張更新に失敗しました。revision競合や保存失敗では上書き・自動マージ・無制限再試行をせず、失敗を報告してください。',
         ),
     );
     server.registerTool(

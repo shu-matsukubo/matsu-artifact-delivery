@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { extensionsDirectory } from '../mcp/src/config.js';
 import { ExtensionStore } from '../mcp/src/extensions.js';
-import { code, temporaryDirectory } from './fixtures.js';
+import { PlanStore } from '../mcp/src/store.js';
+import { code, plan, temporaryDirectory } from './fixtures.js';
 
 const entry = {
   id: 'csv-report',
@@ -22,7 +23,8 @@ await test('extension registry persists independently with lightweight filtering
   const first = new ExtensionStore(join(directory, 'extensions'));
   const created = await first.create(entry);
   assert.equal((await first.list()).length, 1);
-  assert.equal((await first.list({ type: 'review' })).length, 0);
+  assert.equal((await first.list({ type: 'review' })).length, 1);
+  assert.equal((await first.list())[0]!.type, 'artifact');
   assert.equal((await first.list({ query: 'CSV' })).length, 1);
   assert.equal('instructions' in (await first.list())[0]!, false);
   assert.deepEqual(await new ExtensionStore(first.directory).get(entry.id), created);
@@ -38,6 +40,70 @@ await test('extension registry persists independently with lightweight filtering
   assert.equal(await first.delete(entry.id, changed!.revision), true);
   assert.equal(await first.get(entry.id), null);
   assert.equal(await first.delete(entry.id, changed!.revision), false);
+});
+
+await test('legacy generation and review entries normalize in memory and migrate on the next write', async (t) => {
+  const directory = await temporaryDirectory(t);
+  const filename = join(directory, 'extensions.json');
+  const legacyGeneration = {
+    ...entry,
+    type: 'generation',
+    revision: '34aaa4b2-9a1a-4b7e-9e13-2bbbc8a133e4',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+  const legacyReview = { ...legacyGeneration, id: 'old-review', type: 'review' };
+  await writeFile(filename, JSON.stringify({ schemaVersion: 1, entries: [legacyGeneration, legacyReview] }));
+  const store = new ExtensionStore(directory);
+  assert.equal((await store.list({ type: 'generation' })).length, 2);
+  assert.equal((await store.get('old-review'))?.type, 'artifact');
+  assert.deepEqual(JSON.parse(await readFile(filename, 'utf8')), {
+    schemaVersion: 1,
+    entries: [legacyGeneration, legacyReview],
+  });
+  await store.update('csv-report', legacyGeneration.revision, {
+    ...entry,
+    summary: '保存時に共通形式へ移行',
+  });
+  const migrated = JSON.parse(await readFile(filename, 'utf8')) as {
+    schemaVersion: number;
+    entries: { type: string }[];
+  };
+  assert.equal(migrated.schemaVersion, 2);
+  assert.ok(migrated.entries.every(({ type }) => type === 'artifact'));
+});
+
+await test('a saved plan keeps its policy snapshot when the registry updates or a stale update conflicts', async (t) => {
+  const directory = await temporaryDirectory(t);
+  const extensions = new ExtensionStore(join(directory, 'extensions'));
+  const plans = new PlanStore(join(directory, 'plans'));
+  const registered = await extensions.create({ ...entry, type: 'artifact' });
+  const selected = {
+    status: 'selected' as const,
+    id: registered.id,
+    name: registered.name,
+    revision: registered.revision,
+    target: registered.target,
+    applicability: registered.applicability,
+    summary: registered.summary,
+    instructions: registered.instructions,
+    dependencies: registered.dependencies,
+    reason: '対象成果物と適用条件が一致した',
+  };
+  const agreedPlan = {
+    ...plan,
+    tasks: [{ ...plan.tasks[0]!, extensionPolicy: selected }],
+  };
+  const empty = await plans.initialize('policy-snapshot');
+  await plans.save('policy-snapshot', empty.revision, agreedPlan);
+  await extensions.update(registered.id, registered.revision, { ...entry, type: 'artifact', summary: '更新後の概要' });
+  const persisted = await plans.get('policy-snapshot');
+  assert.deepEqual(persisted?.plan, agreedPlan);
+  await assert.rejects(
+    extensions.update(registered.id, registered.revision, { ...entry, type: 'artifact', summary: '競合する更新' }),
+    code('REVISION_CONFLICT'),
+  );
+  assert.deepEqual((await plans.get('policy-snapshot'))?.plan, agreedPlan);
 });
 
 await test('registry size limit rejects before replacing the previous valid registry', async (t) => {

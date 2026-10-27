@@ -53,7 +53,7 @@
       "**構造化・単純性**",
       "**利用しやすさ・破綻のなさ**",
       "**確認の裏付け**",
-      "共通の5原則は、親が選ぶ特化指示の上限3個には含めない"
+      "成果物単位で登録"
     ]
   },
   {
@@ -68,22 +68,21 @@
       "`input_insufficient`",
       "`inconclusive`",
       "共通5原則すべて",
-      "親が選定した特化観点",
+      "対象タスクごとに最大1件",
       "必須修正と任意提案を分ける",
       "親識別子"
     ]
   },
   {
     "id": "WF-U09",
-    "title": "登録拡張観点の0〜3件選定と理由",
+    "title": "成果物単位の共通方針を固定し同じ版で遵守確認",
     "file": "skills/artifact-review/references/independent-review.md",
     "contains": [
-      "`type: review`",
-      "**0〜3個**",
-      "`get_extension`",
-      "該当しなければ0個",
+      "共通方針0〜1件",
+      "同じ本文・revision",
+      "各タスクに固定された共通方針0〜1件",
       "共通の[5原則](review-principles.md)",
-      "最新一覧から選び直す",
+      "最新登録を代用しない",
       "MCP 接続失敗や不正データを適合0件と扱わず",
       "共通5原則を適用して失敗理由を利用者へ伝える",
       "必須条件を満たせない場合は成功扱いしない"
@@ -95,11 +94,11 @@
     "file": "skills/extension-management/references/management.md",
     "contains": [
       "既存一覧を `list_extensions`",
-      "`generation` または `review`",
+      "`artifact`",
       "要求にない手順、コマンド、品質基準",
       "意味や実行影響が変わる解釈",
       "上書きしない",
-      "MCP は依存先やコマンドを実行しない"
+      "依存先、コマンドを実行しない"
     ]
   },
   {
@@ -220,8 +219,8 @@
     "file": "skills/artifact-review/assets/reviewer.md",
     "contains": [
       "子 worker からの直接依頼はレビューせず",
-      "0〜3個",
-      "4個以上",
+      "生成時と同じ内容・版",
+      "対象タスクごとに最大1件",
       "`get_plan` だけ",
       "`initialize_session`、`reset_session`、`save_plan`、`complete_session`、`collect_completed_sessions` を呼ばない",
       "他の agent、相談先、別タスクを起動しない",
@@ -241,14 +240,13 @@
   },
   {
     "id": "WF-U22",
-    "title": "生成拡張の一覧選択・詳細取得と0〜1件制限",
+    "title": "生成時のタスクごとの共通方針適用",
     "file": "skills/artifact-generation/references/generation.md",
     "contains": [
-      "`list_extensions`",
-      "`type: generation`",
-      "明確に一致するものだけ",
-      "0〜1件を担当タスクごとに選び",
-      "`get_extension`",
+      "計画外のレジストリ参照で差し替えない",
+      "共通方針0〜1件",
+      "同一成果物単位の実装指示",
+      "固定された共通方針0〜1件",
       "エラーや不正データを空一覧と見なさず"
     ]
   },
@@ -283,11 +281,11 @@
     "file": "skills/extension-management/references/management.md",
     "contains": [
       "既存一覧を `list_extensions`",
-      "`generation` または `review`",
+      "`artifact`",
       "要求にない手順、コマンド、品質基準",
       "利用者が名前で更新・削除",
       "`revision`",
-      "MCP は登録指示の保存・一覧・検索・取得だけを行い"
+      "MCP は保存・一覧・検索・取得・更新・削除と revision 管理だけを行い"
     ]
   },
   {
@@ -300,7 +298,7 @@
     "id": "WF-U26",
     "title": "独立レビュー Skill の責務と指摘経路",
     "file": "skills/artifact-review/SKILL.md",
-    "contains": ["独立レビュー", "0〜3個", "指摘と再レビュー"]
+    "contains": ["独立レビュー", "同一revisionに固定された共通方針", "指摘と再レビュー"]
   },
   {
     "id": "WF-U27",
@@ -324,7 +322,11 @@
     "id": "WF-U30",
     "title": "Extension Management Skill の適用境界",
     "file": "skills/extension-management/SKILL.md",
-    "contains": ["利用者から登録管理を明示された場合", "成果物の生成・レビュー依頼では起動しない", "実行境界"]
+    "contains": [
+      "登録・更新・一覧を求めた場合",
+      "計画・worker・reviewer・承認ゲートを起動しない",
+      "明示的に選んだ場合だけ"
+    ]
   },
   {
     "id": "WF-U31",
@@ -335,7 +337,7 @@
       "MCP は指示を保存・一覧・検索・取得する",
       "実行許可が明確な場合だけ使う",
       "ユーザー依頼、承認済み計画、上位 Workflow",
-      "生成拡張は担当タスクごとに0〜1件、レビュー拡張はレビュー全体で0〜3件",
+      "各成果物タスクに最も具体的に合う共通方針を0〜1件",
       "依存不足で必須完了条件を満たせない場合は成功扱いしない"
     ]
   },
@@ -366,5 +368,28 @@
     "title": "Reviewer の役割別モデル選定",
     "file": "skills/artifact-review/assets/reviewer.md",
     "contains": ["独立検証の正確性と品質を重視", "共通方針"]
+  },
+  {
+    "id": "WF-U35",
+    "title": "タスク分解と共通方針の選定・版固定",
+    "file": "skills/task-planning/references/task-planning.md",
+    "contains": [
+      "方針を当てるためだけの不自然なタスク",
+      "最も具体的に合う共通方針を0〜1件",
+      "該当なし（AIが今回の依頼から判断）",
+      "取得失敗を記録する",
+      "全文と `revision` を取得し、本文・依存先・対象とともに計画へ固定する"
+    ]
+  },
+  {
+    "id": "WF-U36",
+    "title": "完了時の方針提案と同意後の保存導線",
+    "file": "skills/artifact-workflow/references/delivery.md",
+    "contains": [
+      "単発の修正や雑談では提案しない",
+      "明示同意を得る前に保存せず",
+      "extension-management Skill",
+      "常時の会話監視や自動検出を保証しない"
+    ]
   }
 ]
