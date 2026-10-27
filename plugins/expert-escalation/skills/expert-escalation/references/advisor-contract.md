@@ -8,7 +8,7 @@
 - 候補は現在の client で利用可能かつ実際の起動手段が指定を受け付けると確認できたものに限る。未知のモデル名、アクセス権、性能差を推測で断定しない。モデル一覧の固定リストや専用 Custom Agent は配布しない。
 - 起動時に表示された委任 API の実スキーマと制約を優先する。現在の `collaboration.spawn_agent` schema では `model` と `reasoning_effort` を任意指定できる一方、`fork_turns: "all"` では override できず、override 時は `fork_turns: "none"` が必要である。実際の起動時にも同じ schema/制約が提示されている場合だけ適用し、異なる client/API へ一般化しない。指定値の根拠を含む明示的な依頼を、新しい context に渡す。
 - 公式資料では、通常の委任設定は明示した起動値、`[agents]` の既定値、親の順で適用し、Custom Agent に model/effort 設定がある場合はそちらを優先する。モデルを明示値または `[agents]` の既定値で選び、起動値にも既定値にも推論強度がなければ選択モデルの既定強度を使う。モデルも指定せず親から継承する場合は親/client の既定設定に従う。起動時の実 schema と制約を合わせて確認し、未確認の機能を使えるとみなさない。
-- モデル情報が得られない、起動手段が model/effort 指定に非対応、または履歴 fork 等で指定できない場合は明示指定を省略し、呼び出し元/client の既定に従う標準 subagent へフォールバックする。利用不能や起動失敗は既存の `unavailable` / `no_result` 規則に従う。
+- モデル情報が得られない、適切な候補を確認できない、起動手段が model/effort 指定に非対応、または履歴 fork 等で指定できない場合は明示指定を省略し、呼び出し元/client の既定に従う標準 subagent へフォールバックする。指定省略だけでは AI による選定成功と扱わず、既存の相談記録に選択理由と指定またはフォールバック理由を残す。利用不能や起動失敗は既存の `unavailable` / `no_result` 規則に従う。
 - 親は既存の相談記録に起動要求のモデル・推論強度、選択理由、明示指定か既定継承かを記録する。指定を省略した理由も残す。client が実効値を返さない場合は要求値または省略だけを記録し、実効値を未確認とする。相談役の入出力や記録の責務は増やさない。
 - 仕様確認の参考：[Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)、[Config reference](https://learn.chatgpt.com/docs/config-file/config-reference)。公開資料は全 client/API の対応を保証しないため、起動時の実 schema と制約を優先する。
 - 親は起動時に本契約を相談役のプロンプトへ含める。

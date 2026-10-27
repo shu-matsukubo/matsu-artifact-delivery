@@ -1,6 +1,6 @@
 # Worker の役割
 
-親は `spawn_agent` で標準 subagent を起動し、タスク全体に適したモデルと推論設定を選ぶ。
+親は各起動時にタスク特性・Worker の役割・実行環境で利用可能なモデルを確認し、要求品質を満たす範囲で速度とコストを重視してモデルと必要な推論強度を選ぶ。起動時の指定・文脈引き渡し・記録は[共通方針](../../artifact-workflow/references/model-selection.md)に従う。
 
 ## artifact-worker
 

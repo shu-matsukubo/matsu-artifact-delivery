@@ -269,7 +269,8 @@
     "title": "Reviewer のプロンプト制約と実行権限の限界",
     "file": "skills/artifact-review/assets/reviewer.md",
     "contains": [
-      "subagent は親のモデル、推論設定、利用可能なツールを引き継ぐ",
+      "独立検証の正確性と品質を重視",
+      "共通方針",
       "プロンプトは実行環境の権限を変更しない",
       "読み取り専用の手順を守る",
       "プロンプトをセキュリティ境界として扱わない",
@@ -337,5 +338,33 @@
       "生成拡張は担当タスクごとに0〜1件、レビュー拡張はレビュー全体で0〜3件",
       "依存不足で必須完了条件を満たせない場合は成功扱いしない"
     ]
+  },
+  {
+    "id": "WF-U32",
+    "title": "Worker・Reviewer のモデル選定、明示指定とフォールバック",
+    "file": "skills/artifact-workflow/references/model-selection.md",
+    "contains": [
+      "確認済みの能力情報",
+      "実際に提示された委任 API の schema と制約",
+      "対応する引数へ指定する",
+      "`fork_turns: \"none\"`",
+      "必要な依頼・文脈・資料を新しい context へ明示的に渡す",
+      "モデル情報が得られない",
+      "環境の既定・継承へフォールバック",
+      "実効値は未確認とする",
+      "指定省略だけで AI による選定成功"
+    ]
+  },
+  {
+    "id": "WF-U33",
+    "title": "Worker の役割別モデル選定",
+    "file": "skills/artifact-generation/assets/worker.md",
+    "contains": ["要求品質を満たす範囲で速度とコストを重視", "共通方針"]
+  },
+  {
+    "id": "WF-U34",
+    "title": "Reviewer の役割別モデル選定",
+    "file": "skills/artifact-review/assets/reviewer.md",
+    "contains": ["独立検証の正確性と品質を重視", "共通方針"]
   }
 ]
