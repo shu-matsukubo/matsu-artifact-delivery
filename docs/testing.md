@@ -1,6 +1,8 @@
 # 試験と差分 CI
 
-実装・設定・自然言語の契約をコンポーネント単位で検証する。試験は **単体（Unit）** と **E2E** に分け、CI では変更領域とその依存先を選ぶ。変更時の判断基準は[テスト・検証観点](testing-review.md)、開発言語と品質チェックの基本方針は [AGENTS.md](../AGENTS.md) を参照する。
+実装・設定・自然言語の契約をコンポーネント単位で検証する。試験は **単体（Unit）** と **E2E** に分け、CI では変更領域とその依存先を選ぶ。変更時の判断基準は[テスト・検証観点](testing-review.md)、開発言語と品質チェックの基本方針は [製造・レビュー観点](manufacturing-review.md) を参照する。
+
+共通基盤の変更ではルートの `npm run check`、`npm run lint`、`npm run format:check`、`npm test` を実行する。MCP に関わる変更では `plugins/artifact-workflow` の `check`、`lint`、`format:check` も実行する。
 
 保守するスクリプトは TypeScript（`.ts`）で書く。ルートと補助スクリプトは Node.js 22.19.0 以降で型除去して直接実行し、実行時 import は `.ts`、型のみの import は `import type` を使う。MCP はコンパイルして実行するため、相対 import に出力先の `.js` を指定する。
 

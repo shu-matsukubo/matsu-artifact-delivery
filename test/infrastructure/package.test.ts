@@ -106,7 +106,7 @@ await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映�
   ].map((name) => `${skillPath}/references/${name}`);
   const entryLinks = await localLinks(repository, `${skillPath}/SKILL.md`);
   for (const reference of references) assert.ok(entryLinks.includes(reference));
-  assert.ok(entryLinks.includes('AGENTS.md'));
+  assert.ok(entryLinks.includes('docs/git-workflow.md'));
   for (const reference of references) await localLinks(repository, reference);
   const [resume, selection, workspace, implementation, publish] = await Promise.all([
     read(join(repository, references[0]!)),
@@ -200,13 +200,11 @@ await test('DEV-U01: 単体の開発 Workflow が再開・環境準備・反映�
     ],
   });
   assert.match(publish, /`git add.*検証・レビュー済みの変更だけをステージ.*`git commit --no-gpg-sign -m/s);
-  const agents = await read(join(repository, 'AGENTS.md'));
-  const agentsLinks = await localLinks(repository, 'AGENTS.md');
-  for (const reference of ['workspace-setup.md', 'resume.md', 'publish-pr.md'])
-    assert.ok(agentsLinks.includes(`${skillPath}/references/${reference}`));
   assert.match(publish, /コミットでは `--no-gpg-sign`、Push では `--no-signed`/);
-  assert.match(publish, /AGENTS\.md#git-と-github-の操作/);
-  assert.match(agents, /git remote get-url --push --all <remote>.*URL が一件だけ.*対象リポジトリ/);
+  assert.match(publish, /Git と GitHub の操作.*docs\/git-workflow\.md/);
+  const gitSafety = await read(join(repository, 'docs/git-workflow.md'));
+  assert.match(gitSafety, /git remote get-url --push --all <remote>.*URL が一件.*対象リポジトリ/);
+  assert.match(gitSafety, /保護ブランチへの直接コミット・Push・マージ.*強制 Push.*削除.*既存変更を失わせる操作/s);
   assert.match(
     publish,
     /コミット後と再開時.*git diff <起点 SHA> HEAD.*検証・レビュー済みの差分と一致.*不一致なら Push せず/,
