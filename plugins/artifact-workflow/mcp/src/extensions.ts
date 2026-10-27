@@ -10,7 +10,7 @@ const idSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/);
 export const extensionSchema = z.strictObject({
   id: idSchema,
   name: text.max(200),
-  type: z.enum(['generation', 'review']),
+  type: z.enum(['artifact', 'generation', 'review']),
   target: text,
   applicability: text,
   summary: text.max(2_000),
@@ -19,12 +19,28 @@ export const extensionSchema = z.strictObject({
 });
 const storedEntrySchema = z.strictObject({
   ...extensionSchema.shape,
+  type: z.literal('artifact'),
   revision: z.uuid(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
+const legacyEntrySchema = z.strictObject({
+  ...extensionSchema.shape,
+  type: z.enum(['generation', 'review']),
+  revision: z.uuid(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+const parseEntry = (value: unknown) => {
+  const current = storedEntrySchema.safeParse(value);
+  if (current.success) return current.data;
+  const legacy = legacyEntrySchema.safeParse(value);
+  if (legacy.success) return { ...legacy.data, type: 'artifact' as const };
+  return storedEntrySchema.parse(value);
+};
 const documentSchema = z
-  .strictObject({ schemaVersion: z.literal(1), entries: z.array(storedEntrySchema) })
+  .strictObject({ schemaVersion: z.union([z.literal(1), z.literal(2)]), entries: z.array(z.unknown()) })
+  .transform(({ entries }) => ({ schemaVersion: 2 as const, entries: entries.map(parseEntry) }))
   .superRefine(({ entries }, ctx) => {
     const ids = new Set<string>();
     for (const entry of entries) {
@@ -38,7 +54,7 @@ export const storedExtensionSchema = storedEntrySchema;
 export const extensionSummarySchema = z.strictObject({
   id: idSchema,
   name: text.max(200),
-  type: z.enum(['generation', 'review']),
+  type: z.literal('artifact'),
   target: text,
   applicability: text,
   summary: text.max(2_000),
@@ -79,7 +95,7 @@ export class ExtensionStore {
       const parsed: unknown = JSON.parse(await readFile(this.filename, 'utf8'));
       return documentSchema.parse(parsed);
     } catch (error) {
-      if (systemErrorCode(error) === 'ENOENT') return { schemaVersion: 1 as const, entries: [] as Extension[] };
+      if (systemErrorCode(error) === 'ENOENT') return { schemaVersion: 2 as const, entries: [] as Extension[] };
       throw error instanceof StoreError
         ? error
         : new StoreError(
@@ -105,17 +121,16 @@ export class ExtensionStore {
     }
   }
 
-  async list(filters: { type?: 'generation' | 'review'; query?: string } = {}) {
+  async list(filters: { type?: 'artifact' | 'generation' | 'review'; query?: string } = {}) {
     const { entries } = await this.read();
     const query = filters.query?.trim().toLocaleLowerCase();
     return entries
       .filter(
         (item) =>
-          (!filters.type || item.type === filters.type) &&
-          (!query ||
-            [item.name, item.target, item.applicability, item.summary].some((value) =>
-              value.toLocaleLowerCase().includes(query),
-            )),
+          !query ||
+          [item.name, item.target, item.applicability, item.summary].some((value) =>
+            value.toLocaleLowerCase().includes(query),
+          ),
       )
       .map(({ id, name, type, target, applicability, summary, dependencies, revision, updatedAt }) => ({
         id,
@@ -135,22 +150,24 @@ export class ExtensionStore {
   }
 
   async create(input: unknown) {
-    const entry = extensionSchema.parse(input);
+    const parsed = extensionSchema.parse(input);
+    const entry = { ...parsed, type: 'artifact' as const };
     return this.locked(async () => {
       const document = await this.read();
       if (document.entries.some((item) => item.id === entry.id))
         throw new StoreError('SESSION_EXISTS', `Extension ID already exists: ${entry.id}`);
       const now = new Date().toISOString();
       const created = { ...entry, revision: randomUUID(), createdAt: now, updatedAt: now };
-      await this.write({ ...document, entries: [...document.entries, created] });
+      await this.write({ schemaVersion: 2, entries: [...document.entries, created] });
       return created;
     });
   }
 
   async update(id: string, expectedRevision: string, input: unknown) {
-    const entry = extensionSchema.parse({ ...(input as object), id });
+    const parsed = extensionSchema.parse({ ...(input as object), id });
     if ((input as { id?: unknown } | null)?.id !== id)
       throw new StoreError('INVALID_DATA', 'Extension ID in the update body must match the requested ID.');
+    const entry = { ...parsed, type: 'artifact' as const };
     return this.locked(async () => {
       const document = await this.read();
       const index = document.entries.findIndex((item) => item.id === id);
@@ -165,7 +182,7 @@ export class ExtensionStore {
       };
       const entries = [...document.entries];
       entries[index] = updated;
-      await this.write({ ...document, entries });
+      await this.write({ schemaVersion: 2, entries });
       return updated;
     });
   }
@@ -176,7 +193,7 @@ export class ExtensionStore {
       const entry = document.entries.find((item) => item.id === id);
       if (!entry) return false;
       if (entry.revision !== expectedRevision) throw new StoreError('REVISION_CONFLICT', 'Extension revision changed.');
-      await this.write({ ...document, entries: document.entries.filter((item) => item.id !== id) });
+      await this.write({ schemaVersion: 2, entries: document.entries.filter((item) => item.id !== id) });
       return true;
     });
   }

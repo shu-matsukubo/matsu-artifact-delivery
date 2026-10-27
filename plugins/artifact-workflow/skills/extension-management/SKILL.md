@@ -1,6 +1,6 @@
 ---
 name: extension-management
-description: 利用者の依頼に基づき、成果物生成・独立レビューで再利用する指示を登録・検索・参照・更新・削除する。
+description: 指示の登録・更新・一覧依頼、または会話内容を今後にも適用したい意向が明確な場合に、成果物単位の共通方針を提案・管理する。
 compatibility: Windows x64、同梱の artifact-task-memory MCP が必要。
 ---
 
@@ -8,11 +8,12 @@ compatibility: Windows x64、同梱の artifact-task-memory MCP が必要。
 
 ## 概要
 
-利用者から登録管理を明示された場合に、生成・レビュー用の拡張指示を管理する。
+利用者が指示の登録・更新・一覧を求めた場合、または今回の会話内容を今後にも適用したい意向を明確に示した場合に、成果物単位の共通方針を管理する。
 
 ## 制約
 
-- 成果物の生成・レビュー依頼では起動しない。登録指示の実行条件は artifact-workflow の[実行境界](../artifact-workflow/references/execution-boundaries.md)に従う。
+- 通常の成果物依頼では起動しない。単独の管理 Skill として使い、計画・worker・reviewer・承認ゲートを起動しない。
+- `artifact-workflow` は利用者が明示的に選んだ場合だけ起動する。
 - 利用者の意図を保ち、要求にない手順・コマンド・品質基準を追加しない。
 
 ## フロー

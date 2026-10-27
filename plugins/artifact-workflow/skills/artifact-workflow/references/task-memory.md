@@ -27,7 +27,7 @@
 - 承認待ちを表す値は保存できない。承認根拠または省略指示・適用範囲を記録してから保存する。
 - 保存前、委任・生成・レビュー・検証の前に `get_plan` で最新計画を読む。保存失敗や欠落を成功とみなさず、合意内容が確認できて保存成功するまで作業を始めない。
 - 更新は変更理由と承認を確認し、最新計画を読み直して全体を書き戻す。`expectedRevision` は最新値を使い、配列のマージや部分更新はしない。未確定案で置換しない。
-- 計画は `request`, `scope`, `requirements`, `constraints`, `inputs`, `tasks`, `acceptanceCriteria`, `delivery`, `approval` を含む。必要な入力・制約・出力先を省略せず、進捗は計画から推測せず実物で確認する。task は `id`, `description`, `purpose`, `deliverable`, `acceptanceCriteria`, `dependsOn` を持つ。ID重複・計画外依存・循環を許さず、各タスクと全体に完了条件を1件以上記す。
+- 計画は `request`, `scope`, `requirements`, `constraints`, `inputs`, `tasks`, `acceptanceCriteria`, `delivery`, `approval` を含む。必要な入力・制約・出力先を省略せず、進捗は計画から推測せず実物で確認する。task は `id`, `description`, `purpose`, `deliverable`, `acceptanceCriteria`, `dependsOn`, `extensionPolicy` を持つ。`extensionPolicy` は固定本文・revision等を含む `selected`、AIが依頼から判断する `none`、一覧・取得できない `unavailable` を区別する。旧計画で項目が欠落すると `null` になり、成功した選定や該当なしと見なさず、計画を更新して状態を確定する。ID重複・計画外依存・循環を許さず、各タスクと全体に完了条件を1件以上記す。
 - `approval.mode` は `approved` または `waived` とし、`evidence` に承認根拠、または明示的な省略指示と適用範囲を記す。MCPはユーザー発言の真偽を照合しない。
 - `session: null` は未初期化/削除済み、`plan: null` は計画未保存を示す。未保存案や会話から推測した計画で作業しない。完了後の修正は新しいフローを開始し、終了済みフローを再開しない。
 

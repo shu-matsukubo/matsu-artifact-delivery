@@ -8,7 +8,7 @@ artifact-workflow の親は、ユーザーとの対話、既存ソースの調�
 
 親は[Reviewer Asset](../plugins/artifact-workflow/skills/artifact-review/assets/reviewer.md)に従って独立 Reviewer へ委任する。Reviewer は読み取り専用で確認し、編集、外部更新、再委任をしない。仕様対話、指摘の採否、計画修正、承認判断は親が担う。
 
-分解を終えた計画案は、ユーザーへの提示・承認前に原則1回、既存の `artifact-review` Skill と同じ独立 Reviewer subagent で確認する。仕様理解・タスク分解専用 agent や独立 Skill は追加しない。計画レビューは固定の工程別観点を用い、登録型レビュー拡張の0〜3件とは別枠にする。共通の5原則は[レビュー原則](../plugins/artifact-workflow/skills/artifact-review/references/review-principles.md)を再利用する。
+分解を終えた計画案は、ユーザーへの提示・承認前に原則1回、既存の `artifact-review` Skill と同じ独立 Reviewer subagent で確認する。仕様理解・タスク分解専用 agent や独立 Skill は追加しない。計画レビューは固定の工程別観点を用い、計画内の成果物タスクへ適用する共通方針とは別に扱う。共通の5原則は[レビュー原則](../plugins/artifact-workflow/skills/artifact-review/references/review-principles.md)を再利用する。
 
 流れは親による仕様具体化、タスク分解、Reviewer による計画レビュー、親からの最終タスク一覧提示とユーザー承認、生成、成果物レビューとする。計画レビューは承認や計画保存を代行しない。
 
@@ -67,7 +67,7 @@ Reviewer は元要求・確定回答を読み、関連ソースを独立に確�
 | 親の仕様具体化・計画作成 | `task-planning/references/task-planning.md` に対話、仕様確定、タスク分解を定義し、レビューに必要な入力を計画案とともに引き継げること。                                                                            |
 | 計画レビュー観点         | `artifact-review/references/task-plan-review.md` に固定4観点と計画固有の完了判断を置く。このファイルは今後の実装対象であり、今回は作成しない。                                                                    |
 | Reviewer の入出力・役割  | `artifact-review/SKILL.md`、`artifact-review/assets/reviewer.md`、`artifact-review/references/independent-review.md` を最小限拡張し、計画レビューと生成後成果物レビュー双方の契約、入力・返却、版照合を定義する。 |
-| 共通レビュー原則         | `artifact-review/references/review-principles.md` を再利用し、固定4観点を登録型レビュー拡張の0〜3件へ算入しない。                                                                                                 |
+| 共通レビュー原則         | `artifact-review/references/review-principles.md` を再利用し、計画レビューの固定4観点と成果物タスクに適用する共通方針を区別する。                                                                                                 |
 | 親の調停・承認           | `artifact-workflow/SKILL.md` と関連手順で、計画レビュー、指摘対応、最終タスク一覧の提示、既存承認フロー、承認後の保存・生成の順を定義する。                                                                       |
 | 状態・版と MCP           | 既存 task-memory 契約に従って初期化・`sessionId` 共有・承認後保存を行い、draft とレビュー記録は会話・引継ぎで保持する。新規 MCP schema・保存先・状態ファイルを加えない。                                          |
 | モデル                   | 既存モデル選定方針を適用し、実 schema、利用可能性、指定・既定フォールバック、要求値と実効値の区別を確認する。                                                                                                     |

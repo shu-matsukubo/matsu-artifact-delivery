@@ -49,3 +49,50 @@ await test('dependency findings become distinct Zod messages at the offending in
     );
   }
 });
+
+await test('plans distinguish selected common policies, no match, and lookup failure', () => {
+  const task = plan.tasks[0]!;
+  for (const selection of [
+    { status: 'none', reason: '対象成果物に一致する方針はない' },
+    { status: 'unavailable', reason: 'list_extensions の取得に失敗した' },
+    {
+      status: 'selected',
+      id: 'react-ui',
+      name: 'React画面実装',
+      revision: '22222222-2222-4222-8222-222222222222',
+      target: 'React画面',
+      applicability: 'React UIを実装するとき',
+      summary: '実装とレビューの共通方針',
+      instructions: 'コンポーネント境界を保つ',
+      dependencies: ['npm run lint'],
+      reason: '担当成果物と対象が一致する',
+    },
+  ]) {
+    assert.equal(planSchema.safeParse({ ...plan, tasks: [{ ...task, extensionPolicy: selection }] }).success, true);
+  }
+  const legacyTask = { ...task } as Record<string, unknown>;
+  delete legacyTask.extensionPolicy;
+  const legacy = planSchema.parse({ ...plan, tasks: [legacyTask] });
+  assert.equal(legacy.tasks[0]!.extensionPolicy, null);
+  const selected = {
+    status: 'selected',
+    id: 'react-ui',
+    name: 'React画面実装',
+    revision: '22222222-2222-4222-8222-222222222222',
+    target: 'React画面',
+    applicability: 'React UIを実装するとき',
+    summary: '実装とレビューの共通方針',
+    instructions: 'コンポーネント境界を保つ',
+    dependencies: ['npm run lint'],
+    reason: '担当成果物と対象が一致する',
+  };
+  assert.equal(
+    planSchema.safeParse({ ...plan, tasks: [{ ...task, extensionPolicy: [selected, selected] }] }).success,
+    false,
+  );
+  const { revision: _revision, ...withoutRevision } = selected;
+  assert.equal(
+    planSchema.safeParse({ ...plan, tasks: [{ ...task, extensionPolicy: withoutRevision }] }).success,
+    false,
+  );
+});
