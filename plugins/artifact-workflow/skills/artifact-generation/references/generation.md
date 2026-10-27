@@ -1,6 +1,6 @@
 # 生成委任と作業
 
-親は承認済み計画から作業タスクを割り当て、標準 subagent の `spawn_agent` で `artifact-worker` を起動する。承認・更新権限は [approval.md](../../artifact-workflow/references/approval.md)、[task-memory.md](../../artifact-workflow/references/task-memory.md) を正本とする。
+親は承認済み計画から作業タスクを割り当て、[Worker の役割](../assets/worker.md)と[共通のモデル選定・起動方針](../../artifact-workflow/references/model-selection.md)に従って標準 subagent の `spawn_agent` で `artifact-worker` を起動する。承認・更新権限は [approval.md](../../artifact-workflow/references/approval.md)、[task-memory.md](../../artifact-workflow/references/task-memory.md) を正本とする。
 
 ## 委任前
 

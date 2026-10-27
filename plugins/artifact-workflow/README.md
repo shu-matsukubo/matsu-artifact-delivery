@@ -40,7 +40,7 @@ codex plugin marketplace upgrade matsu-artifact-delivery
 | [extension-management](skills/extension-management/SKILL.md)                                                       | 再利用する生成・レビュー指示の登録と管理         |
 | [MCP source](https://github.com/shu-matsukubo/matsu-artifact-delivery/tree/main/plugins/artifact-workflow/mcp/src) | MCP の保守用 TypeScript 実装                     |
 
-生成 worker と reviewer には役割別の Asset を使います。subagent は親のモデル、推論設定、利用可能なツールを継承するため、親がタスク全体に適した設定を選びます。reviewer には読み取り専用の手順を指示しますが、これは実行環境の権限を変更しません。親が全 subagent の実行を管理します。
+生成 worker と reviewer には役割別の Asset を使います。親は各起動時にタスクと役割に応じたモデル・推論設定を選び、利用環境の起動仕様に従います。reviewer には読み取り専用の手順を指示しますが、これは実行環境の権限を変更しません。親が全 subagent の実行を管理します。
 
 MCP の依存 bundle、Windows x64 Node.js runtime、初回起動時に runtime をユーザーデータ領域へ展開するランチャーを同梱します。計画データは `PLUGIN_DATA/task-memory/`、登録拡張は計画回収から独立した `PLUGIN_DATA/extensions/` に保存されます。`PLUGIN_DATA` がない場合、拡張は OS のユーザー状態ディレクトリへ永続保存されます。
 
