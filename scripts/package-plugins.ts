@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Marketplace, PluginManifest } from './manifest-types.ts';
 
 export const repository = fileURLToPath(new URL('../', import.meta.url));
-const common = ['plugin.json', '.codex-plugin/plugin.json', 'README.md', 'LICENSE', 'skills'];
+const common = ['plugin.json', '.codex-plugin/plugin.json', 'README.md', 'README.ja.md', 'LICENSE', 'skills'];
 const runtime = [
   'mcp.json',
   '.mcp.json',

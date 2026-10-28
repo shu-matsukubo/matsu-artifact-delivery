@@ -1,31 +1,39 @@
+English | [日本語](README.ja.md)
+
 # matsu-artifact-delivery
 
-成果物の作成フローと、設計・セキュリティ・変更影響の相談を支援する Plugin 集です。Codex を主な実行環境とします。
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![artifact-workflow version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fshu-matsukubo%2Fmatsu-artifact-delivery%2Fmain%2Fplugins%2Fartifact-workflow%2Fplugin.json&query=%24.version&label=artifact-workflow)](plugins/artifact-workflow/plugin.json)
+[![expert-escalation version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fshu-matsukubo%2Fmatsu-artifact-delivery%2Fmain%2Fplugins%2Fexpert-escalation%2Fplugin.json&query=%24.version&label=expert-escalation)](plugins/expert-escalation/plugin.json)
+![Status: Development](https://img.shields.io/badge/status-development-yellow.svg)
+[![MCP: Windows x64 only](https://img.shields.io/badge/MCP-Windows%20x64%20only-lightgrey.svg)](plugins/artifact-workflow/README.md#mcp-runtime)
 
-## Plugin
+A collection of Codex plugins for artifact workflows and focused, read-only consultation on design, security, and change impact.
 
-| Plugin | 機能 |
-| --- | --- |
-| [artifact-workflow](plugins/artifact-workflow/README.md) | 作業を計画し、承認後に成果物を生成・レビュー・検証して引き渡す。 |
-| [expert-escalation](plugins/expert-escalation/README.md) | 親の明示依頼で、限定した論点を読み取り専用の相談役へ渡す。 |
+## Plugins
 
-## Codex で使う
+| Plugin                                                   | Purpose                                                                                                          | Documentation                                 |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| [artifact-workflow](plugins/artifact-workflow/README.md) | Plans work, then coordinates approval, artifact generation, independent review, and verification.                | [README](plugins/artifact-workflow/README.md) |
+| [expert-escalation](plugins/expert-escalation/README.md) | Routes explicitly requested questions to a read-only advisor while the original worker continues implementation. | [README](plugins/expert-escalation/README.md) |
 
-GitHub marketplace からインストールできます。Codex がリポジトリを取得します。
+## Install with Codex
+
+Add the GitHub marketplace; Codex fetches the repository. Install either or both plugins:
 
 ```sh
 codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery
 codex plugin add artifact-workflow@matsu-artifact-delivery
-# または
+# Or:
 codex plugin add expert-escalation@matsu-artifact-delivery
 ```
 
-`artifact-workflow` は Windows x64 向け MCP runtime を同梱しています。開発者向けのビルド・試験手順と公開 Plugins Directory への提出条件は[配布と更新](docs/distribution.md)を参照してください。
+`artifact-workflow` includes an MCP runtime for Windows x64. This platform requirement applies to that bundled MCP runtime; it does not apply to `expert-escalation`.
 
-## 開発資料
+## Development and distribution
 
-開発時の基本方針と資料の案内は [AGENTS.md](AGENTS.md) にあります。必要に応じて、[製造・レビュー観点](docs/manufacturing-review.md)、[テスト・検証観点](docs/testing-review.md)、[試験と差分 CI](docs/testing.md)を参照してください。
+See [AGENTS.md](AGENTS.md) for development guidance and [Distribution and updates](docs/distribution.md) for build, package, and public Plugins Directory submission details. Review [Manufacturing and review](docs/manufacturing-review.md), [Testing review](docs/testing-review.md), and [Tests and change-based CI](docs/testing.md) as needed.
 
-## ライセンス
+## License
 
-MIT License。条件は [LICENSE](LICENSE) を参照してください。
+The plugins are provided under the MIT License. See [LICENSE](LICENSE) for terms.

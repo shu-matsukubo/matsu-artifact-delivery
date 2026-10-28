@@ -1,65 +1,63 @@
+English | [日本語](README.ja.md)
+
 # expert-escalation
 
-設計・セキュリティ・変更影響などの具体的な阻害要因について、上位の相談役へ読み取り専用で助言・レビューを依頼する独立した Plugin です。実装や検証は元の担当が続けます。特定の Workflow や成果物形式に依存しません。
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fshu-matsukubo%2Fmatsu-artifact-delivery%2Fmain%2Fplugins%2Fexpert-escalation%2Fplugin.json&query=%24.version&label=version)](plugin.json)
+![Status: Development](https://img.shields.io/badge/status-development-yellow.svg)
 
-ユーザーまたは呼び出し元の親が明示的に指定した場合だけ利用します。本 Plugin 自体は累計の回数制限を持たず、明示依頼ごとに相談できます。呼び過ぎを防ぐ上限、再試行、実行枠、継続・停止の判断は呼び出し元の親が管理します。相談不能と作業全体の中断を分け、通常作業へ自動的には介入しません。
+A standalone plugin that routes explicitly requested questions about design, security, or change impact to a read-only advisor. The original worker continues implementation and verification. It has no cumulative call limit; the parent that requests advice manages budgets, retries, and whether work continues or stops.
 
-## 用意しているもの
+## Contents
 
-| 内容 | 正本 |
-| --- | --- |
-| 呼び出し手順と基本的な境界 | [SKILL.md](skills/expert-escalation/SKILL.md) |
-| 明示依頼で相談する論点の例 | [triggers.md](skills/expert-escalation/references/triggers.md) |
-| 原理原則、起動主体、呼び出し元との責務境界 | [principles.md](skills/expert-escalation/references/principles.md) |
-| 相談役の役割・入力・返却項目 | [advisor-contract.md](skills/expert-escalation/references/advisor-contract.md) |
-| 相談結果と親の対応判断のテンプレート | [escalation-result-template.md](skills/expert-escalation/assets/escalation-result-template.md) |
+| Topic                                  | Source                                                                                         |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Invocation steps and boundaries        | [SKILL.md](skills/expert-escalation/SKILL.md)                                                  |
+| Examples of questions to escalate      | [triggers.md](skills/expert-escalation/references/triggers.md)                                 |
+| Principles and caller responsibilities | [principles.md](skills/expert-escalation/references/principles.md)                             |
+| Advisor role, inputs, and response     | [advisor-contract.md](skills/expert-escalation/references/advisor-contract.md)                 |
+| Response and parent decision template  | [escalation-result-template.md](skills/expert-escalation/assets/escalation-result-template.md) |
 
-## 親・ワーカーからの利用
+## Use from a parent or worker
 
-例えば「`$expert-escalation` で、この設計案が必須条件を満たせるか相談してください」と依頼します。Codex は `allow_implicit_invocation: true` で一覧へ公開しますが、開始は description と Skill 本文の明示依頼に限ります。一覧掲載・読み込みだけでは起動しません。[公式の呼び出し設定](https://learn.chatgpt.com/docs/build-skills#optional-metadata)も参照してください。
+For example: “Use `$expert-escalation` to check whether this design meets the required conditions.” Start it only when the user or calling parent explicitly requests it. The Skill is listed by Codex with `allow_implicit_invocation: true`, but its description and instructions still require an explicit request. Listing or reading it does not start a consultation. See [the official invocation setting](https://learn.chatgpt.com/docs/build-skills#optional-metadata).
 
-親は利用可能な実際の Skill パスを読み、契約に従って1件を起動します。相談役の役割、入力、返却項目は[相談役の契約](skills/expert-escalation/references/advisor-contract.md)、起動主体・実行枠・失敗時の扱いは[原理原則](skills/expert-escalation/references/principles.md)に記載しています。`artifact-workflow` の発見手順と呼び出し方針は[発見・起動](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/plugins/artifact-workflow/skills/artifact-workflow/references/escalation.md#発見起動)を参照してください。
+The parent reads the installed Skill and starts one advisor according to its contract. See [the advisor contract](skills/expert-escalation/references/advisor-contract.md) for the role, inputs, and response, and [principles](skills/expert-escalation/references/principles.md) for caller responsibilities and handling unavailable advisors. The discovery and invocation policy for `artifact-workflow` is documented [here](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/plugins/artifact-workflow/skills/artifact-workflow/references/escalation.md#発見起動).
 
-## 共通規格と Codex 互換設定
+## Standards and Codex compatibility
 
-[Agent Plugins Specification](https://agent-plugins.org/specification) と [Agent Skills Specification](https://agentskills.io/specification)を共通部分の基準にしています。
+The [Agent Plugins Specification](https://agent-plugins.org/specification) and [Agent Skills Specification](https://agentskills.io/specification) define the shared format.
 
-| 場所 | 扱い |
-| --- | --- |
-| [plugin.json](plugin.json) | 共通の識別情報・リリースバージョンの正本。`$schema` で対象規格を宣言する。 |
-| `skills/expert-escalation/` | 共通の Skill 検出位置。手順・参照資料・テンプレートを同じ Skill 配下にまとめる。 |
-| [.codex-plugin/plugin.json](.codex-plugin/plugin.json) | plugin-creator が生成する Codex 互換用 manifest。共通 manifest の識別情報に Codex の Skill 位置・表示情報を加える。Plugin の `interface.displayName` は Skill の `display_name` から生成する。 |
-| [skills/expert-escalation/agents/openai.yaml](skills/expert-escalation/agents/openai.yaml) | Codex 向けの表示情報と `allow_implicit_invocation: true`。Plugin の表示名の正本とし、相談の開始条件は Skill の description と本文で管理する。 |
+| Path                                                                                       | Purpose                                                                                                                      |
+| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| [plugin.json](plugin.json)                                                                 | Canonical shared metadata and release version, including the target schema                                                   |
+| `skills/expert-escalation/`                                                                | Shared Skill location for instructions and references                                                                        |
+| [.codex-plugin/plugin.json](.codex-plugin/plugin.json)                                     | Generated Codex-compatible manifest with Skill location and display information                                              |
+| [skills/expert-escalation/agents/openai.yaml](skills/expert-escalation/agents/openai.yaml) | Codex display information and `allow_implicit_invocation: true`; the Skill description and body set the invocation condition |
 
-`.codex-plugin/plugin.json` と Skill の `agents/openai.yaml` は、Codex の既存の読み込み位置を維持する互換性上の例外です。共通規格のコンポーネントを増やす独自の検出方式ではなく、Codex 固有の設定として扱います。[Plugin パッケージ](https://developers.openai.com/plugins/build/plugins)と[Skill の optional metadata](https://learn.chatgpt.com/docs/build-skills#optional-metadata)を参照してください。manifest の共通フィールドは root を正本とし、変更時はリポジトリルートの `npm run sync:manifests` で互換 manifest を同期します。
+`.codex-plugin/plugin.json` and `agents/openai.yaml` preserve Codex's existing loading locations. They are Codex-specific compatibility settings, not custom discovery mechanisms in the shared specification. See [Plugin packaging](https://developers.openai.com/plugins/build/plugins) and [optional Skill metadata](https://learn.chatgpt.com/docs/build-skills#optional-metadata). The root `plugin.json` is authoritative for shared fields; after changes, run `npm run sync:manifests` from the repository root to update the compatibility manifest.
 
-Custom Agent、モデル選択、sandbox、同時起動枠の管理は Agent Plugins の共通仕様に含まれません。相談時のモデル・推論強度は最上位の親が実際の client/API で利用可能と確認した候補から選び、指定できない場合は client/親の既定へ戻します。他の client では同等の役割と親による明示呼び出しの経路を用意してください。
+Custom Agents, model selection, sandbox, and concurrency settings are not part of the shared Agent Plugins specification. The top-level parent selects a model and reasoning level available in the active client or API. If unavailable, use that client's or parent's defaults. Other clients should provide an equivalent advisor role and explicit invocation path.
 
-## Codex への登録
+## Install and update with Codex
 
-GitHub marketplace からインストールできます。Codex がリポジトリを取得します。
+Codex fetches the repository from the GitHub marketplace:
 
 ```sh
 codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery
 codex plugin add expert-escalation@matsu-artifact-delivery
 ```
 
-開発時のビルド・パッケージ検証は[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md)を参照してください。
+Install the marketplace plugin in Codex and start a new task. See [Distribution and updates](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md) for development builds and package checks.
 
-Codex アプリでこのマーケットプレイスの `expert-escalation` をインストールし、新しいタスクを開始します。
-
-Plugin を新しい版へ更新したら、marketplace を更新してインストール済みファイルを反映します。
+To update installed files, upgrade the marketplace:
 
 ```sh
 codex plugin marketplace upgrade matsu-artifact-delivery
 ```
 
-更新後は Codex を再起動し、新しいタスクを開始してください。起動時の設定エラーは[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md#更新後の起動確認)を参照してください。
+Restart Codex and start a new task after updating. See [Distribution and updates](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md#更新後の起動確認) for startup configuration errors.
 
-## ライセンス
+## License
 
-本 Plugin のソースコード・設定・ドキュメントは [MIT License](LICENSE) で公開しています。
-
-Copyright (c) 2026 松久保 愁
-
-再配布時は、著作権表示とライセンス本文を記載した同梱の `LICENSE` を含めてください。
+The plugin's source, configuration, and documentation are provided under the [MIT License](LICENSE). Redistribution must include the bundled `LICENSE`, with its copyright notice and license text.

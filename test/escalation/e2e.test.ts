@@ -9,6 +9,7 @@ await test('EX-E01: standalone package discovers the Skill, its advisor and all 
   assert.deepEqual(await readdir(join(plugin.root, '..')), ['expert-escalation']);
   assert.equal(plugin.codex.mcpServers, undefined);
   await localLinks(plugin.root, 'README.md');
+  await localLinks(plugin.root, 'README.ja.md');
   const skill = plugin.skills.get('expert-escalation')!;
   assert.equal(skill.settings.policy.allow_implicit_invocation, true);
   assert.equal(plugin.codex.interface.displayName, '相談役への相談');

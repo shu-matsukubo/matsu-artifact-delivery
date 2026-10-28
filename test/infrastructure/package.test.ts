@@ -53,15 +53,26 @@ await test('PKG-U02: project Codex settings stay outside packages; prompt roles 
   }
 });
 
-await test('PKG-U03: Plugin documentation resolves local links and explains reviewer permissions', async () => {
+await test('PKG-U03: Plugin documentation resolves local links and explains reviewer permissions', async (t) => {
   for (const path of [
     'AGENTS.md',
     'README.md',
+    'README.ja.md',
     ...(await readdir(join(repository, 'docs'))).filter((path) => path.endsWith('.md')).map((path) => `docs/${path}`),
     'plugins/artifact-workflow/README.md',
+    'plugins/artifact-workflow/README.ja.md',
     'plugins/expert-escalation/README.md',
+    'plugins/expert-escalation/README.ja.md',
   ])
     await localLinks(repository, path);
+
+  for (const name of ['artifact-workflow', 'expert-escalation']) {
+    const plugin = await stagePlugin(t, name);
+    const packagedFiles = await files(plugin.root);
+    assert.ok(packagedFiles.includes('README.ja.md'), `${name} package must include the Japanese README`);
+    await localLinks(plugin.root, 'README.md');
+    await localLinks(plugin.root, 'README.ja.md');
+  }
 
   for (const path of await files(join(repository, '.agents/skills'))) {
     if (!path.endsWith('.md')) continue;
@@ -74,7 +85,9 @@ await test('PKG-U03: Plugin documentation resolves local links and explains revi
   }
 
   const workflowReadme = await read(join(repository, 'plugins/artifact-workflow/README.md'));
-  assert.ok(workflowReadme.includes('これは実行環境の権限を変更しません'));
+  assert.ok(
+    workflowReadme.includes('Reviewer instructions request read-only work but do not change runtime permissions'),
+  );
 });
 
 await test('PKG-U04: all contract IDs and runnable suites appear in the test inventory', async () => {

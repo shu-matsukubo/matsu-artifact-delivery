@@ -12,6 +12,7 @@ await test('WF-E01: workflow entry and each Skill own their document graph and r
   assert.deepEqual([...plugin.skills.keys()].sort(), [...workflowSkills, 'extension-management'].sort());
   assert.deepEqual([...plugin.agents.keys()], []);
   await localLinks(plugin.root, 'README.md');
+  await localLinks(plugin.root, 'README.ja.md');
   assert.ok(!(await readdir(plugin.root)).includes('node_modules'));
 
   const markdownFiles = (await files(join(plugin.root, 'skills'))).filter((path) => path.endsWith('.md'));

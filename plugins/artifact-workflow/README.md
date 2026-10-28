@@ -1,63 +1,66 @@
+English | [日本語](README.ja.md)
+
 # artifact-workflow
 
-成果物の範囲を計画・承認し、生成、独立レビュー、完了条件の検証を調停する Plugin です。完成品と検証結果を提示し、必要な引き渡し情報を親へ返します。
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fshu-matsukubo%2Fmatsu-artifact-delivery%2Fmain%2Fplugins%2Fartifact-workflow%2Fplugin.json&query=%24.version&label=version)](plugin.json)
+![Status: Development](https://img.shields.io/badge/status-development-yellow.svg)
+[![MCP: Windows x64 only](https://img.shields.io/badge/MCP-Windows%20x64%20only-lightgrey.svg)](#mcp-runtime)
 
-`artifact-workflow` は標準 subagent を使い、worker と reviewer の役割指示を Plugin 内の Skill にまとめています。対応環境は Windows x64 です。
+Plans work, presents it for approval, then coordinates artifact generation, independent review, and completion checks. It presents the finished artifact and verification results to the parent.
 
-## インストール
+## Install
 
 ```sh
 codex plugin marketplace add shu-matsukubo/matsu-artifact-delivery
 codex plugin add artifact-workflow@matsu-artifact-delivery
 ```
 
-Plugin をインストールしたら、新しいタスクを開き、Codex の `$` メニューまたは Skill セレクターで「成果物生成ワークフロー」を選択してから、依頼を入力します。たとえば「新入社員向けの案内文を Markdown で1ページ作成してください。」のように入力します。依頼文に `artifact-workflow` や `$artifact-workflow` と書くことと、メニューで Skill を選択することは別の操作です。対象 Skill を明示的に使うには、メニューから選択してください。
+After installation, start a new task and select **成果物生成ワークフロー** in Codex's `$` menu or Skill selector before entering your request. For example: “Create a one-page Markdown welcome guide for new employees.” Mentioning `artifact-workflow` or `$artifact-workflow` in a prompt is separate from selecting the Skill in the menu.
 
-CLI / IDE では `/skills` または `$` から選択できます。App Server では `skills/list` が返す正式な `name` と `path` を使い、`turn/start` の `skill` input として指定します。詳細は[実モデル受け入れ手順](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/model-acceptance.md#app-server-を使う再現手順)を参照してください。
+In CLI / IDE, select it from `/skills` or `$`. In App Server, use the formal `name` and `path` returned by `skills/list` as the `skill` input to `turn/start`. See [the reproducible App Server procedure](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/model-acceptance.md#app-server-を使う再現手順).
 
-選択後は親が計画を提示し、承認後に作業を進めます。
-
-更新する場合は、marketplace を更新してインストール済みファイルを反映します。
+The parent presents the plan and proceeds after approval. To update the installed files, upgrade the marketplace:
 
 ```sh
 codex plugin marketplace upgrade matsu-artifact-delivery
 ```
 
-更新後は Codex を再起動し、新しいタスクを開始してください。起動時の設定エラーは[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md#更新後の起動確認)を参照してください。
+Restart Codex and start a new task after updating. See [Distribution and updates](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md#更新後の起動確認) for startup configuration errors.
 
-## Workflow の構成
+## Workflow contents
 
-| 場所                                                                                                               | 責務                                             |
-| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| [artifact-workflow](skills/artifact-workflow/SKILL.md)                                                             | 工程調停、承認、検証、引き渡し                   |
-| [task-planning](skills/task-planning/SKILL.md)                                                                     | 範囲、タスク分解、計画提示                       |
-| [artifact-generation](skills/artifact-generation/SKILL.md)                                                         | 生成原則、拡張、worker 委任、作成・修正・返却     |
-| [artifact-review](skills/artifact-review/SKILL.md)                                                                 | 独立レビュー、共通方針の遵守確認、指摘、再レビュー   |
-| [task-plan-template.md](skills/task-planning/assets/task-plan-template.md)                                           | ユーザーに提示するタスク計画                     |
-| [worker.md](skills/artifact-generation/assets/worker.md)                                                           | 成果物を作成・修正する worker の委任指示          |
-| [reviewer.md](skills/artifact-review/assets/reviewer.md)                                                           | 独立レビューを行う reviewer の委任指示            |
-| [mcp.json](mcp.json)                                                                                               | `artifact-task-memory` MCP の起動設定            |
-| [extension-management](skills/extension-management/SKILL.md)                                                       | 再利用する生成・レビュー指示の登録と管理         |
-| [MCP source](https://github.com/shu-matsukubo/matsu-artifact-delivery/tree/main/plugins/artifact-workflow/mcp/src) | MCP の保守用 TypeScript 実装                     |
+| Path                                                                                                               | Responsibility                                                          |
+| ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| [artifact-workflow](skills/artifact-workflow/SKILL.md)                                                             | Workflow coordination, approval, verification, and delivery             |
+| [task-planning](skills/task-planning/SKILL.md)                                                                     | Scope, task breakdown, and planning                                     |
+| [artifact-generation](skills/artifact-generation/SKILL.md)                                                         | Generation principles, worker delegation, creation, editing, and return |
+| [artifact-review](skills/artifact-review/SKILL.md)                                                                 | Independent review and follow-up                                        |
+| [task-plan-template.md](skills/task-planning/assets/task-plan-template.md)                                         | User-facing work plan                                                   |
+| [worker.md](skills/artifact-generation/assets/worker.md)                                                           | Instructions for artifact workers                                       |
+| [reviewer.md](skills/artifact-review/assets/reviewer.md)                                                           | Instructions for independent reviewers                                  |
+| [mcp.json](mcp.json)                                                                                               | Launch configuration for `artifact-task-memory` MCP                     |
+| [extension-management](skills/extension-management/SKILL.md)                                                       | Register and manage reusable artifact guidance                          |
+| [MCP source](https://github.com/shu-matsukubo/matsu-artifact-delivery/tree/main/plugins/artifact-workflow/mcp/src) | TypeScript implementation for MCP maintenance                           |
 
-生成 worker と reviewer には役割別の Asset を使います。親は各起動時にタスクと役割に応じたモデル・推論設定を選び、利用環境の起動仕様に従います。reviewer には読み取り専用の手順を指示しますが、これは実行環境の権限を変更しません。親が全 subagent の実行を管理します。
+The parent manages subagents and chooses models and reasoning settings for each task. Reviewer instructions request read-only work but do not change runtime permissions; see [reviewer guidance](skills/artifact-review/SKILL.md).
 
-MCP の依存 bundle、Windows x64 Node.js runtime、初回起動時に runtime をユーザーデータ領域へ展開するランチャーを同梱します。計画データは `PLUGIN_DATA/task-memory/`、登録拡張は計画回収から独立した `PLUGIN_DATA/extensions/` に保存されます。`PLUGIN_DATA` がない場合、拡張は OS のユーザー状態ディレクトリへ永続保存されます。
+## MCP runtime
 
-他の compatible client への移植では、その client の subagent 委任方法を別途確認してください。全 client で同一の委任動作は保証しません。
+This plugin bundles an MCP dependency bundle, a Node.js runtime for Windows x64, and a launcher that extracts the runtime to user data on first launch. The bundled MCP runtime is Windows x64 only; the plugin's Skills may be used in other compatible clients. Confirm that client's subagent delegation support separately; identical delegation behavior across clients is not guaranteed.
 
-## 拡張指示の登録
+Plan data is stored in `PLUGIN_DATA/task-memory/`. Registered extensions are stored separately in `PLUGIN_DATA/extensions/`; if `PLUGIN_DATA` is unavailable, extensions persist in the OS user state directory.
 
-「今後のReact画面実装にこの方針を適用して」のように、登録・更新や今後にも適用したい意向を明確に伝えます。`extension-management` Skill が成果物単位の共通方針を管理します。方針には対象、適用条件、概要、実装指示、関連する lint・型検査・実行コマンド・注意をまとめ、同じ内容を生成時の実装指示と独立レビュー時の遵守確認に使います。登録前に既存候補を調べ、差分への明示同意後に保存します。要求にないコマンドや品質基準は追加しません。
+## Register reusable guidance
 
-「登録済みの共通方針を一覧して」「ID `react-ui` の内容を見せて」「この方針の概要を変更して」「この名前の方針を削除して」のような管理依頼も行えます。名前が重複して対象を特定できない場合は ID を確認します。共通方針がない、またはタスクに適合する方針がない場合は、ユーザー依頼と共通原則で続行します。登録データは計画セッションから独立して保持されます。MCP は方針を保存・検索・取得するだけで、依存 Skill やコマンドを実行しません。
+State clearly when guidance should be registered or applied to future work, for example, “Apply this convention to future React UI implementations.” The `extension-management` Skill manages reusable artifact guidance. It records the scope, conditions, summary, implementation instructions, related lint/type-check/run commands, and cautions, then uses the same guidance during generation and independent review. It checks existing entries and asks for explicit consent to the proposed difference before saving. It does not add commands or quality bars that were not requested.
 
-会話の内容から今後にも適用できる共通方針を提案する場合、client が `extension-management` Skill を選び実行できることが前提です。Skill を自然言語から選ぶ方法や MCP が公開する操作は client により異なり、全会話を常時監視して候補を自動検出する仕組みではありません。Workflow 完了時の提案導線は [delivery.md](skills/artifact-workflow/references/delivery.md) に記載しています。
+You can also ask to list registered guidance, show an entry by ID, edit its summary, or delete it by name. If names are ambiguous, identify the entry by ID. If no relevant guidance exists, work continues from the request and shared principles. The MCP only stores, searches, and retrieves guidance; it does not execute Skills or commands. Proposals based on conversation context require the client to select and run `extension-management`; it does not monitor all conversations automatically. The completion suggestion is described in [delivery guidance](skills/artifact-workflow/references/delivery.md).
 
-## 開発と配布
+## Development and distribution
 
-MCP の型検査・試験・配布物の生成方法は[配布と更新](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md)を参照してください。共通基盤に影響する変更ではルートの品質チェックと試験も実行します。
+See [Distribution and updates](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/distribution.md) for MCP type checks, tests, and package generation. Changes to shared infrastructure also require the repository checks and tests.
 
-## ライセンス
+## License
 
-本 Plugin のソースコード・設定・ドキュメントは [MIT License](LICENSE) で公開しています。再配布時は同梱の `LICENSE` と `mcp/NODE_RUNTIME_LICENSES.txt`、`mcp/THIRD_PARTY_LICENSES.txt` を含めてください。
+The plugin's source, configuration, and documentation are licensed under the [MIT License](LICENSE). Redistribution must include `LICENSE`, `mcp/NODE_RUNTIME_LICENSES.txt`, and `mcp/THIRD_PARTY_LICENSES.txt`.
