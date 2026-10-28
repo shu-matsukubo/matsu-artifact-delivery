@@ -32,16 +32,19 @@ const cases: [string, string[]][] = [
   ['plugins/artifact-workflow/package.json', packageChecks],
   ['plugins/artifact-workflow/package-lock.json', packageChecks],
   ['plugins/artifact-workflow/README.md', workflow],
+  ['plugins/artifact-workflow/README.ja.md', workflow],
   ['plugins/artifact-workflow/LICENSE', workflow],
   ['plugins/expert-escalation/skills/expert-escalation/SKILL.md', escalation],
   ['plugins/expert-escalation/skills/expert-escalation/references/advisor-contract.md', escalation],
   ['plugins/expert-escalation/plugin.json', escalation],
   ['plugins/expert-escalation/.codex-plugin/plugin.json', escalation],
   ['plugins/expert-escalation/README.md', escalation],
+  ['plugins/expert-escalation/README.ja.md', escalation],
   ['plugins/expert-escalation/LICENSE', escalation],
   ['test/escalation/unit.test.ts', escalation],
   ['test/integration/consultation.test.ts', ['integration']],
   ['README.md', ['infrastructure']],
+  ['README.ja.md', ['infrastructure']],
   ['docs/testing.md', ['infrastructure']],
   ['plugins/artifact-workflow/skills/task-planning/SKILL.md', workflow],
   ['plugins/artifact-workflow/skills/artifact-review/SKILL.md', workflow],
@@ -88,7 +91,7 @@ await test('CI-U02: shared, unknown, malformed and empty changes fail open to al
 
 await test('CI-U03: combined changes union dependencies; outputs contain only known names', () => {
   assert.deepEqual(selectTests([cases[0]![0], cases[6]![0]]).selected, packageChecks);
-  assert.deepEqual(selectTests([cases[0]![0], cases[22]![0]]).selected, ['workflow', 'escalation', 'integration']);
+  assert.deepEqual(selectTests([cases[0]![0], cases[28]![0]]).selected, ['workflow', 'escalation', 'integration']);
   assert.deepEqual(selectTests([cases[0]![0], cases[0]![0]]).selected, workflow);
   assert.equal(
     formatOutputs(selectTests([cases[0]![0]])),
@@ -161,15 +164,15 @@ await test('CI-U05: PR uses merge-base and excludes changes made only on the bas
 
 await test('CI-U06: push includes deleted paths and both sides of cross-component renames', async (t) => {
   const fixture = await gitFixture(t);
-  await mkdir(dirname(join(fixture.cwd, cases[22]![0])), { recursive: true });
-  await rename(join(fixture.cwd, cases[0]![0]), join(fixture.cwd, cases[22]![0]));
+  await mkdir(dirname(join(fixture.cwd, cases[28]![0])), { recursive: true });
+  await rename(join(fixture.cwd, cases[0]![0]), join(fixture.cwd, cases[28]![0]));
   const renamed = fixture.commit();
   assert.deepEqual(selectEvent('push', { before: fixture.base, after: renamed }, fixture.cwd).selected, [
     'workflow',
     'escalation',
     'integration',
   ]);
-  await unlink(join(fixture.cwd, cases[22]![0]));
+  await unlink(join(fixture.cwd, cases[28]![0]));
   const deleted = fixture.commit();
   assert.deepEqual(selectEvent('push', { before: renamed, after: deleted }, fixture.cwd).selected, escalation);
   assert.deepEqual(selectEvent('push', { before: deleted, after: deleted }, fixture.cwd).selected, suites);

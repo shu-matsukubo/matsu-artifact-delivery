@@ -46,9 +46,9 @@ export function selectTests(files: unknown): Selection {
       affected = workflowPackage;
     else if (/^plugins\/artifact-workflow\/(tsconfig\.json|\.oxlintrc\.json|\.prettierrc\.json)$/.test(file))
       affected = ['mcp'];
-    else if (/^plugins\/artifact-workflow\/(README\.md|LICENSE)$/.test(file)) affected = workflow;
+    else if (/^plugins\/artifact-workflow\/(README(\.ja)?\.md|LICENSE)$/.test(file)) affected = workflow;
     else if (
-      /^plugins\/expert-escalation\/(skills\/|com\.openai\/agents\/|plugin\.json$|\.codex-plugin\/plugin\.json$|README\.md$|LICENSE$)/.test(
+      /^plugins\/expert-escalation\/(skills\/|com\.openai\/agents\/|plugin\.json$|\.codex-plugin\/plugin\.json$|README(\.ja)?\.md$|LICENSE$)/.test(
         file,
       )
     )
@@ -56,7 +56,8 @@ export function selectTests(files: unknown): Selection {
     else if (/^test\/workflow\//.test(file)) affected = workflow;
     else if (/^test\/escalation\//.test(file)) affected = escalation;
     else if (/^test\/integration\//.test(file)) affected = ['integration'];
-    else if (file === 'README.md' || file === 'docs/testing.md') affected = ['infrastructure'];
+    else if (file === 'README.md' || file === 'README.ja.md' || file === 'docs/testing.md')
+      affected = ['infrastructure'];
     else return allTests(`Shared or unclassified path: ${file}`);
     affected.forEach((suite) => selected.add(suite));
   }
