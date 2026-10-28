@@ -17,6 +17,6 @@ compatibility: artifact-workflow Skill と併用する。
 
 ## フロー
 
-1. **生成範囲の決定・タスク分解**：[タスク分解方針](references/task-planning.md)を使う。
+1. **方針確認・生成範囲の決定・タスク分解**：計画提示前に登録方針を確認・固定し、[タスク分解方針](references/task-planning.md)に従って成果物を分解する。
 2. **計画の作成・提示**：[task-plan-template.md](assets/task-plan-template.md)を使い、記入案内を除いてユーザーへ提示する。
 3. **artifact-workflow へ返却**：計画を親へ返す。親が [承認](../artifact-workflow/references/approval.md) と [保存](../artifact-workflow/references/task-memory.md) を行う。
