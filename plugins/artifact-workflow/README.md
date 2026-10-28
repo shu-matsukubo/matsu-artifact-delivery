@@ -20,7 +20,7 @@ After installation, start a new task and select **成果物生成ワークフロ
 
 In CLI / IDE, select it from `/skills` or `$`. In App Server, use the formal `name` and `path` returned by `skills/list` as the `skill` input to `turn/start`. See [the reproducible App Server procedure](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/model-acceptance.md#app-server-を使う再現手順).
 
-The parent presents the plan and proceeds after approval. To update the installed files, upgrade the marketplace:
+The parent should distinguish a request to create an artifact from approval of the presented plan, and should proceed only after explicit approval of that plan. Execution order also depends on higher-priority client instructions and capabilities, so this Skill cannot guarantee a pause when the client does not permit one. If you need approval to be awaited, explicitly ask the parent to present the plan and wait for your approval before saving it, delegating, or generating the artifact. To update the installed files, upgrade the marketplace:
 
 ```sh
 codex plugin marketplace upgrade matsu-artifact-delivery

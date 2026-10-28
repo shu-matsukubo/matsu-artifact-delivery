@@ -43,6 +43,24 @@
 
 この版では `ThreadStartParams` に thread の `model` と `permissions` を指定し、隔離 home の `config.toml` に `model_reasoning_effort = "xhigh"` を設定した。`ThreadStartResponse.activePermissionProfile.id` が `:workspace` であることを確認する。`sandbox` は legacy compatibility field なので profile provenance の判定には使わない。JSON-RPC の response と notification を取り違えず、`thread/start` response 全体は安全な一時証跡として保存するか、保存しない場合は取得した有効値だけの要約であると明記する。
 
+## 計画承認ゲートの確認
+
+通常依頼だけの場合と、依頼文で明示的に承認待ちを求めた場合を、同じ候補・client 設定・作業条件を使う別スレッドで比較する。両ケースで Workflow を `turn/start` の正式な `skill` input として選び、対象 Skill 本文の読込 event を記録する。
+
+通常依頼の入力例：
+
+> この作業フォルダーに sales-note.md を作成してください。Markdownでタイトル「売上メモ」、入力値の箇条書き（A: 3、B: 5）、合計8を記載してください。入力以外の数値は追加しないでください。外部公開は不要です。
+
+明示的な待機依頼の入力例：
+
+> この作業フォルダーに sales-note.md を作成してください。Markdownでタイトル「売上メモ」、入力値の箇条書き（A: 3、B: 5）、合計8を記載してください。入力以外の数値は追加しないでください。外部公開は不要です。最初に計画を提示し、私の承認を待ってください。承認前に計画を保存したり、担当へ委任したり、ファイルを作成したりしないでください。
+
+各ケースで、`initialize_session` / `get_plan`、`save_plan` の request と応答、worker 起動の request と `item/started` event、作業 directory の試験前後を照合する。通常依頼のケースでは、計画提示前やユーザーの計画承認前に `save_plan`・worker 起動・ファイル作成がないかを確認する。結果がどうであっても観測した動作を記録し、依頼した動作へ後から誘導して事前の順序を上書きしない。
+
+明示待機のケースでは、最初の turn が計画を提示した状態で完了または停止し、承認入力前に `save_plan`・worker 起動・ファイル作成がないことを確認してから、同じ thread に「この計画で進めてください」などの明示的な承認を別入力として送る。以降は保存成功、承認済み計画を受けた worker 起動、生成物の有無と内容を時系列で確認する。保存した `approval.evidence` が、この承認発言と直前に提示された計画を対応づけ、最初の作成依頼を承認根拠にしていないことも確かめる。結果記録には両 turn の ID と、承認前後における上記 event の有無・順序を含める。
+
+Skill の文章だけでは、クライアントの上位指示や実行機能が承認待ちを許さない状況を制御できない。実際の条件で承認前に保存・委任・生成が起きた場合は、プロンプトの改善で解消したことにせず、該当 client・設定・発生条件と観測結果を記録し、承認待ちが保証できない環境として扱う。
+
 ## 任意相談の確認
 
 対象は Reviewer → 親 → Advisor → Worker → Reviewer の責務分担と、親が行う相談の発見・読込・起動・返却の限定動作である。成果物生成フロー全体の成功と混同しない。

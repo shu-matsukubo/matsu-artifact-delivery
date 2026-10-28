@@ -14,7 +14,7 @@ A collection of Codex plugins for artifact workflows and focused, read-only cons
 
 | Plugin                                                   | Purpose                                                                                                          | Documentation                                 |
 | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| [artifact-workflow](plugins/artifact-workflow/README.md) | Plans work, then coordinates approval, artifact generation, independent review, and verification.                | [README](plugins/artifact-workflow/README.md) |
+| [artifact-workflow](plugins/artifact-workflow/README.md) | Presents a plan for explicit approval before coordinating artifact generation, independent review, and verification. | [README](plugins/artifact-workflow/README.md) |
 | [expert-escalation](plugins/expert-escalation/README.md) | Routes explicitly requested questions to a read-only advisor while the original worker continues implementation. | [README](plugins/expert-escalation/README.md) |
 
 ## Install with Codex

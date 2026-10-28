@@ -20,7 +20,7 @@ codex plugin add artifact-workflow@matsu-artifact-delivery
 
 CLI / IDE では `/skills` または `$` から選択できます。App Server では `skills/list` が返す正式な `name` と `path` を、`turn/start` の `skill` input に指定します。詳細は[App Server の再現手順](https://github.com/shu-matsukubo/matsu-artifact-delivery/blob/main/docs/model-acceptance.md#app-server-を使う再現手順)を参照してください。
 
-親が計画を提示し、承認後に作業を進めます。インストール済みファイルを更新するには marketplace を更新します。
+通常の作成依頼は計画への承認として扱いません。親が計画を提示し、同じ計画への明示的な承認を得た後に作業を進めます。実行順序はクライアントの上位指示や機能にも依存するため、承認待ちを制御できない環境では保証されません。承認待ちを求める場合は、たとえば「成果物を作成してください。まず計画を提示し、私の承認を得るまで計画の保存・委任・生成を開始しないでください」と依頼に加えられます。これはクライアントの上位指示や機能を上書きするものではありません。インストール済みファイルを更新するには marketplace を更新します。
 
 ```sh
 codex plugin marketplace upgrade matsu-artifact-delivery
