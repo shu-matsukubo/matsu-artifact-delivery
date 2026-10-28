@@ -14,7 +14,7 @@
 
 | Plugin                                                      | 概要                                                                                     | 説明                                             |
 | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| [artifact-workflow](plugins/artifact-workflow/README.ja.md) | 作業を計画し、承認後に成果物の生成・独立レビュー・検証を調整します。                     | [README](plugins/artifact-workflow/README.ja.md) |
+| [artifact-workflow](plugins/artifact-workflow/README.ja.md) | 計画を提示して承認を得た後に成果物の生成・独立レビュー・検証を調整します。通常の作成依頼は計画への承認ではありません。 | [README](plugins/artifact-workflow/README.ja.md) |
 | [expert-escalation](plugins/expert-escalation/README.ja.md) | 明示依頼された論点を読み取り専用の相談役へ渡し、元の担当が作業を続けられるようにします。 | [README](plugins/expert-escalation/README.ja.md) |
 
 ## Codex へのインストール
