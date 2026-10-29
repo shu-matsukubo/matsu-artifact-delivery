@@ -42,12 +42,19 @@ export async function validateSkill(input: string): Promise<string[]> {
   }
 
   const body = source.slice(frontmatter[0].length);
+  if (!/^# [^\n]+$/m.test(body)) errors.push('Skill のタイトル（第1見出し）がない');
   const sections = [...body.matchAll(/^##[ \t]+(.+?)\s*$/gm)].map((match) => match[1]!.trim());
   for (const section of sections) {
     if (!allowedSections.has(section)) errors.push(`SKILL.md に対象外の第2見出しがある: ${section}`);
   }
   if (!sections.includes('概要')) errors.push('「## 概要」がない');
   if (!sections.includes('フロー')) errors.push('「## フロー」がない');
+  const overviewIndex = sections.indexOf('概要');
+  const constraintIndex = sections.findIndex((section) => constraintSections.includes(section));
+  const flowIndex = sections.indexOf('フロー');
+  if (overviewIndex >= 0 && constraintIndex >= 0 && flowIndex >= 0 &&
+      !(overviewIndex < constraintIndex && constraintIndex < flowIndex))
+    errors.push('セクションの順序は 概要 → 制約と責務範囲 → フロー とする');
   if (constraintSections.filter((section) => sections.includes(section)).length !== 1)
     errors.push('制約・責務範囲の第2見出しは一つだけにする');
   for (const section of new Set(sections)) {
