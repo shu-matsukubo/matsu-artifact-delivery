@@ -172,7 +172,7 @@ npm run ci:select -- --all
 | DEV-U04                                             | 再開時の HEAD・リモート先端・作業差分の照合、既存 HEAD と未反映修正の反映、既存 PR の引き継ぎ                  | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | DEV-U05                                             | 既存 PR の対象・Open 状態を再開・反映前後に確認し、不一致・Close・merge 時の反映と PR 再作成を停止             | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | DEV-U06                                             | 仕様明確化ゲート、変更入口・委譲、単独レビュー、Issue 選定                                                     | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
-| DEV-U07 / DEV-U08 | Skill 作成・修正とレビューの共通規約連携、構造検証の正常系・異常系 | [Skill 規約試験](../test/infrastructure/skill-authoring.test.ts) |
+| DEV-U07 / DEV-U08                                   | Skill 作成・修正とレビューの共通規約連携、構造検証の正常系・異常系                                             | [Skill 規約試験](../test/infrastructure/skill-authoring.test.ts)                          |
 
 ### 既存 MCP の対応表
 

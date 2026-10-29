@@ -17,9 +17,7 @@ await test('DEV-U07: Skill 作成・修正とレビューが共通規約を使�
     assert.match(content, /\[Plugin Skill の作成・検証\]\(\.\.\/\.\.\/plugin-skill-authoring\/SKILL\.md\)を使/);
   }
 
-  const policy = await read(
-    join(repository, '.agents/skills/plugin-skill-authoring/references/design-policy.md'),
-  );
+  const policy = await read(join(repository, '.agents/skills/plugin-skill-authoring/references/design-policy.md'));
   for (const term of ['AGENTS.md', 'SKILL.md', 'references/', 'docs/', 'assets/', 'scripts/']) {
     assert.ok(policy.includes(term), `Missing policy for ${term}`);
   }

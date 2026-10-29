@@ -52,14 +52,17 @@ export async function validateSkill(input: string): Promise<string[]> {
   const overviewIndex = sections.indexOf('概要');
   const constraintIndex = sections.findIndex((section) => constraintSections.includes(section));
   const flowIndex = sections.indexOf('フロー');
-  if (overviewIndex >= 0 && constraintIndex >= 0 && flowIndex >= 0 &&
-      !(overviewIndex < constraintIndex && constraintIndex < flowIndex))
+  if (
+    overviewIndex >= 0 &&
+    constraintIndex >= 0 &&
+    flowIndex >= 0 &&
+    !(overviewIndex < constraintIndex && constraintIndex < flowIndex)
+  )
     errors.push('セクションの順序は 概要 → 制約と責務範囲 → フロー とする');
   if (constraintSections.filter((section) => sections.includes(section)).length !== 1)
     errors.push('制約・責務範囲の第2見出しは一つだけにする');
   for (const section of new Set(sections)) {
-    if (sections.filter((value) => value === section).length > 1)
-      errors.push(`第2見出しが重複している: ${section}`);
+    if (sections.filter((value) => value === section).length > 1) errors.push(`第2見出しが重複している: ${section}`);
   }
 
   for (const match of body.matchAll(/!?\[[^\]\n]*\]\(([^)\n]+)\)/g)) {
