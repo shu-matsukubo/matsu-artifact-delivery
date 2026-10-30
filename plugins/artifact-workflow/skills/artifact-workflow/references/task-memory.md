@@ -41,12 +41,12 @@
 
 - `collect_completed_sessions` は完了記録済み計画だけが対象。未完了、成果物本体、無関係ファイルを削除しない。
 - 初期化・保存・完了記録と共通のセッションロックを取得して内容を検証する。ID/ファイル名不一致、破損、未対応形式、通常ファイルでないもの、ロック中・読書きエラーは削除しない。
-- `cleanup.deleted` は件数、`cleanup.skipped` はファイル名と理由コード。ディレクトリ一覧取得失敗は `file: "."`。保存先がまだない場合は `{deleted: 0, skipped: []}`。正常な未完了セッションは保持し、見送りに含めない。
+- `cleanup.deleted` は回収件数、`cleanup.skipped` は回収しなかった項目と理由。正常な未完了セッションは保持する。
 - 古い未完了形式や完了未記録データは自動削除しない。履歴・TTL・他チャット復元を設けず、長期保存を保証しない。
 
-## 保存場所
+## 保存データ
 
-作業データや代替タスク管理ファイルをリポジトリ・Plugin ソース配下に作らない。既定は `PLUGIN_DATA/task-memory/`、直接起動時はOS一時領域の `matsu-artifact-workflow/task-memory/`。`ARTIFACT_WORKFLOW_DATA_DIR` は絶対パスでリポジトリ外を指定する。セッションJSONは `schemaVersion`, `sessionId`, `revision`, `createdAt`, `updatedAt`, `completedAt` を含む。`completedAt` は未完了なら `null`、完了記録時にMCPが設定する。旧データで欠落しても完了を推測しない。ファイル名は `sessionId` の SHA-256 名とし、大文字小文字や予約名の衝突を避ける。最大1 MiBで、成果物本体でなく参照先を保存する。
+作業データや代替タスク管理ファイルをリポジトリ・Plugin ソース配下に作らない。MCP が保存先、ファイル形式、サイズ上限、revision と完了時刻を管理する。保存ファイルを直接作成・編集せず公開ツールを使う。保存するのは計画と成果物への参照であり、成果物本体ではない。
 
 ## エラー
 

@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep, win32 } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { marked, type Token } from 'marked';
 import type { PathLike } from 'node:fs';
 import type { TestContext } from 'node:test';
 import type { Agent, Contract, Skill, SkillMetadata, SkillSettings } from './types.ts';
-import GithubSlugger from 'github-slugger';
+import { inside } from '../../scripts/markdown.ts';
+export { inside, localLinks, markdown, walkReferences } from '../../scripts/markdown.ts';
 import { parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
 import { packagePlugin } from '../../scripts/package-plugins.ts';
@@ -17,20 +17,6 @@ export const repository = fileURLToPath(new URL('../../', import.meta.url));
 export const pluginRoot = (name: string) => join(repository, 'plugins', name);
 export const read = (path: PathLike) => readFile(path, 'utf8');
 export const json = async <T = unknown>(path: PathLike): Promise<T> => JSON.parse(await read(path));
-
-export function inside(root: string, path: string) {
-  const result = resolve(root, path);
-  const difference = relative(root, result);
-  assert.ok(
-    !isAbsolute(path) &&
-      !win32.isAbsolute(path) &&
-      difference !== '..' &&
-      !difference.startsWith(`..${sep}`) &&
-      !isAbsolute(difference),
-    `Path escapes package: ${path}`,
-  );
-  return result;
-}
 
 export async function files(root: string): Promise<string[]> {
   const result: string[] = [];
@@ -97,55 +83,6 @@ export async function loadPlugin(root: string) {
     agents.set(agent.name, agent);
   }
   return { root, manifest, codex, skills, agents };
-}
-
-export function markdown(source: string) {
-  const tokens = marked.lexer(source);
-  const links: string[] = [];
-  const headings: string[] = [];
-  const slugger = new GithubSlugger();
-  const plain = (items: Token[]): string =>
-    items
-      .map((token) => ('tokens' in token && token.tokens ? plain(token.tokens) : 'text' in token ? token.text : ''))
-      .join('');
-  void marked.walkTokens(tokens, (token) => {
-    if (token.type === 'link' || token.type === 'image') links.push(token.href);
-    if (token.type === 'heading') headings.push(slugger.slug(plain(token.tokens ?? [])));
-  });
-  return { links, headings, tokens };
-}
-
-export async function localLinks(root: string, path: string) {
-  const { links } = markdown(await read(inside(root, path)));
-  const result = [];
-  for (const href of links) {
-    if (/^(https?:|mailto:)/i.test(href)) continue;
-    const [target = '', fragment] = href.split('#');
-    assert.ok(!target.startsWith('//') && !/^[a-z][a-z0-9+.-]*:/i.test(target), `Unsupported link: ${href}`);
-    const absolute = inside(root, target ? join(dirname(path), decodeURIComponent(target)) : path);
-    const info = await stat(absolute);
-    if (fragment) {
-      assert.ok(info.isFile(), `Anchor on directory: ${href}`);
-      assert.ok(
-        markdown(await read(absolute)).headings.includes(decodeURIComponent(fragment)),
-        `Broken anchor: ${path} -> ${href}`,
-      );
-    }
-    result.push(relative(root, absolute).split(sep).join('/'));
-  }
-  return result;
-}
-
-export async function walkReferences(root: string, start = 'SKILL.md') {
-  const visited = new Set<string>();
-  const pending = [start];
-  while (pending.length) {
-    const path = pending.pop()!;
-    if (visited.has(path)) continue;
-    visited.add(path);
-    if (path.endsWith('.md')) pending.push(...(await localLinks(root, path)));
-  }
-  return [...visited].sort();
 }
 
 export async function temporaryDirectory(t: TestContext) {

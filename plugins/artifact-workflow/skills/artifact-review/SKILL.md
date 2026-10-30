@@ -18,6 +18,6 @@ compatibility: artifact-workflow Skill と Codex のマルチエージェント�
 
 ## フロー
 
-1. **独立レビュー・指摘・再レビュー**：[独立レビュー方針](references/independent-review.md)と[reviewer 役割テンプレート](assets/reviewer.md)を使う。
-2. **共通観点の適用**：[レビュー原則](references/review-principles.md)を使う。
+1. **独立レビュー・指摘・再レビュー**：[独立レビュー方針](references/independent-review.md)に従い、[reviewer 役割テンプレート](assets/reviewer.md)を使う。
+2. **共通観点の適用**：[レビュー原則](references/review-principles.md)を適用する。
 3. **親への返却**：[独立レビュー方針](references/independent-review.md)に従う。

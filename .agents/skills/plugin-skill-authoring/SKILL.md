@@ -20,6 +20,6 @@ Plugin の Skill を作成・修正し、同じ設計方針で構造を検証す
 
 1. 対象 Skill と呼び出し元、既存の参照先を特定する。
 2. [Skill 設計の方針](references/design-policy.md)に従って、Skill の作成・修正または検証を行う。
-3. [構造検証スクリプト](scripts/validate-skill.ts)を実行し、メタデータ・構造・ローカルリンクを検証する。
+3. `npm run check:skills` を実行し、全 Skill のメタデータ・構造・参照グラフを検証する。単体の構造確認では[検証スクリプト](scripts/validate-skill.ts)を使う。
 4. 対象に関係する既存テストを実行し、機械的に判定できない責務境界・文意をレビューする。
 5. 変更範囲と検証結果、未確認事項を提示する。

@@ -1,10 +1,15 @@
 import { readFile, stat } from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { markdown, plainMarkdownText } from '../../../../scripts/markdown.ts';
 import { parse as parseYaml } from 'yaml';
 
 const allowedSections = new Set(['概要', '制約', '制約と責務範囲', '制約・責務範囲', 'フロー']);
 const constraintSections = ['制約', '制約と責務範囲', '制約・責務範囲'];
+
+function anchors(source: string) {
+  return new Set(markdown(source).headings);
+}
 
 export async function validateSkill(input: string): Promise<string[]> {
   const skillFile = resolve(input.endsWith('SKILL.md') ? input : resolve(input, 'SKILL.md'));
@@ -42,8 +47,15 @@ export async function validateSkill(input: string): Promise<string[]> {
   }
 
   const body = source.slice(frontmatter[0].length);
-  if (!/^# [^\n]+$/m.test(body)) errors.push('Skill のタイトル（第1見出し）がない');
-  const sections = [...body.matchAll(/^##[ \t]+(.+?)\s*$/gm)].map((match) => match[1]!.trim());
+  const parsed = markdown(body);
+  const sections: string[] = [];
+  let hasTitle = false;
+  for (const token of parsed.tokens) {
+    if (token.type !== 'heading') continue;
+    if (token.depth === 1) hasTitle = true;
+    if (token.depth === 2) sections.push(plainMarkdownText(token.tokens ?? []).trim());
+  }
+  if (!hasTitle) errors.push('Skill のタイトル（第1見出し）がない');
   for (const section of sections) {
     if (!allowedSections.has(section)) errors.push(`SKILL.md に対象外の第2見出しがある: ${section}`);
   }
@@ -65,19 +77,37 @@ export async function validateSkill(input: string): Promise<string[]> {
     if (sections.filter((value) => value === section).length > 1) errors.push(`第2見出しが重複している: ${section}`);
   }
 
-  for (const match of body.matchAll(/!?\[[^\]\n]*\]\(([^)\n]+)\)/g)) {
-    const destination = match[1]!.split(/\s+(?=["'])/)[0]!;
-    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(destination)) continue;
-    const path = destination.split(/[?#]/)[0];
-    if (!path) continue;
+  for (const destination of parsed.links) {
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(destination)) continue;
+    const [rawPath = '', rawFragment] = destination.split('#', 2);
+    const path = rawPath.split('?')[0]!;
     let target: string;
     try {
-      target = resolve(dirname(skillFile), decodeURIComponent(path));
+      target = path ? resolve(dirname(skillFile), decodeURIComponent(path)) : skillFile;
     } catch {
       errors.push(`リンク先を解釈できない: ${destination}`);
       continue;
     }
-    if (!(await stat(target).catch(() => null))) errors.push(`ローカルリンク切れ: ${destination}`);
+    const info = await stat(target).catch(() => null);
+    if (!info) {
+      errors.push(`ローカルリンク切れ: ${destination}`);
+      continue;
+    }
+    if (rawFragment) {
+      let fragment: string;
+      try {
+        fragment = decodeURIComponent(rawFragment);
+      } catch {
+        errors.push(`アンカーを解釈できない: ${destination}`);
+        continue;
+      }
+      if (!info.isFile() || !target.endsWith('.md')) {
+        errors.push(`Markdown アンカーの対象が Markdown ファイルではない: ${destination}`);
+        continue;
+      }
+      const targetSource = await readFile(target, 'utf8');
+      if (!anchors(targetSource).has(fragment)) errors.push(`ローカルアンカー切れ: ${destination}`);
+    }
   }
   return errors;
 }
