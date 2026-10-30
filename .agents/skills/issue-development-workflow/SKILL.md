@@ -27,4 +27,4 @@ Issue が指定された依頼、Issue 選定では次の順に進む。
 2. 新規開始時は[対象 Issue](references/issue-selection.md)を確認する。Issue 選定は明示依頼がある場合に限る。
 3. 新規開始時は[作業環境](references/workspace-setup.md)を準備する。
 4. 再開・新規を問わず[実装とレビュー](references/implementation-review.md)を行う。
-5. [GitHub に反映して PR を作成](references/publish-pr.md)する。
+5. [GitHub に反映して PR を作成](references/publish-pr.md)し、CI 完了ゲートを通す。

@@ -19,7 +19,7 @@
 - 現在状態から確認できる base branch・起点 SHA と既存の作業ツリーを引き継ぐ。
 - 既存の Open PR を引き継ぐ前に、対象 Issue・base・head が今回の作業に一致し、候補が一件だけであることを確認する。不一致、複数の候補、確認失敗があれば、変更を保全して停止する。
 - 現在の差分に対する検証・レビュー完了を確認できなければ、[実装とレビュー](implementation-review.md)へ戻す。
-- 対応する Open PR が作成済みで、PR の base・head およびリモートに反映された差分が検証・レビュー済みの作業と一致し、ローカル HEAD がリモートブランチの先端 SHA と一致し、staged / unstaged / untracked がなく clean の場合は、レビュー待ちとして終了する。
+- 対応する Open PR が作成済みで、PR の base・head およびリモートに反映された差分が検証・レビュー済みの作業と一致し、ローカル HEAD がリモートブランチの先端 SHA と一致し、staged / unstaged / untracked がなく clean の場合も、[PR 公開後の必須 CI 完了ゲート](publish-pr.md#必須-ci-完了ゲート)を通してからレビュー待ちとして終了する。
 - Open PR が作成済みで未反映の変更や未 Push のコミットがある場合は、既存 PR を引き継ぎ、[実装とレビュー](implementation-review.md)を経て[GitHub 反映](publish-pr.md)へ進む。
 
 ## 作業を特定できない場合
