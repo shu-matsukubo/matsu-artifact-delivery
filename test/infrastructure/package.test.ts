@@ -393,7 +393,11 @@ await test('DEV-U04: 再開時は未反映の修正を検証・反映して既�
   const skillPath = '.agents/skills/issue-development-workflow/references';
   const resume = await read(join(repository, skillPath, 'resume.md'));
   const publish = await read(join(repository, skillPath, 'publish-pr.md'));
-  assert.match(resume, /ローカル HEAD.*リモートブランチの先端 SHA.*一致.*clean.*レビュー待ちとして終了/);
+  const ciGate = await read(join(repository, skillPath, 'ci-gate.md'));
+  assert.match(
+    resume,
+    /ローカル HEAD.*リモートブランチの先端 SHA.*一致.*clean.*必須 CI 完了ゲート.*レビュー待ちとして終了/,
+  );
   assert.match(
     resume,
     /Open PR が作成済みで未反映の変更や未 Push のコミット.*既存 PR.*implementation-review\.md.*publish-pr\.md/,
@@ -402,6 +406,11 @@ await test('DEV-U04: 再開時は未反映の修正を検証・反映して既�
   assert.ok(publish.includes('既存 PR を引き継ぎ、必要な本文を更新する。新規 PR は作成しない'));
   assert.ok(publish.includes('不一致、複数候補、確認失敗'));
   assert.ok(publish.includes('先端 SHA が反映対象のローカル HEAD と一致'));
+  assert.ok(publish.includes('必須 CI 完了ゲート'));
+  assert.match(ciGate, /Quality gate.*成功/);
+  assert.match(ciGate, /最大3回/);
+  assert.match(ciGate, /全 Actions run と各 run の全 job/);
+  assert.match(ciGate, /PR URL、確認 SHA、直近 CI 状態、理由と必要な対応/);
   assertContract(publish, {
     id: 'DEV-U04',
     ordered: [

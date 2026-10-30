@@ -40,4 +40,11 @@ GitHub の操作手段と結果確認は [Git と GitHub の操作](../../../../
 - Issue・base・head が一致する候補が一件だけなら既存 PR を引き継ぎ、必要な本文を更新する。新規 PR は作成しない。
 - 引き継ぐ PR がなく Open PR もない場合だけ、Issue を参照する Open PR を作成する。base は開始時の default branch、head は Issue branch とする。
 
+## 必須 CI 完了ゲート
+
+- PR の作成・更新後は[CI 完了ゲート](ci-gate.md)を実行する。再開時に既存 PR があり、変更もなく clean の場合も同じゲートを通す。
+- ゲートは検証・レビュー済みの最新 HEAD SHA を指定して判定する。待機中に HEAD が変わった場合は停止し、新 SHA の検証・レビュー後にやり直す。
+- CI が失敗したら該当 run のログを調べ、対応可能な失敗を修正する。修正は最大3回までとし、各回で必要な検証・親レビュー・Push を済ませてから新 SHA のゲートを通す。
+- ゲート成功後はレビュー待ちとして終了する。人間レビューやマージを実行しない。
+
 PR 本文に `Closes`、`Fixes`、`Resolves` 等の Issue closing keyword を含めない。PR の merge と Issue の Close は別のライフサイクルとし、Issue はこの Skill では閉じず、人間が必要な確認を終えた後に閉じる。
