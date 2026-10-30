@@ -19,6 +19,6 @@ compatibility: artifact-workflow Skill と Codex のマルチエージェント�
 
 ## フロー
 
-1. **委任・生成拡張の選定**：[生成方針](references/generation.md)を使う。
-2. **生成・修正**：[生成原理原則](references/generation-principles.md)と[worker 役割テンプレート](assets/worker.md)を使う。
-3. **成果物・作業情報の返却**：[生成方針](references/generation.md)を使い、親へ返す。
+1. **委任・生成拡張の選定**：[生成方針](references/generation.md)に従う。
+2. **生成・修正**：[生成原理原則](references/generation-principles.md)を適用し、[worker 役割テンプレート](assets/worker.md)を使う。
+3. **成果物・作業情報の返却**：[生成方針](references/generation.md)に従い、親へ返す。

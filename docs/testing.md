@@ -33,6 +33,7 @@ npm run test:unit -- --targets workflow --dry-run
 
 # CI と同じコード品質チェック
 npm run check
+npm run check:skills
 npm run lint
 npm run format:check
 npm --prefix plugins/artifact-workflow run check
@@ -173,6 +174,8 @@ npm run ci:select -- --all
 | DEV-U05                                             | 既存 PR の対象・Open 状態を再開・反映前後に確認し、不一致・Close・merge 時の反映と PR 再作成を停止             | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | DEV-U06                                             | 仕様明確化ゲート、変更入口・委譲、単独レビュー、Issue 選定                                                     | [共通構成試験](../test/infrastructure/package.test.ts)                                    |
 | DEV-U07 / DEV-U08                                   | Skill 作成・修正とレビューの共通規約連携、構造検証の正常系・異常系                                             | [Skill 規約試験](../test/infrastructure/skill-authoring.test.ts)                          |
+| DEV-U09                                             | 全10 Skill の参照グラフと棚卸し名の網羅                                                                        | [Skill 規約試験](../test/infrastructure/skill-authoring.test.ts)                          |
+| DEV-U10                                             | 全Skill検査の正常系、配布境界、参照リンク・アンカー切れ、Skill 欠落、CLI の非ゼロ終了                          | [Skill 規約試験](../test/infrastructure/skill-authoring.test.ts)                          |
 
 ### 既存 MCP の対応表
 

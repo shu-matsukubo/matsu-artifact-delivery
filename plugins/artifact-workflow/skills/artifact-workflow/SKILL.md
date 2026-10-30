@@ -20,8 +20,8 @@ compatibility: Windows x64、同梱の artifact-task-memory MCP、Codex のマ�
 ## フロー
 
 1. **範囲・タスク分解・計画提示**：[task-planning Skill](../task-planning/SKILL.md)を使う。
-2. **承認・計画保存**：親が [approval.md](references/approval.md) と [task-memory.md](references/task-memory.md) に従う。
+2. **承認・計画保存**：親が[承認方針](references/approval.md)と[計画ライフサイクル](references/task-memory.md)に従う。
 3. **成果物の生成・修正**：[artifact-generation Skill](../artifact-generation/SKILL.md)を使う。
 4. **独立レビュー・指摘・再レビュー**：[artifact-review Skill](../artifact-review/SKILL.md)を使う。
-5. **タスク・全体完了条件の検証**：[verification.md](references/verification.md)を使う。
-6. **成果物の提示・引き渡し・完了記録**：[delivery.md](references/delivery.md)と[task-memory.md](references/task-memory.md)を使う。
+5. **タスク・全体完了条件の検証**：[完了条件の検証方針](references/verification.md)に従う。
+6. **成果物の提示・引き渡し・完了記録**：[引き渡し手順](references/delivery.md)と[計画ライフサイクル](references/task-memory.md)に従う。

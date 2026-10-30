@@ -19,7 +19,7 @@ compatibility: Codex のマルチエージェント機能が必要。現在の�
 
 ## フロー
 
-- **依頼と起動条件**：[原理原則と呼び出し境界](references/principles.md)、[相談する論点の例](references/triggers.md)。
-- **相談役と入力・返却**：[相談役の契約](references/advisor-contract.md)。
+- **依頼と起動条件**：[原理原則と呼び出し境界](references/principles.md)と[相談する論点の例](references/triggers.md)を確認する。
+- **相談役と入力・返却**：[相談役の契約](references/advisor-contract.md)に従う。
 - **結果記録**：[結果テンプレート](assets/escalation-result-template.md)。
 - **採否・実装・検証・継続判断**：呼び出し元。
