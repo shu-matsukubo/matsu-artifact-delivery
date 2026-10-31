@@ -215,7 +215,7 @@ await test(
           result = {
             ...(await execute(
               process.execPath,
-              ['--test', '--test-name-pattern=^WF-U18:', 'test/workflow/unit.test.ts'],
+              ['--test', '--test-reporter=tap', '--test-name-pattern=^WF-U18:', 'test/workflow/unit.test.ts'],
               {
                 cwd: fixture,
                 env: childEnv,
