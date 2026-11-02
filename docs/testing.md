@@ -150,6 +150,7 @@ npm run ci:select -- --all
 | WF-U25 / WF-U26 / WF-U27 / WF-U29 / WF-U30 / WF-U31 | 管理・レビュー・計画・承認 Skill と登録指示の実行境界                                                                | Workflow 契約一覧                                                                         |
 | WF-U32 / WF-U33 / WF-U34                            | Worker / Reviewer のモデル選定・起動指定・context 引き渡し・既定フォールバック                                       | Workflow 契約一覧                                                                         |
 | WF-U35 / WF-U36                                     | タスクごとの共通方針選定・版固定、完了時の提案と同意後の管理導線                                                     | Workflow 契約一覧                                                                         |
+| WF-U37                                              | 標準 subagent による独立レビュー、技術的隔離が必須の場合の保留、対象版の前後照合                                     | Workflow 契約一覧                                                                         |
 | EX-U01 / EX-U02                                     | manifest、Skill 発見 policy、相談役のプロンプト上の読み取り専用・子起動禁止、参照・契約網羅                          | [Escalation unit](../test/escalation/unit.test.ts)、共通検証                              |
 | EX-U03 / EX-U04                                     | 親の明示依頼、単発起動、回数・枠管理、失敗時の返却                                                                   | Escalation 契約一覧                                                                       |
 | EX-U05 / EX-U06 / EX-U07                            | 入出力契約・実行状態、相談例の非自動性、結果テンプレート                                                             | Escalation 契約一覧                                                                       |
@@ -198,13 +199,13 @@ npm run ci:select -- --all
 
 配布時に必要な manifest・Skill・参照資料・subagent 役割テンプレート・MCP bundle・Windows runtime だけを OS の一時ディレクトリへ配置する。元リポジトリの Agent 登録、テスト、`node_modules` に依存せず、そこから metadata を解析して参照グラフをたどる。実 Codex のインストール処理やモデル出力は再現しない。
 
-| ID                | シナリオ                                                                                   | 実装                                                 |
-| ----------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| WF-E01 / WF-E02   | 単体パッケージの発見、4責務 Skill と工程参照、独立レビュー・親の検証・引き渡しへの参照     | [Workflow E2E](../test/workflow/e2e.test.ts)         |
-| WF-E03            | 登録特化指示なし／ありの双方で共通 5 原則と返却契約が参照できる                            | Workflow E2E                                         |
-| WF-E04            | Escalation 未導入の単独配布で、任意相談の参照先へ到達できる                                | Workflow E2E                                         |
-| EX-E01 / EX-E02   | Escalation 単独配布、唯一の相談役とテンプレートの識別子・状態整合                          | [Escalation E2E](../test/escalation/e2e.test.ts)     |
-| INT-E01 / INT-E02 | 任意相談先の発見と入出力の一致、Reviewer → Parent → Advisor → Worker / Reviewer の責務整合 | [連携 E2E](../test/integration/consultation.test.ts) |
+| ID                | シナリオ                                                                                                                         | 実装                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| WF-E01 / WF-E02   | 単体パッケージの発見、4責務 Skill と工程参照、独立レビュー・親の検証・引き渡しへの参照                                           | [Workflow E2E](../test/workflow/e2e.test.ts)         |
+| WF-E03            | 登録済み Plugin Agent がなくても、書込可能な親から標準 subagent レビューを行い、対象版の事後照合と強制隔離必須時の保留が示される | Workflow E2E                                         |
+| WF-E04            | Escalation 未導入の単独配布で、任意相談の参照先へ到達できる                                                                      | Workflow E2E                                         |
+| EX-E01 / EX-E02   | Escalation 単独配布、唯一の相談役とテンプレートの識別子・状態整合                                                                | [Escalation E2E](../test/escalation/e2e.test.ts)     |
+| INT-E01 / INT-E02 | 任意相談先の発見と入出力の一致、Reviewer → Parent → Advisor → Worker / Reviewer の責務整合                                       | [連携 E2E](../test/integration/consultation.test.ts) |
 
 参照切れ・権限退行の負例は検証器の単体試験 `HAR-U04` / `HAR-U06` に集約する。`WF-E05` / `EX-E03` は予約済み ID として再利用しない。
 

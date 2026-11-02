@@ -86,7 +86,9 @@ await test('PKG-U03: Plugin documentation resolves local links and explains revi
 
   const workflowReadme = await read(join(repository, 'plugins/artifact-workflow/README.md'));
   assert.ok(
-    workflowReadme.includes('Reviewer instructions request read-only work but do not change runtime permissions'),
+    workflowReadme.includes(
+      'Reviewer instructions prohibit writes as a behavioral constraint, but do not change runtime permissions',
+    ),
   );
 });
 

@@ -43,7 +43,7 @@ Restart Codex and start a new task after updating. See [Distribution and updates
 | [extension-management](skills/extension-management/SKILL.md)                                                       | Register and manage reusable artifact guidance                          |
 | [MCP source](https://github.com/shu-matsukubo/matsu-artifact-delivery/tree/main/plugins/artifact-workflow/mcp/src) | TypeScript implementation for MCP maintenance                           |
 
-The parent manages subagents and chooses models and reasoning settings for each task. Reviewer instructions request read-only work but do not change runtime permissions; see [reviewer guidance](skills/artifact-review/SKILL.md).
+The parent delegates independent review to a standard subagent; registering a Custom Agent for `artifact-reviewer` is not required. Reviewer instructions prohibit writes as a behavioral constraint, but do not change runtime permissions. The parent checks the reviewed files before and after review and rejects results if the target changed or could not be verified; see [reviewer guidance](skills/artifact-review/SKILL.md).
 
 ## MCP runtime
 

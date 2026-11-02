@@ -78,6 +78,7 @@ await test('WF-E02: workflow entry links planning, generation, review, verificat
 
 await test('WF-E03: reviewer applies the common policy fixed in the approved plan', async (t) => {
   const plugin = await stagePlugin(t, 'artifact-workflow');
+  assert.deepEqual([...plugin.agents.keys()], [], 'Reviewer must not depend on a registered Plugin Agent');
   const root = join(plugin.root, 'skills/artifact-review');
   const review = await read(join(root, 'references/independent-review.md'));
   assert.ok(review.includes('共通方針0〜1件'));
@@ -91,6 +92,21 @@ await test('WF-E03: reviewer applies the common policy fixed in the approved pla
   const reviewer = await read(join(root, 'assets/reviewer.md'));
   assert.ok(reviewer.includes('共通5原則はすべて適用する'));
   assert.ok(reviewer.includes('方針を独自に追加・差し替えない'));
+  assert.ok(reviewer.includes('親が書き込み可能でもこの指示のもとでレビューする'));
+  assert.ok(reviewer.includes('確認した対象版と、レビュー範囲内のファイル一覧・SHA-256 を返却する'));
+  assert.ok(review.includes('`spawn_agent` で生成・修正担当とは別の標準 subagent を起動'));
+  assert.ok(review.includes('Custom Agent の事前登録は要求しない'));
+  assert.ok(
+    review.includes(
+      '子専用の読み取り専用 Sandbox を設定できないことや、親が書き込み可能なことだけを理由にレビューを保留しない',
+    ),
+  );
+  assert.ok(review.includes('技術的な読み取り専用の強制を明示的に必須としている場合'));
+  assert.ok(review.includes('設定できなければ通常レビューに切り替えず、未実施の理由を親へ返す'));
+  assert.ok(review.includes('レビュー前後に対象範囲のファイル一覧・追加・削除・各 SHA-256'));
+  assert.ok(review.includes('staged / unstaged / untracked の開始状態からの増分も照合する'));
+  assert.ok(review.includes('これらは変更を事後に検知する照合であり、書き込みを防ぐ権限の保証ではない'));
+  assert.ok(review.includes('変更の有無を検証できない場合も成功扱いしない'));
   const extension = plugin.skills.get('extension-management')!;
   assert.ok(extension.body.includes('計画・worker・reviewer・承認ゲートを起動しない'));
 });

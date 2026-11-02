@@ -43,7 +43,7 @@ codex plugin marketplace upgrade matsu-artifact-delivery
 | [extension-management](skills/extension-management/SKILL.md)                                                       | 再利用する成果物向けガイダンスの管理    |
 | [MCP source](https://github.com/shu-matsukubo/matsu-artifact-delivery/tree/main/plugins/artifact-workflow/mcp/src) | MCP 保守用 TypeScript 実装              |
 
-親が subagent を管理し、タスクごとのモデル・推論設定を選びます。reviewer には読み取り専用を指示しますが、実行時の権限は変更されません。[reviewer の手順](skills/artifact-review/SKILL.md)を参照してください。
+親は標準 subagent へ独立レビューを委任します。`artifact-reviewer` 用の Custom Agent 登録は不要です。reviewer への書き込み禁止は行動上の指示で、実行時の権限は変更されません。親はレビュー前後の対象ファイルを照合し、対象が変わった場合や検証できない場合は結果を採用しません。[reviewer の手順](skills/artifact-review/SKILL.md)を参照してください。
 
 ## MCP runtime
 
